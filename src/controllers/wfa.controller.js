@@ -5,7 +5,6 @@ import logger from '../utils/logger.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import { calculateDistance } from '../utils/geofence.js';
 
-
 /**
  * Get WFA recommendations based on user location
  * Uses Geoapify API to find nearby places and applies Unified Fuzzy AHP scoring
@@ -408,10 +407,6 @@ export const testFuzzyAhp = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        test_input: {
-          place_data: place_data,
-          weights_used: weights
-        },
         test_result: testResult,
         interpretation: {
           score_range: '0-100',

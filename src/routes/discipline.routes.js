@@ -7,10 +7,12 @@
 import express from 'express';
 
 import { verifyToken } from '../middlewares/authJwt.js';
+import roleGuard from '../middlewares/roleGuard.js';
 import {
   getUserDisciplineIndex,
   getAllDisciplineIndices,
-  getDisciplineConfig
+  getDisciplineConfig,
+  testDisciplineAhp
 } from '../controllers/discipline.controller.js';
 
 const router = express.Router();
@@ -38,5 +40,12 @@ router.get('/all', getAllDisciplineIndices);
  * @access Private (Admin/Management only)
  */
 router.get('/config', getDisciplineConfig);
+
+/**
+ * @route POST /api/discipline/test-ahp
+ * @desc Compute discipline index from manual metrics (no DB)
+ * @access Private (Admin/Management only)
+ */
+router.post('/test-ahp', roleGuard(['Admin', 'Management']), testDisciplineAhp);
 
 export default router;

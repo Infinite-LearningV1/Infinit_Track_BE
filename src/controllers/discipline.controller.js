@@ -19,7 +19,7 @@ import logger from '../utils/logger.js';
 export const getUserDisciplineIndex = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const { months = 3 } = req.query; // Default 3 bulan terakhir
+    const { months = 1 } = req.query; // Default 1 bulan terakhir
 
     // Validasi akses - hanya admin/management atau user sendiri yang bisa akses
     if (
@@ -103,6 +103,53 @@ export const getUserDisciplineIndex = async (req, res, next) => {
 };
 
 /**
+ * Test endpoint: Calculate Discipline Index from manual metrics (no DB)
+ * POST /api/discipline/test-ahp
+ * Body example:
+ * {
+ *   "metrics": {
+ *     "alpha_rate": 12,
+ *     "avg_lateness_minutes": 8,
+ *     "lateness_frequency": 15,
+ *     "work_hour_consistency": 82
+ *   }
+ * }
+ */
+export const testDisciplineAhp = async (req, res, next) => {
+  try {
+    const { metrics } = req.body || {};
+    if (!metrics) {
+      return res.status(400).json({ success: false, message: 'Parameter metrics wajib diisi' });
+    }
+
+    const ahpWeights = fuzzyEngine.getDisciplineAhpWeights();
+    const result = await fuzzyEngine.calculateDisciplineIndex(metrics, ahpWeights);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        discipline_result: result,
+        methodology: {
+          engine: 'FAHP',
+          criteria_weights: ahpWeights,
+          scoring_ranges: {
+            'Sangat Tinggi': '>=80',
+            Tinggi: '60-79.9',
+            Sedang: '40-59.9',
+            Rendah: '20-39.9',
+            'Sangat Rendah': '<20'
+          }
+        }
+      },
+      message: 'Discipline Index computed from manual metrics'
+    });
+  } catch (error) {
+    logger.error('Error in testDisciplineAhp:', error);
+    next(error);
+  }
+};
+
+/**
  * Calculate discipline index for all users (Admin/Management only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -119,7 +166,7 @@ export const getAllDisciplineIndices = async (req, res, next) => {
       });
     }
 
-    const { months = 3, page = 1, limit = 20, sort = 'score_desc' } = req.query;
+    const { months = 1, page = 1, limit = 20, sort = 'score_desc' } = req.query;
 
     // Get all active users (exclude admins from analysis)
     const users = await User.findAll({
@@ -323,11 +370,33 @@ async function aggregateUserMetrics(userId, startDate, endDate) {
     const attendance_consistency =
       totalWorkingDays > 0 ? (totalAttendances / totalWorkingDays) * 100 : 0;
 
+    // Lateness frequency over the last 1 month window (relative to endDate)
+    const lfStartDate = new Date(endDate);
+    lfStartDate.setMonth(lfStartDate.getMonth() - 1);
+
+    const workingDaysLastMonth = calculateWorkingDays(lfStartDate, endDate);
+
+    const lateAttendancesLastMonth = attendances.filter((att) => {
+      // Ensure attendance falls within the last 1 month window
+      const attDate = att.attendance_date ? new Date(att.attendance_date) : null;
+      if (!attDate || attDate < lfStartDate || attDate > endDate) return false;
+      if (!att.time_in) return false;
+      const timeIn = new Date(att.time_in);
+      const hour = timeIn.getHours();
+      const minute = timeIn.getMinutes();
+      return hour > 9 || (hour === 9 && minute > 0);
+    }).length;
+
+    const lateness_frequency =
+      workingDaysLastMonth > 0 ? (lateAttendancesLastMonth / workingDaysLastMonth) * 100 : 0;
+
     return {
       lateness_rate: Math.round(lateness_rate * 100) / 100,
       absenteeism_rate: Math.round(absenteeism_rate * 100) / 100,
       overtime_frequency: Math.round(overtime_frequency * 100) / 100,
       attendance_consistency: Math.min(100, Math.round(attendance_consistency * 100) / 100),
+      // Added for FAHP engine compatibility (1-month period)
+      lateness_frequency: Math.round(lateness_frequency * 100) / 100,
 
       // Additional details
       total_working_days: totalWorkingDays,

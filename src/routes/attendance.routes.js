@@ -84,6 +84,14 @@ router.post(
   manualSmartAutoCheckoutForDate
 );
 
+// Test-only endpoint: weighted prediction (Admin only)
+router.post('/test-weighted-prediction', roleGuard(['Admin', 'Management']), (req, res, next) => {
+  // lazy import to avoid circular issues
+  import('../controllers/attendance.controller.js').then((m) =>
+    m.testWeightedPrediction(req, res, next)
+  );
+});
+
 // DELETE endpoint for admin and management to delete attendance record
 router.delete('/:id', verifyToken, roleGuard(['Admin', 'Management']), deleteAttendance);
 

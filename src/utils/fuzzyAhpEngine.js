@@ -1,5 +1,5 @@
 import logger from './logger.js';
-import { fgmWeightsTFN, defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
+import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { minMax } from '../analytics/normalization.js';
 import { labelEqualInterval } from '../analytics/labeling.js';
@@ -13,10 +13,8 @@ let cachedWfaCR = null;
 let cachedDiscCR = null;
 
 const CR_THRESHOLD = parseFloat(process.env.AHP_CR_THRESHOLD || '0.10');
-const FAHP_METHOD = (process.env.FAHP_METHOD || 'extent').toLowerCase();
-
 function selectWeights(matrixTFN) {
-  return FAHP_METHOD === 'fgm' ? fgmWeightsTFN(matrixTFN) : extentWeightsTFN(matrixTFN);
+  return extentWeightsTFN(matrixTFN);
 }
 
 // --- Time utilities for Smart Auto Checkout weighted prediction ---

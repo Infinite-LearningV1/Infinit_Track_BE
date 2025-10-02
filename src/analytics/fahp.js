@@ -18,22 +18,6 @@ export function defuzzifyMatrixTFN(matrixTFN) {
   return matrixTFN.map((row) => row.map((tfn) => centroidTFN(tfn)));
 }
 
-export function fgmWeightsTFN(matrixTFN) {
-  const n = matrixTFN.length;
-  const geometricMeans = Array.from({ length: n }, () => [1, 1, 1]);
-
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      geometricMeans[i] = mulTFN(geometricMeans[i], matrixTFN[i][j]);
-    }
-    geometricMeans[i] = powTFN(geometricMeans[i], 1 / n);
-  }
-
-  const crisp = geometricMeans.map((g) => centroidTFN(g));
-  const sum = crisp.reduce((a, b) => a + b, 0) || 1;
-  return crisp.map((v) => v / sum);
-}
-
 // Compute CR using eigenvalue approximation without external libs
 export function computeCR(matrix) {
   const n = matrix.length;
@@ -72,14 +56,9 @@ export function computeCR(matrix) {
     7: 1.32,
     8: 1.41,
     9: 1.45,
-    10: 1.49,
-    11: 1.51,
-    12: 1.48,
-    13: 1.56,
-    14: 1.57,
-    15: 1.59
+    10: 1.49
   };
-  const RI = RI_TABLE[n] ?? 1.59;
+  const RI = RI_TABLE[n] ?? 1.49;
   const CR = RI === 0 ? 0 : CI / RI;
   return { CI, CR, lambdaMax };
 }

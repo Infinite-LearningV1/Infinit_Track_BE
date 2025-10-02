@@ -1,5 +1,7 @@
 {
   "testEnvironment": "node",
   "transform": {},
-  "moduleNameMapper": {}
+  "moduleNameMapper": {},
+  "setupFiles": ["<rootDir>/tests/jest.setup.js"],
+  "testMatch": ["**/tests/**/*.test.js"]
 }

@@ -1,0 +1,10 @@
+// Global test setup for ESM Jest
+// Silence noisy logs in tests
+jest.spyOn(console, 'log').mockImplementation(() => {});
+jest.spyOn(console, 'info').mockImplementation(() => {});
+jest.spyOn(console, 'warn').mockImplementation(() => {});
+jest.spyOn(console, 'error').mockImplementation(() => {});
+
+// Provide stable environment defaults for FAHP
+process.env.FAHP_METHOD = process.env.FAHP_METHOD || 'extent';
+process.env.AHP_CR_THRESHOLD = process.env.AHP_CR_THRESHOLD || '0.10';

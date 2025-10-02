@@ -18,7 +18,8 @@ import {
   calculateDistance,
   getJakartaTime,
   getJakartaDateString,
-  getCurrentTimeForDB
+  getCurrentTimeForDB,
+  toJakartaTime
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
@@ -29,6 +30,10 @@ import {
 } from '../jobs/resolveWfaBookings.job.js';
 import { runGeneralAlphaForDate } from '../jobs/createGeneralAlpha.job.js';
 import logger from '../utils/logger.js';
+import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
+import { extentWeightsTFN } from '../analytics/fahp.extent.js';
+import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
+import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
 export const clockIn = async (req, res) => {
   try {
@@ -61,6 +66,105 @@ export const clockIn = async (req, res) => {
     res.status(201).json({ message: 'Clock in successful', attendance });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+/**
+ * Test endpoint to compute checkout prediction using weightedPrediction
+ * Admin/Management only
+ * Body schema:
+ * {
+ *   candidates: { HIST?: string|Date, CHECKIN?: string|Date, CONTEXT?: string|Date, TRANSITION?: string|Date },
+ *   weights: number[4], // [HIST, CHECKIN, CONTEXT, TRANSITION]
+ *   targetDate: string (YYYY-MM-DD),
+ *   timeIn: string|Date (ISO),
+ *   fallbackEndStr?: string (HH:mm:ss)
+ * }
+ */
+export const testWeightedPrediction = async (req, res) => {
+  try {
+    const {
+      candidates = {},
+      weights,
+      targetDate,
+      timeIn,
+      fallbackEndStr = '18:00:00'
+    } = req.body || {};
+
+    if (!targetDate || !timeIn) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid body. Required: targetDate (YYYY-MM-DD), timeIn (ISO), candidates object; optional: weights[4]'
+      });
+    }
+
+    const parseTime = (value, dateStr) => {
+      if (!value) return null;
+      if (typeof value === 'string') {
+        // Accept "HH:mm:ss" or full ISO
+        if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
+          return new Date(`${dateStr}T${value}+07:00`);
+        }
+      }
+      return new Date(value);
+    };
+    const toWIBTimeString = (date) => {
+      if (!date) return null;
+      const d = toJakartaTime(date);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
+    };
+    const cand = {
+      HIST: parseTime(candidates.HIST, targetDate),
+      CHECKIN: parseTime(candidates.CHECKIN, targetDate),
+      CONTEXT: parseTime(candidates.CONTEXT, targetDate),
+      TRANSITION: parseTime(candidates.TRANSITION, targetDate)
+    };
+
+    // Determine weights: use provided or default FAHP SMART_AC weights (extent method)
+    const defaultWeights = extentWeightsTFN(SMART_AC_PAIRWISE_TFN);
+    const W = Array.isArray(weights) && weights.length === 4 ? weights : defaultWeights;
+
+    // Compute CR for diagnostics
+    const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
+    const { CR } = computeCR(crisp);
+
+    const predicted = fuzzyEngine.weightedPrediction(
+      cand,
+      W,
+      targetDate,
+      parseTime(timeIn, targetDate),
+      fallbackEndStr
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        input: {
+          candidates: {
+            HIST: toWIBTimeString(cand.HIST),
+            CHECKIN: toWIBTimeString(cand.CHECKIN),
+            CONTEXT: toWIBTimeString(cand.CONTEXT),
+            TRANSITION: toWIBTimeString(cand.TRANSITION)
+          },
+          weights: W,
+          targetDate,
+          timeIn: toWIBTimeString(parseTime(timeIn, targetDate)),
+          fallbackEndStr
+        },
+        result_time: predicted ? toWIBTimeString(predicted) : null,
+        CR: parseFloat(CR.toFixed(3)),
+        CR_threshold: 0.1,
+        is_consistent: CR <= 0.1
+      },
+      message: 'Smart Auto Checkout weighted prediction'
+    });
+  } catch (error) {
+    logger.error('Error in testWeightedPrediction:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
 
