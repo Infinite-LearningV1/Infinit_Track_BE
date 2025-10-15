@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import request from 'supertest';
 
 // Mock roleGuard BEFORE importing app so route uses the mocked middleware

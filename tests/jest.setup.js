@@ -1,4 +1,6 @@
 // Global test setup for ESM Jest
+import { jest } from '@jest/globals';
+
 // Silence noisy logs in tests
 jest.spyOn(console, 'log').mockImplementation(() => {});
 jest.spyOn(console, 'info').mockImplementation(() => {});

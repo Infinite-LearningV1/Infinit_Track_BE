@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import fuzzyEngine from '../src/utils/fuzzyAhpEngine.js';
 
 describe('Discipline Index FAHP Logic', () => {
