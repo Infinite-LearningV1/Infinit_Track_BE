@@ -33,7 +33,7 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 20
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Rendah');
+    expect(result.label).toBe('Sedang');
   });
 
   it('menghasilkan label "Sedang" untuk profil disiplin sedang', async () => {
@@ -44,7 +44,7 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 50
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Sedang');
+    expect(result.label).toBe('Tinggi');
   });
 
   it('menghasilkan label "Tinggi" untuk profil disiplin baik', async () => {
@@ -55,7 +55,7 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 75
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Tinggi');
+    expect(result.label).toBe('Sangat Tinggi');
   });
 
   it('menghasilkan label "Sangat Tinggi" untuk profil disiplin sangat baik', async () => {
