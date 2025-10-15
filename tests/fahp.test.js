@@ -4,9 +4,9 @@ import { labelEqualInterval } from '../src/analytics/labeling.js';
 
 test('FGM produces normalized weights (sum=1) - custom matrix', () => {
   const M = [
-    [TFN.M, TFN.H, TFN.VH],
-    [[1 / 4, 1 / 3, 1 / 2], TFN.M, TFN.H],
-    [[1 / 7, 1 / 5, 1 / 3], [1 / 4, 1 / 3, 1 / 2], TFN.M]
+    [TFN.EQUAL, TFN.MODERATE, TFN.STRONG],
+    [[1 / 4, 1 / 3, 1 / 2], TFN.EQUAL, TFN.MODERATE],
+    [[1 / 7, 1 / 5, 1 / 3], [1 / 4, 1 / 3, 1 / 2], TFN.EQUAL]
   ];
   const w = fgmWeightsTFN(M);
   const sum = w.reduce((a, b) => a + b, 0);

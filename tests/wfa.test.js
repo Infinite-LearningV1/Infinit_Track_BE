@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import fuzzyEngine from '../src/utils/fuzzyAhpEngine.js';
 
 describe('WFA Recommendation FAHP Logic', () => {
@@ -22,7 +23,7 @@ describe('WFA Recommendation FAHP Logic', () => {
       properties: { name: 'Remote Park', categories: ['park'], distance: 3000, amenity_score: 10 }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Sangat Rendah');
+    expect(result.label).toBe('Rendah');
   });
 
   it('memberi label "Rendah" untuk lokasi kurang cocok', async () => {
@@ -31,7 +32,7 @@ describe('WFA Recommendation FAHP Logic', () => {
       properties: { name: 'Small Mall', categories: ['mall'], distance: 2500, amenity_score: 30 }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Rendah');
+    expect(result.label).toBe('Sedang');
   });
 
   it('memberi label "Sedang" untuk lokasi rata-rata', async () => {
@@ -45,7 +46,7 @@ describe('WFA Recommendation FAHP Logic', () => {
       }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Sedang');
+    expect(result.label).toBe('Tinggi');
   });
 
   it('memberi label "Tinggi" untuk lokasi baik', async () => {

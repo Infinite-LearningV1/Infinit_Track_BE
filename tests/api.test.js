@@ -1,10 +1,20 @@
+import { jest } from '@jest/globals';
 import request from 'supertest';
 
-// Mock roleGuard BEFORE importing app so route uses the mocked middleware
-const mockRoleGuard = () => (req, _res, next) => {
+// Mock verifyToken to authenticate the request
+const mockVerifyToken = (req, _res, next) => {
   req.user = { id: 1, role_name: 'Admin' };
   next();
 };
+
+// Mock roleGuard to allow Admin access
+const mockRoleGuard = () => (req, _res, next) => {
+  next();
+};
+
+jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
+  verifyToken: mockVerifyToken
+}));
 
 jest.unstable_mockModule('../src/middlewares/roleGuard.js', () => ({
   __esModule: true,
