@@ -18,6 +18,34 @@ export function defuzzifyMatrixTFN(matrixTFN) {
   return matrixTFN.map((row) => row.map((tfn) => centroidTFN(tfn)));
 }
 
+/**
+ * Compute FGM (Fuzzy Geometric Mean) weights from TFN pairwise comparison matrix
+ * @param {Array<Array<[number, number, number]>>} matrixTFN - NxN matrix of TFN triplets
+ * @returns {Array<number>} - Normalized crisp weights (sum=1)
+ */
+export function fgmWeightsTFN(matrixTFN) {
+  const n = matrixTFN.length;
+  if (n === 0) return [];
+
+  // Compute geometric mean for each row (as TFN)
+  const gmTFN = [];
+  for (let i = 0; i < n; i++) {
+    let productTFN = [1, 1, 1];
+    for (let j = 0; j < n; j++) {
+      productTFN = mulTFN(productTFN, matrixTFN[i][j]);
+    }
+    // Take nth root
+    gmTFN.push(powTFN(productTFN, 1 / n));
+  }
+
+  // Defuzzify each GM to crisp value
+  const gmCrisp = gmTFN.map(centroidTFN);
+
+  // Normalize to sum=1
+  const total = gmCrisp.reduce((a, b) => a + b, 0) || 1;
+  return gmCrisp.map((v) => v / total);
+}
+
 // Compute CR using eigenvalue approximation without external libs
 export function computeCR(matrix) {
   const n = matrix.length;

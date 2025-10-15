@@ -52,6 +52,3 @@ describe('Smart Auto Checkout FAHP Logic', () => {
     expect(predicted).toBeInstanceOf(Date);
   });
 });
-
-
-
