@@ -15,6 +15,7 @@ import { calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js
 import { toJakartaTime } from '../utils/geofence.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
+import { executeJobWithTimeout, processBatchRecords } from '../utils/jobHelper.js';
 import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
@@ -24,10 +25,24 @@ const DEFAULT_SHIFT_END = process.env.DEFAULT_SHIFT_END || '17:00:00';
 
 export const startAutoCheckoutJob = () => {
   logger.info('Missed checkout flagger scheduled to run every 30 minutes');
-  cron.schedule('*/30 * * * *', runMissedCheckoutFlagger, {
-    scheduled: true,
-    timezone: 'Asia/Jakarta'
-  });
+  cron.schedule(
+    '*/30 * * * *',
+    async () => {
+      try {
+        await executeJobWithTimeout(
+          'MissedCheckoutFlagger',
+          runMissedCheckoutFlagger,
+          3 * 60 * 1000
+        ); // 3 min timeout
+      } catch (error) {
+        logger.error('Missed checkout flagger failed:', error);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: 'Asia/Jakarta'
+    }
+  );
 
   // Nightly Smart Auto Checkout for yesterday (H-1)
   logger.info('Smart Auto Checkout (FAHP+DOW) scheduled to run daily at 23:45');
@@ -35,13 +50,23 @@ export const startAutoCheckoutJob = () => {
     '45 23 * * *',
     async () => {
       try {
-        const now = new Date();
-        const jakartaOffsetMs = 7 * 60 * 60000;
-        const jkt = new Date(now.getTime() + jakartaOffsetMs);
-        const y = new Date(jkt);
-        y.setDate(jkt.getDate() - 1);
-        const targetDate = y.toISOString().split('T')[0];
-        await runSmartAutoCheckoutForDate(targetDate);
+        await executeJobWithTimeout(
+          'SmartAutoCheckout',
+          async () => {
+            // Get current Jakarta time properly
+            const now = new Date();
+            const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+            const jakartaTime = new Date(jakartaTimeString);
+
+            // Calculate yesterday (H-1) in Jakarta timezone
+            const yesterday = new Date(jakartaTime);
+            yesterday.setDate(jakartaTime.getDate() - 1);
+            const targetDate = yesterday.toISOString().split('T')[0];
+
+            return await runSmartAutoCheckoutForDate(targetDate);
+          },
+          10 * 60 * 1000 // 10 min timeout for smart checkout
+        );
       } catch (e) {
         logger.error('Smart Auto Checkout nightly failed:', e);
       }
@@ -111,11 +136,11 @@ async function buildCandidates(att, targetDate, fallbackEndStr) {
   const categoryId = att.category_id;
   const timeIn = new Date(att.time_in);
 
-  // Compute DOW in Jakarta (UTC+7)
-  const base = new Date(`${targetDate}T00:00:00.000Z`);
-  const jakartaOffsetMs = 7 * 60 * 60000;
-  const jkt = new Date(base.getTime() + jakartaOffsetMs);
-  const dow = jkt.getDay();
+  // Compute DOW in Jakarta timezone
+  const base = new Date(`${targetDate}T00:00:00+07:00`);
+  const jakartaTimeString = base.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+  const jakartaDate = new Date(jakartaTimeString);
+  const dow = jakartaDate.getDay();
 
   // History window H-30..H-1
   const from = new Date(base);
@@ -132,9 +157,10 @@ async function buildCandidates(att, targetDate, fallbackEndStr) {
   });
 
   const sameDow = history.filter((h) => {
-    const d = new Date(`${h.attendance_date}T00:00:00.000Z`);
-    const dj = new Date(d.getTime() + jakartaOffsetMs);
-    return dj.getDay() === dow;
+    const d = new Date(`${h.attendance_date}T00:00:00+07:00`);
+    const dTimeString = d.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+    const dJakarta = new Date(dTimeString);
+    return dJakarta.getDay() === dow;
   });
   const pool = sameDow.length >= 5 ? sameDow : history;
   if (pool.length >= 5) {
@@ -177,9 +203,10 @@ async function buildCandidates(att, targetDate, fallbackEndStr) {
     return sanitizeCandidate(targetDate, checkout, timeIn, fallbackEndStr);
   }
   const ctxCatDow = pickContext((h) => {
-    const d = new Date(`${h.attendance_date}T00:00:00.000Z`);
-    const dj = new Date(d.getTime() + jakartaOffsetMs);
-    return h.category_id === categoryId && dj.getDay() === dow;
+    const d = new Date(`${h.attendance_date}T00:00:00+07:00`);
+    const dTimeString = d.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+    const dJakarta = new Date(dTimeString);
+    return h.category_id === categoryId && dJakarta.getDay() === dow;
   });
   candidates.CONTEXT =
     ctxCatDow || pickContext((h) => h.category_id === categoryId) || pickContext(() => true);
@@ -239,13 +266,19 @@ const weightedPrediction = fuzzyAhpEngine.weightedPrediction;
 
 export const runSmartAutoCheckoutForDate = async (targetDate) => {
   try {
+    logger.info(`Smart Auto Checkout started for date: ${targetDate}`);
     const weights = getFahpWeights();
     const fallbackSetting = await Settings.findOne({
       where: { setting_key: 'checkout.fallback_time' }
     });
     const fallbackShiftEnd = fallbackSetting?.setting_value || '17:00:00';
 
-    const toProcess = await Attendance.findAll({
+    let smartUsed = 0;
+    let fallbackUsed = 0;
+    let skipped = 0;
+
+    // Use batch processing for large datasets
+    const queryOptions = {
       where: {
         attendance_date: targetDate,
         time_in: { [Op.not]: null },
@@ -268,98 +301,124 @@ export const runSmartAutoCheckoutForDate = async (targetDate) => {
           attributes: ['booking_id', 'location_id', 'status', 'schedule_date']
         }
       ]
-    });
+    };
 
-    let smartUsed = 0;
-    let fallbackUsed = 0;
-    let skipped = 0;
+    await processBatchRecords(
+      Attendance,
+      queryOptions,
+      async (attendanceBatch, batchNumber) => {
+        logger.info(`Processing batch ${batchNumber} with ${attendanceBatch.length} records`);
 
-    for (const att of toProcess) {
-      try {
-        if (att.time_out) {
-          skipped++;
-          continue;
+        for (const att of attendanceBatch) {
+          try {
+            if (att.time_out) {
+              skipped++;
+              continue;
+            }
+            const timeIn = new Date(att.time_in);
+            const candidates = await buildCandidates(att, targetDate, fallbackShiftEnd);
+            const insufficientEvidence = !candidates.HIST && !candidates.TRANSITION;
+            const predicted = insufficientEvidence
+              ? null
+              : weightedPrediction(candidates, weights, targetDate, timeIn, fallbackShiftEnd);
+
+            let finalCheckout = predicted;
+            let noteKind = 'smart';
+            const availableBasis = Object.keys(candidates)
+              .filter((k) => candidates[k])
+              .join(',');
+            if (!finalCheckout) {
+              // Fallback: use fallbackShiftEnd
+              finalCheckout = new Date(`${targetDate}T${fallbackShiftEnd}+07:00`);
+              noteKind = 'fallback';
+            }
+
+            // Debug trace per attendance (helps diagnose 00:00 issues)
+            try {
+              const inStr = formatTimeOnly(timeIn);
+              const predStrDbg = predicted ? formatTimeOnly(predicted) : '-';
+              const usedStrDbg = formatTimeOnly(finalCheckout);
+              logger.info(
+                `SmartAC#${att.id_attendance} date=${targetDate} in=${inStr} pred=${predStrDbg} used=${usedStrDbg} basis=${availableBasis || '-'} mode=${noteKind}`
+              );
+            } catch (e) {
+              // ignore logging failure
+            }
+
+            // Ensure final checkout is never earlier than time_in to avoid negative duration
+            if (finalCheckout.getTime() < timeIn.getTime()) {
+              finalCheckout = new Date(timeIn);
+            }
+
+            const workHour = calculateWorkHour(timeIn, finalCheckout);
+            const predStr = predicted ? formatTimeOnly(predicted) : null;
+            const usedStr = formatTimeOnly(finalCheckout);
+            const predDurHours = Math.max(
+              0,
+              (finalCheckout.getTime() - timeIn.getTime()) / (1000 * 60 * 60)
+            );
+            const predDurStr = formatTimeOnly(
+              new Date(timeIn.getTime() + Math.round(predDurHours * 60) * 60 * 1000)
+            );
+            const note =
+              noteKind === 'smart'
+                ? `[Smart AC] pred=${predStr}, used=${usedStr}, basis=${availableBasis}, dur=${predDurStr}`
+                : `[Fallback AC] used=${usedStr}, reason=no HIST & TRANSITION, dur=${predDurStr}`;
+            const newNotes = att.notes ? `${att.notes}\n${note}` : note;
+            await att.update({
+              time_out: finalCheckout,
+              work_hour: workHour,
+              notes: newNotes,
+              updated_at: new Date()
+            });
+            if (noteKind === 'smart') smartUsed++;
+            else fallbackUsed++;
+          } catch (e) {
+            logger.warn(
+              `Smart auto checkout failed for attendance ${att.id_attendance}: ${e.message}`
+            );
+            skipped++;
+          }
         }
-        const timeIn = new Date(att.time_in);
-        const candidates = await buildCandidates(att, targetDate, fallbackShiftEnd);
-        const insufficientEvidence = !candidates.HIST && !candidates.TRANSITION;
-        const predicted = insufficientEvidence
-          ? null
-          : weightedPrediction(candidates, weights, targetDate, timeIn, fallbackShiftEnd);
 
-        let finalCheckout = predicted;
-        let noteKind = 'smart';
-        const availableBasis = Object.keys(candidates)
-          .filter((k) => candidates[k])
-          .join(',');
-        if (!finalCheckout) {
-          // Fallback: use fallbackShiftEnd
-          finalCheckout = new Date(`${targetDate}T${fallbackShiftEnd}+07:00`);
-          noteKind = 'fallback';
-        }
-
-        // Debug trace per attendance (helps diagnose 00:00 issues)
-        try {
-          const inStr = formatTimeOnly(timeIn);
-          const predStrDbg = predicted ? formatTimeOnly(predicted) : '-';
-          const usedStrDbg = formatTimeOnly(finalCheckout);
-          logger.info(
-            `SmartAC#${att.id_attendance} date=${targetDate} in=${inStr} pred=${predStrDbg} used=${usedStrDbg} basis=${availableBasis || '-'} mode=${noteKind}`
-          );
-        } catch (e) {
-          // ignore logging failure
-        }
-
-        // Ensure final checkout is never earlier than time_in to avoid negative duration
-        if (finalCheckout.getTime() < timeIn.getTime()) {
-          finalCheckout = new Date(timeIn);
-        }
-
-        const workHour = calculateWorkHour(timeIn, finalCheckout);
-        const predStr = predicted ? formatTimeOnly(predicted) : null;
-        const usedStr = formatTimeOnly(finalCheckout);
-        const predDurHours = Math.max(
-          0,
-          (finalCheckout.getTime() - timeIn.getTime()) / (1000 * 60 * 60)
-        );
-        const predDurStr = formatTimeOnly(
-          new Date(timeIn.getTime() + Math.round(predDurHours * 60) * 60 * 1000)
-        );
-        const note =
-          noteKind === 'smart'
-            ? `[Smart AC] pred=${predStr}, used=${usedStr}, basis=${availableBasis}, dur=${predDurStr}`
-            : `[Fallback AC] used=${usedStr}, reason=no HIST & TRANSITION, dur=${predDurStr}`;
-        const newNotes = att.notes ? `${att.notes}\n${note}` : note;
-        await att.update({
-          time_out: finalCheckout,
-          work_hour: workHour,
-          notes: newNotes,
-          updated_at: new Date()
-        });
-        if (noteKind === 'smart') smartUsed++;
-        else fallbackUsed++;
-      } catch (e) {
-        logger.warn(`Smart auto checkout failed for attendance ${att.id_attendance}: ${e.message}`);
-      }
-    }
+        return {
+          batchSmartUsed: smartUsed,
+          batchFallbackUsed: fallbackUsed,
+          batchSkipped: skipped
+        };
+      },
+      100 // Batch size: 100 records per query
+    );
 
     logger.info(
-      `Smart Auto Checkout run for ${targetDate}: processed=${toProcess.length}, smart_used=${smartUsed}, fallback_used=${fallbackUsed}, skipped=${skipped}`
+      `Smart Auto Checkout for ${targetDate}: Smart=${smartUsed}, Fallback=${fallbackUsed}, Skipped=${skipped}`
     );
+    return { targetDate, smartUsed, fallbackUsed, skipped };
   } catch (error) {
     logger.error('runSmartAutoCheckoutForDate failed:', error);
+    throw error;
   }
 };
 
 const runMissedCheckoutFlagger = async () => {
   try {
+    logger.info('Missed Checkout Flagger started');
+    // Get current Jakarta time properly
     const now = new Date();
-    const jakartaOffset = 7 * 60;
-    const jakartaTime = new Date(now.getTime() + jakartaOffset * 60000);
+    const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+    const jakartaTime = new Date(jakartaTimeString);
     const todayDate = jakartaTime.toISOString().split('T')[0];
 
-    // Find attendances without checkout for today
-    const incompleteAttendances = await Attendance.findAll({
+    // Load fallback shift end from settings if available
+    const fallbackSetting = await Settings.findOne({
+      where: { setting_key: 'checkout.fallback_time' }
+    });
+    const fallbackShiftEnd = fallbackSetting?.setting_value || DEFAULT_SHIFT_END;
+
+    let totalFlagged = 0;
+
+    // Use batch processing for large datasets
+    const queryOptions = {
       where: {
         attendance_date: todayDate,
         time_out: null
@@ -371,80 +430,77 @@ const runMissedCheckoutFlagger = async () => {
           attributes: ['id_users', 'full_name']
         }
       ]
-    });
+    };
 
-    if (incompleteAttendances.length === 0) {
-      logger.info('No open attendances to flag');
-      return { total_processed: 0, flagged: 0 };
-    }
+    const result = await processBatchRecords(
+      Attendance,
+      queryOptions,
+      async (attendanceBatch, batchNumber) => {
+        logger.info(`Flagging batch ${batchNumber} with ${attendanceBatch.length} records`);
+        let batchFlagged = 0;
 
-    let flagged = 0;
-
-    // Load fallback shift end from settings if available
-    const fallbackSetting = await Settings.findOne({
-      where: { setting_key: 'checkout.fallback_time' }
-    });
-    const fallbackShiftEnd = fallbackSetting?.setting_value || DEFAULT_SHIFT_END;
-
-    for (const attendance of incompleteAttendances) {
-      try {
-        // Determine shift end time (use fallback; extend here if per-user schedules are added)
-        const [hh, mm, ss] = fallbackShiftEnd.split(':').map(Number);
-        const shiftEnd = new Date(`${todayDate}T00:00:00.000Z`);
-        shiftEnd.setUTCHours(hh, mm, ss || 0, 0);
-        const shiftEndJakarta = new Date(shiftEnd.getTime() + jakartaOffset * 60000);
-
-        const toleranceMs = TOLERANCE_MIN * 60 * 1000;
-        const deadline = new Date(shiftEndJakarta.getTime() + toleranceMs);
-
-        if (jakartaTime >= deadline) {
-          // Enrichment: fetch last location event (best-effort)
-          let lastLocNote = '';
+        for (const attendance of attendanceBatch) {
           try {
-            const lastEvent = await LocationEvent.findOne({
-              where: { user_id: attendance.user_id },
-              order: [['event_timestamp', 'DESC']],
-              attributes: ['event_timestamp', 'location_id', 'event_type']
-            });
-            if (lastEvent) {
-              const ts = new Date(lastEvent.event_timestamp).toISOString();
-              lastLocNote = ` | last_location_event=${lastEvent.event_type}@${lastEvent.location_id} ${ts}`;
+            // Determine shift end time in Jakarta timezone
+            const shiftEndJakarta = new Date(`${todayDate}T${fallbackShiftEnd}+07:00`);
+
+            const toleranceMs = TOLERANCE_MIN * 60 * 1000;
+            const deadline = new Date(shiftEndJakarta.getTime() + toleranceMs);
+
+            if (jakartaTime >= deadline) {
+              // Enrichment: fetch last location event (best-effort)
+              let lastLocNote = '';
+              try {
+                const lastEvent = await LocationEvent.findOne({
+                  where: { user_id: attendance.user_id },
+                  order: [['event_timestamp', 'DESC']],
+                  attributes: ['event_timestamp', 'location_id', 'event_type']
+                });
+                if (lastEvent) {
+                  const ts = new Date(lastEvent.event_timestamp).toISOString();
+                  lastLocNote = ` | last_location_event=${lastEvent.event_type}@${lastEvent.location_id} ${ts}`;
+                }
+              } catch (e) {
+                logger.debug(
+                  `LocationEvent enrichment failed for user ${attendance.user_id}: ${e.message}`
+                );
+              }
+
+              // Determine final checkout time (fallbackShiftEnd at target date)
+              const finalCheckoutTime = new Date(`${todayDate}T${fallbackShiftEnd}+07:00`);
+
+              // Compute work_hour
+              const timeIn = new Date(attendance.time_in);
+              const workHour = calculateWorkHour(timeIn, finalCheckoutTime);
+
+              const note = `Auto checkout by system after tolerance.${lastLocNote}`;
+              const newNotes = attendance.notes ? `${attendance.notes}\n${note}` : note;
+              await attendance.update({
+                time_out: finalCheckoutTime,
+                work_hour: workHour,
+                notes: newNotes,
+                updated_at: new Date()
+              });
+              batchFlagged++;
+              totalFlagged++;
             }
-          } catch (e) {
-            logger.debug(
-              `LocationEvent enrichment failed for user ${attendance.user_id}: ${e.message}`
+          } catch (error) {
+            logger.error(
+              `Error processing missed checkout for attendance ${attendance.attendance_id}:`,
+              error
             );
           }
-
-          // Determine final checkout time (fallbackShiftEnd at target date)
-          const [checkoutH, checkoutM, checkoutS] = fallbackShiftEnd.split(':').map(Number);
-          const checkoutBase = new Date(`${todayDate}T00:00:00.000Z`);
-          checkoutBase.setUTCHours(checkoutH, checkoutM, checkoutS || 0, 0);
-          const finalCheckoutTime = new Date(checkoutBase.getTime() + jakartaOffset * 60000);
-
-          // Compute work_hour
-          const timeIn = new Date(attendance.time_in);
-          const workHour = calculateWorkHour(timeIn, finalCheckoutTime);
-
-          const note = `Auto checkout by system after tolerance.${lastLocNote}`;
-          const newNotes = attendance.notes ? `${attendance.notes}\n${note}` : note;
-          await attendance.update({
-            time_out: finalCheckoutTime,
-            work_hour: workHour,
-            notes: newNotes,
-            updated_at: new Date()
-          });
-          flagged++;
         }
-      } catch (e) {
-        logger.warn(`Failed to process attendance ${attendance.id_attendance}: ${e.message}`);
-      }
-    }
+
+        return { batchFlagged };
+      },
+      100 // Batch size: 100 records per query
+    );
 
     logger.info(
-      `Missed checkout flagger completed. Flagged: ${flagged}/${incompleteAttendances.length}`
+      `Missed checkout flagger completed. Total processed: ${result.totalProcessed}, Total flagged: ${totalFlagged}`
     );
-    return { total_processed: incompleteAttendances.length, flagged };
+    return { total_processed: result.totalProcessed, flagged: totalFlagged };
   } catch (error) {
     logger.error('Missed checkout flagger failed:', error);
     throw error;

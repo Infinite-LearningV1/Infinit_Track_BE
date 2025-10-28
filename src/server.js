@@ -1,3 +1,6 @@
+// Set timezone to Asia/Jakarta for consistent date/time handling
+process.env.TZ = process.env.TZ || 'Asia/Jakarta';
+
 import app from './app.js';
 import config from './config/index.js';
 import sequelize from './config/database.js';

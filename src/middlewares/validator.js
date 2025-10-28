@@ -2,6 +2,7 @@ import { body, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { assertSafeUrl } from '../utils/url.js';
 
 // Remove the file system setup as we're switching to Cloudinary
 // const uploadsDir = 'uploads/face/';
@@ -30,6 +31,15 @@ export const upload = multer({
 });
 
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
+
+export const safeUrlField = (field, { required = false, message } = {}) => {
+  const errorMessage = message || `${field} harus berupa URL http/https yang valid`;
+  const chain = required
+    ? body(field).notEmpty().withMessage(`${field} wajib diisi`)
+    : body(field).optional({ checkFalsy: true, nullable: true });
+
+  return chain.custom((value) => assertSafeUrl(value, errorMessage));
+};
 
 // User registration validation rules
 export const registerValidation = [

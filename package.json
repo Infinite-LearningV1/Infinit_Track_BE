@@ -9,13 +9,17 @@
     "start": "node src/server.js",
     "lint": "eslint . --ext .js",
     "sequelize": "sequelize-cli",
-    "migrate": "sequelize-cli db:migrate --migrations-path src/models/migrations",
+    "migrate": "node scripts/migrate.js",
+    "migrate:status": "sequelize-cli db:migrate:status --migrations-path src/models/migrations",
+    "migrate:undo": "sequelize-cli db:migrate:undo --migrations-path src/models/migrations",
+    "migrate:undo:all": "sequelize-cli db:migrate:undo:all --migrations-path src/models/migrations",
     "seed": "sequelize-cli db:seed:all --seeders-path src/models/seeders",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:alpha": "node scripts/test-alpha.js",
     "test:smart": "node scripts/test-smart-auto-checkout.js",
     "test:smart:date": "node scripts/test-smart-auto-checkout.js ${DATE}",
-    "seed:alpha-fixtures": "node scripts/seed-alpha-fixtures.js"
+    "seed:alpha-fixtures": "node scripts/seed-alpha-fixtures.js",
+    "smoke-test": "node scripts/smoke-test.js"
   },
   "dependencies": {
     "axios": "^1.9.0",
@@ -29,6 +33,7 @@
     "express": "^4.21.2",
     "express-validator": "^7.2.1",
     "geolib": "^3.3.4",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.1",
     "mysql2": "^3.14.1",
@@ -49,5 +54,8 @@
     "prettier": "^3",
     "sequelize-cli": "^6",
     "supertest": "^7.1.4"
+  },
+  "overrides": {
+    "pino": "^9.13.0"
   }
 }

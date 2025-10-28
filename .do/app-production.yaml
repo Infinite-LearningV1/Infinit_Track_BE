@@ -1,0 +1,135 @@
+name: infinit-track-production
+region: sgp1
+
+services:
+  - name: api
+    github:
+      repo: <your-github-username>/Infinit_Track_BE
+      branch: master # Or use 'production' branch if you prefer
+      deploy_on_push: false # Manual deploy only for production
+
+    build_command: npm install
+    run_command: npm run migrate && npm start
+
+    environment_slug: node-js
+
+    # Production: More resources
+    instance_count: 2 # Multiple instances for high availability
+    instance_size_slug: basic-xs # Larger than staging
+
+    http_port: 3000
+
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 60 # Longer for production startup
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+
+    # Auto-scaling configuration (optional)
+    # autoscaling:
+    #   min_instance_count: 2
+    #   max_instance_count: 5
+    #   metrics:
+    #     cpu:
+    #       percent: 80
+
+    envs:
+      # Node Environment
+      - key: NODE_ENV
+        value: 'production'
+        scope: RUN_TIME
+        type: GENERAL
+
+      # Server Configuration
+      - key: PORT
+        value: '3000'
+        scope: RUN_TIME
+        type: GENERAL
+
+      - key: TZ
+        value: 'Asia/Jakarta'
+        scope: RUN_TIME
+        type: GENERAL
+
+      - key: LOG_LEVEL
+        value: 'warn' # Less verbose for production
+        scope: RUN_TIME
+        type: GENERAL
+
+      # CORS Configuration (CRITICAL - Must be production domain)
+      - key: CORS_ORIGIN
+        value: 'https://infinit-track.yourdomain.com' # UPDATE THIS
+        scope: RUN_TIME
+        type: GENERAL
+
+      # Database Configuration (Set via DO Console - Environment Variables)
+      # MUST BE DIFFERENT FROM STAGING
+      - key: DB_HOST
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: DB_NAME
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: DB_USER
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: DB_PASS
+        scope: RUN_TIME
+        type: SECRET
+
+      # Database SSL (recommended for production)
+      - key: DB_SSL
+        value: 'true'
+        scope: RUN_TIME
+        type: GENERAL
+
+      # JWT Configuration (MUST BE DIFFERENT FROM STAGING)
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: JWT_TTL_SECONDS
+        value: '14400' # 4 hours (more secure than staging)
+        scope: RUN_TIME
+        type: GENERAL
+
+      # Geofence Configuration (from business flow requirements)
+      - key: GEOFENCE_RADIUS_DEFAULT_M
+        value: '100'
+        scope: RUN_TIME
+        type: GENERAL
+
+      # Auto Checkout Configuration (from business flow requirements)
+      - key: AUTO_CHECKOUT_IDLE_MIN
+        value: '10'
+        scope: RUN_TIME
+        type: GENERAL
+
+      - key: AUTO_CHECKOUT_TBUFFER_MIN
+        value: '30'
+        scope: RUN_TIME
+        type: GENERAL
+
+      # Optional: Geoapify Key (if needed)
+      - key: GEOAPIFY_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      # Optional: Cloudinary Configuration (if needed)
+      - key: CLOUDINARY_URL
+        scope: RUN_TIME
+        type: SECRET
+# Optional: Add database component if using DO Managed Database
+# databases:
+#   - name: infinit-track-db
+#     engine: MYSQL
+#     version: "8"
+#     size: db-s-1vcpu-1gb
+#     num_nodes: 1
+#     production: true
+

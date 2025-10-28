@@ -4,6 +4,7 @@ import Holidays from 'date-holidays';
 
 import { User, Role, Attendance, Booking } from '../models/index.js';
 import logger from '../utils/logger.js';
+import { executeJobWithTimeout } from '../utils/jobHelper.js';
 
 /**
  * Main function to create general alpha records for users who didn't check-in
@@ -118,6 +119,18 @@ const createGeneralAlphaRecords = async () => {
     let alphaRecordsCreated = 0;
     let errorCount = 0;
 
+    // Calculate execution timestamp once (WIB) on target date
+    // Reuse current time for stamping
+    const nowForStamp = new Date();
+    const jakartaTimeStringForStamp = nowForStamp.toLocaleString('en-US', {
+      timeZone: 'Asia/Jakarta'
+    });
+    const jakartaTimeForStamp = new Date(jakartaTimeStringForStamp);
+    const hh = String(jakartaTimeForStamp.getHours()).padStart(2, '0');
+    const mm = String(jakartaTimeForStamp.getMinutes()).padStart(2, '0');
+    const ss = String(jakartaTimeForStamp.getSeconds()).padStart(2, '0');
+    const stampedDateTime = new Date(`${targetDate}T${hh}:${mm}:${ss}+07:00`);
+
     for (const userId of alphaUserIds) {
       try {
         // Double-check that user doesn't already have an attendance record
@@ -129,14 +142,6 @@ const createGeneralAlphaRecords = async () => {
         });
 
         if (!existingRecord) {
-          // Stamp time_in/time_out to execution time (WIB) on the target date
-          const exec = new Date();
-          const execJakarta = new Date(exec.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
-          const hh = String(execJakarta.getHours()).padStart(2, '0');
-          const mm = String(execJakarta.getMinutes()).padStart(2, '0');
-          const ss = String(execJakarta.getSeconds()).padStart(2, '0');
-          const stampedDateTime = new Date(`${targetDate}T${hh}:${mm}:${ss}+07:00`);
-
           await Attendance.create({
             user_id: userId,
             attendance_date: targetDate,
@@ -180,11 +185,25 @@ const createGeneralAlphaRecords = async () => {
 export const startCreateGeneralAlphaJob = () => {
   logger.info('Create General Alpha job scheduled to run on working days at 23:55');
 
-  // Schedule cron job to run Monday-Friday at 23:45 Jakarta time
-  cron.schedule('55 23 * * 1-5', createGeneralAlphaRecords, {
-    scheduled: true,
-    timezone: 'Asia/Jakarta'
-  });
+  // Schedule cron job to run Monday-Friday at 23:55 Jakarta time
+  cron.schedule(
+    '55 23 * * 1-5',
+    async () => {
+      try {
+        await executeJobWithTimeout(
+          'CreateGeneralAlpha',
+          createGeneralAlphaRecords,
+          5 * 60 * 1000 // 5 min timeout
+        );
+      } catch (error) {
+        logger.error('Create General Alpha failed:', error);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: 'Asia/Jakarta'
+    }
+  );
 
   logger.info('Create General Alpha cron job has been initialized');
 };
@@ -267,11 +286,14 @@ export const runGeneralAlphaForDate = async (targetDate) => {
     let skipped = 0;
 
     // Execution time in Jakarta for stamping on target date
-    const exec = new Date();
-    const execJakarta = new Date(exec.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
-    const hh = String(execJakarta.getHours()).padStart(2, '0');
-    const mm = String(execJakarta.getMinutes()).padStart(2, '0');
-    const ss = String(execJakarta.getSeconds()).padStart(2, '0');
+    const currentTime = new Date();
+    const currentJakartaTimeString = currentTime.toLocaleString('en-US', {
+      timeZone: 'Asia/Jakarta'
+    });
+    const currentJakartaTime = new Date(currentJakartaTimeString);
+    const hh = String(currentJakartaTime.getHours()).padStart(2, '0');
+    const mm = String(currentJakartaTime.getMinutes()).padStart(2, '0');
+    const ss = String(currentJakartaTime.getSeconds()).padStart(2, '0');
     const stampedDateTime = new Date(`${targetDate}T${hh}:${mm}:${ss}+07:00`);
 
     for (const userId of alphaUserIds) {

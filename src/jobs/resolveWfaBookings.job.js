@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 
 import { Booking, Attendance } from '../models/index.js';
 import logger from '../utils/logger.js';
+import { executeJobWithTimeout } from '../utils/jobHelper.js';
 
 /**
  * Resolve unused WFA bookings and expired pending bookings
@@ -13,13 +14,15 @@ export const resolveWfaBookingsJob = async () => {
   try {
     logger.info('Starting resolve WFA bookings job...');
 
-    // Get current Jakarta time and compute target date H-1 (yesterday)
+    // Get current Jakarta time properly
     const now = new Date();
-    const jakartaOffset = 7 * 60; // UTC+7 in minutes
-    const jakartaTime = new Date(now.getTime() + jakartaOffset * 60000);
-    const y = new Date(jakartaTime);
-    y.setDate(jakartaTime.getDate() - 1);
-    const targetDate = y.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+    const jakartaTime = new Date(jakartaTimeString);
+
+    // Compute target date H-1 (yesterday) in Jakarta timezone
+    const yesterday = new Date(jakartaTime);
+    yesterday.setDate(jakartaTime.getDate() - 1);
+    const targetDate = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD format
 
     logger.info(`Processing WFA bookings for date (H-1): ${targetDate}`);
 
@@ -40,9 +43,11 @@ export const resolveWfaBookingsJob = async () => {
  */
 export const resolveWfaBookingsForDate = async (targetDate) => {
   try {
+    // Get current Jakarta time properly
     const now = new Date();
-    const jakartaOffset = 7 * 60; // UTC+7 in minutes
-    const jakartaTime = new Date(now.getTime() + jakartaOffset * 60000);
+    const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+    const jakartaTime = new Date(jakartaTimeString);
+
     logger.info(`Resolve WFA bookings for explicit date: ${targetDate}`);
     await handleUnusedApprovedBookings(targetDate, jakartaTime);
     await handleExpiredPendingBookings(targetDate, jakartaTime);
@@ -74,10 +79,9 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
     let skippedBookings = 0;
 
     // Build execution time (HH:mm:ss) in Jakarta, then stamp to target date
-    const exec = new Date(jakartaTime);
-    const hh = String(exec.getHours()).padStart(2, '0');
-    const mm = String(exec.getMinutes()).padStart(2, '0');
-    const ss = String(exec.getSeconds()).padStart(2, '0');
+    const hh = String(jakartaTime.getHours()).padStart(2, '0');
+    const mm = String(jakartaTime.getMinutes()).padStart(2, '0');
+    const ss = String(jakartaTime.getSeconds()).padStart(2, '0');
     const stampedDateTime = new Date(`${todayDate}T${hh}:${mm}:${ss}+07:00`);
 
     // Process each approved booking
@@ -135,7 +139,7 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
 /**
  * Task B: Reject expired pending bookings
  */
-const handleExpiredPendingBookings = async (todayDate, jakartaTime) => {
+const handleExpiredPendingBookings = async (todayDate, _jakartaTime) => {
   try {
     logger.info('Task B: Processing expired pending bookings...');
 
@@ -154,14 +158,17 @@ const handleExpiredPendingBookings = async (todayDate, jakartaTime) => {
     let rejectedBookings = 0;
     let errorCount = 0;
 
+    // Get proper timestamp for updates
+    const updateTime = new Date();
+
     // Process each expired booking
     for (const booking of expiredBookings) {
       try {
         await booking.update({
           status: 2, // rejected
-          processed_at: jakartaTime,
+          processed_at: updateTime,
           approved_by: null, // System rejection, no specific admin
-          updated_at: jakartaTime
+          updated_at: updateTime
         });
 
         rejectedBookings++;
@@ -190,10 +197,24 @@ export const startResolveWfaBookingsJob = () => {
   logger.info('Resolve WFA Bookings job scheduled to run daily at 23:50');
 
   // Schedule cron job to run daily at 23:50 Jakarta time
-  cron.schedule('50 23 * * *', resolveWfaBookingsJob, {
-    scheduled: true,
-    timezone: 'Asia/Jakarta'
-  });
+  cron.schedule(
+    '50 23 * * *',
+    async () => {
+      try {
+        await executeJobWithTimeout(
+          'ResolveWfaBookings',
+          resolveWfaBookingsJob,
+          5 * 60 * 1000 // 5 min timeout
+        );
+      } catch (error) {
+        logger.error('Resolve WFA Bookings failed:', error);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: 'Asia/Jakarta'
+    }
+  );
 
   logger.info('Resolve WFA Bookings cron job has been initialized');
 };

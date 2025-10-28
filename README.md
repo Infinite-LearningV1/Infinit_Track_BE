@@ -418,59 +418,321 @@ const disciplineFactors = {
 - **Location Recommendation:** Multi-criteria analysis dengan real-time data
 - **Anomaly Detection:** Fake location prevention melalui speed analysis
 
-## 8. Production Deployment
+## 8. Continuous Deployment (CD) - Staging → Production
 
-### **🚀 8.1 Quick Production Setup**
+### **🚀 8.1 CD Architecture Overview**
+
+Infinit Track Backend menggunakan **GitOps-style deployment** dengan DigitalOcean App Platform dan GitHub Actions untuk continuous deployment otomatis.
+
+```
+Development → Staging (Auto) → Production (Manual)
+     ↓              ↓                    ↓
+  Feature      Integration         Live Users
+  Testing       Testing            Real Data
+```
+
+**Key Features:**
+
+- ✅ Automated staging deployment on push to `master`
+- ✅ Manual production deployment dengan approval workflow
+- ✅ Automated migrations dengan rollback safety
+- ✅ Health checks dan smoke tests otomatis
+- ✅ Zero-downtime deployments
+- ✅ Instant rollback capabilities
+
+### **📋 8.2 Quick Start - First Deployment**
+
+#### **Step 1: Setup DigitalOcean**
 
 ```bash
-# Clone & setup
-git clone <repository_url>
-cd infinite-track-backend
+# 1. Create DO apps (via dashboard)
+# - Staging: infinit-track-staging
+# - Production: infinit-track-production
 
-# Production dependencies
-npm ci --only=production
+# 2. Get App IDs
+doctl apps list
 
-# Environment setup
-cp .env.example .env.production
-# Edit .env.production dengan production credentials
-
-# Database setup
-npm run migrate
-
-# Deploy dengan PM2
-npm run prod:deploy
+# 3. Configure environment variables (via DO Dashboard)
+# See: docs/ENVIRONMENT_VARIABLES.md
 ```
 
-### **🔧 8.2 Production Configuration**
+#### **Step 2: Configure GitHub Secrets**
 
-```javascript
-// ecosystem.config.js (PM2 configuration)
-module.exports = {
-  apps: [
-    {
-      name: 'infinite-track-backend',
-      script: 'src/server.js',
-      instances: 'max',
-      exec_mode: 'cluster',
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 3005
-      }
-    }
-  ]
-};
+```bash
+# Repository Secrets (Settings → Secrets → Actions)
+DIGITALOCEAN_ACCESS_TOKEN=<your-do-token>
+
+# Environment Secrets (Settings → Environments)
+# staging environment:
+DO_APP_ID_STAGING=<staging-app-id>
+
+# production environment (with required reviewers):
+DO_APP_ID_PRODUCTION=<production-app-id>
 ```
 
-### **📋 8.3 Production Checklist**
+#### **Step 3: Deploy!**
 
-- ✅ Environment variables configured
-- ✅ Database migrations applied
-- ✅ SSL certificates installed
-- ✅ Nginx reverse proxy configured
-- ✅ PM2 process manager setup
-- ✅ Log rotation configured
-- ✅ Backup strategy implemented
-- ✅ Monitoring alerts configured
+```bash
+# Staging (automatic)
+git add .
+git commit -m "Add new feature"
+git push origin master
+# → GitHub Actions automatically deploys to staging
+
+# Production (manual, requires approval)
+# Go to GitHub Actions → Deploy to Production → Run workflow
+# Type: deploy-to-production
+# → Requires reviewer approval → Deploys to production
+```
+
+### **🎯 8.3 Deployment Workflows**
+
+#### **Staging Deployment (Automatic)**
+
+Triggers on every push to `master`:
+
+```yaml
+1. ✅ Lint Code
+2. ✅ Run Tests
+3. ✅ Deploy to DO App Platform
+4. ✅ Run Database Migrations
+5. ✅ Execute Smoke Tests
+6. ✅ Health Check Verification
+```
+
+**Staging URL:** `https://infinit-track-staging.ondigitalocean.app`
+
+#### **Production Deployment (Manual)**
+
+Manual trigger with confirmation + approval:
+
+```yaml
+1. ✅ Validate Confirmation ("deploy-to-production")
+2. ✅ Lint & Test
+3. ⏸️  Wait for Approval (required reviewers)
+4. ✅ Deploy to Production
+5. ✅ Run Migrations
+6. ✅ Smoke Tests
+7. ✅ 30-minute monitoring window
+```
+
+**Production URL:** `https://api.yourdomain.com`
+
+### **🔒 8.4 Security & Environment Separation**
+
+#### **Critical Differences: Staging vs Production**
+
+| Component          | Staging                | Production                   |
+| ------------------ | ---------------------- | ---------------------------- |
+| **Database**       | Staging DB (test data) | Production DB (**separate**) |
+| **JWT_SECRET**     | Staging secret         | **Different** secret         |
+| **CORS_ORIGIN**    | Staging frontend       | Production frontend          |
+| **Deploy Trigger** | Automatic              | Manual + Approval            |
+| **Instance Count** | 1                      | 2+ (HA)                      |
+| **Log Level**      | `info`                 | `warn`                       |
+
+**⚠️ NEVER:**
+
+- Reuse production secrets in staging
+- Mix production & staging databases
+- Auto-deploy to production
+
+### **📊 8.5 Monitoring & Health Checks**
+
+#### **Automated Health Checks**
+
+Every deployment includes:
+
+```bash
+# 1. Health Endpoint
+GET /health
+# Expected: {"status":"OK","timestamp":"..."}
+
+# 2. Database Connection
+# Logs: "Database connected successfully"
+
+# 3. Security Headers
+# X-Content-Type-Options, X-Frame-Options, etc.
+
+# 4. Authentication
+# Protected endpoints return 401 without auth
+
+# 5. CORS Configuration
+# Proper origin whitelisting
+
+# 6. Response Time
+# Average < 1 second
+```
+
+#### **Smoke Tests**
+
+Automated tests after each deployment:
+
+```bash
+# Run locally
+npm run smoke-test https://staging-api.app
+
+# Included in GitHub Actions automatically
+# Tests: Health, Docs, CORS, Security, Auth, Performance
+```
+
+#### **First 5 Things to Check Post-Deploy**
+
+1. **✅ Health Endpoint**
+
+   ```bash
+   curl https://api.yourdomain.com/health
+   ```
+
+2. **✅ Runtime Logs**
+
+   - Check DO Dashboard → Runtime Logs
+   - Look for "Database connected successfully"
+   - No error logs
+
+3. **✅ Database Migrations**
+
+   - Check Build Logs
+   - "✓ Migrations completed successfully"
+
+4. **✅ CORS from Frontend**
+
+   - Test API call from production frontend
+   - No CORS errors in console
+
+5. **✅ Critical User Flow**
+   - Login → Check-in → Check-out
+   - Verify full flow works
+
+### **🔄 8.6 Rollback Procedures**
+
+#### **Quick Rollback (5 minutes)**
+
+**Via DigitalOcean Dashboard:**
+
+```
+1. Dashboard → Apps → Your App
+2. Deployments tab
+3. Find last good deployment
+4. Click "Redeploy"
+5. Monitor health checks
+```
+
+#### **Git Rollback**
+
+```bash
+# Revert last commit
+git revert HEAD
+git push origin master
+
+# Or revert specific commit
+git revert <commit-hash>
+git push origin master
+
+# Staging: Auto-deploys
+# Production: Manual trigger required
+```
+
+#### **Database Rollback (Emergency)**
+
+```bash
+# Only if migration caused issues
+1. Stop application (prevent further writes)
+2. Restore from backup (DO Dashboard)
+3. Rollback application code
+4. Restart application
+5. Verify functionality
+```
+
+### **📚 8.7 Detailed Documentation**
+
+Comprehensive guides tersedia di folder `docs/`:
+
+- **🏗️ [DigitalOcean Setup](./.do/README.md)** - App Platform configuration
+- **🔐 [Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)** - Complete ENV guide
+- **🗄️ [Database Migrations](./docs/DATABASE_MIGRATION.md)** - Migration best practices
+- **🔒 [Security Checklist](./docs/SECURITY_CHECKLIST.md)** - Pre/post deploy security
+- **🤖 [GitHub Actions Setup](./docs/GITHUB_ACTIONS_SETUP.md)** - CI/CD configuration
+- **📊 [Logging & Monitoring](./docs/LOGGING_MONITORING.md)** - Observability guide
+- **🚀 [Production Deployment](./docs/PRODUCTION_DEPLOYMENT.md)** - Complete production guide
+
+### **⚡ 8.8 Quick Commands Reference**
+
+```bash
+# Development
+npm run dev                  # Start dev server with hot reload
+npm run migrate              # Run database migrations
+npm run migrate:status       # Check migration status
+npm test                     # Run test suite
+npm run lint                 # Lint code
+
+# Deployment
+npm run smoke-test <url>     # Test deployed instance
+npm run migrate:undo         # Rollback last migration (dev only)
+
+# Production Monitoring
+curl https://api.yourdomain.com/health                  # Health check
+curl https://api.yourdomain.com/api/jobs/status         # Check cron jobs
+```
+
+### **🎯 8.9 Development Workflow Best Practices**
+
+```bash
+# 1. Feature Development
+git checkout -b feature/new-feature
+# ... make changes ...
+git commit -m "Add feature: description"
+git push origin feature/new-feature
+
+# 2. Create Pull Request
+# → Tests run automatically
+# → Code review by team
+
+# 3. Merge to Master
+# → Staging deploys automatically
+# → Verify in staging
+
+# 4. Production Deploy (when ready)
+# → Manual trigger via GitHub Actions
+# → Approval from reviewer
+# → Monitor for 30 minutes
+```
+
+### **🔧 8.10 Troubleshooting Deployment Issues**
+
+#### **Staging Deploy Failed**
+
+```bash
+# Check GitHub Actions logs
+1. Actions tab → Failed workflow
+2. Review error messages
+3. Common issues:
+   - Test failures → Fix tests
+   - Lint errors → Run `npm run lint` locally
+   - Migration errors → Check database state
+```
+
+#### **Production Health Check Failed**
+
+```bash
+# Check DigitalOcean logs
+1. Dashboard → Apps → Runtime Logs
+2. Look for error messages
+3. Common issues:
+   - DB connection → Verify DB_HOST, DB_PASS
+   - Missing ENV → Check environment variables
+   - Migration failed → Check Build Logs
+```
+
+#### **CORS Errors**
+
+```bash
+# Verify CORS_ORIGIN
+1. Check environment variable in DO Dashboard
+2. Must match frontend URL exactly
+3. Include protocol: https://
+4. No trailing slash
+```
 
 ## 9. Testing & Quality Assurance
 
@@ -625,9 +887,20 @@ try {
 ### **📚 Additional Documentation**
 
 - **📖 API Reference:** [`/docs`](http://localhost:3005/docs) (Swagger UI)
-- **🔧 Deployment Guide:** [`docs/PRODUCTION_GO_LIVE_GUIDE.md`](docs/PRODUCTION_GO_LIVE_GUIDE.md)
-- **📊 Analytics Guide:** [`docs/SUITABILITY_LABELS_SCORING_GUIDE.md`](docs/SUITABILITY_LABELS_SCORING_GUIDE.md)
-- **🎯 Project Context:** [`memory-bank/projectbrief.md`](memory-bank/projectbrief.md)
+- **🚀 CD & Deployment:**
+  - [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md) - Complete production deployment guide
+  - [`docs/GITHUB_ACTIONS_SETUP.md`](docs/GITHUB_ACTIONS_SETUP.md) - GitHub Actions CI/CD setup
+  - [`.do/README.md`](.do/README.md) - DigitalOcean App Platform configuration
+- **🔐 Security & Configuration:**
+  - [`docs/ENVIRONMENT_VARIABLES.md`](docs/ENVIRONMENT_VARIABLES.md) - Environment variables reference
+  - [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md) - Security best practices
+  - [`docs/DATABASE_MIGRATION.md`](docs/DATABASE_MIGRATION.md) - Database migration guide
+- **📊 Monitoring & Operations:**
+  - [`docs/LOGGING_MONITORING.md`](docs/LOGGING_MONITORING.md) - Logging & monitoring guide
+  - [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md) - Detailed API documentation
+- **📈 Analytics:**
+  - [`docs/SUITABILITY_LABELS_SCORING_GUIDE.md`](docs/SUITABILITY_LABELS_SCORING_GUIDE.md) - FAHP scoring guide
+  - [`memory-bank/projectbrief.md`](memory-bank/projectbrief.md) - Project context
 
 ### **🔗 Quick Links**
 
@@ -645,8 +918,16 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **🎉 Project Status: ✅ PRODUCTION READY**
 
-_Infinite Track Backend adalah solusi enterprise-grade untuk manajemen kehadiran modern dengan artificial intelligence terintegrasi. Siap untuk deployment dan scaling di environment production._
+_Infinite Track Backend adalah solusi enterprise-grade untuk manajemen kehadiran modern dengan artificial intelligence terintegrasi. Dilengkapi dengan CI/CD pipeline untuk deployment otomatis, monitoring comprehensive, dan rollback instant. Siap untuk deployment dan scaling di environment production._
 
-**Last Updated:** July 7, 2025  
+**Deployment Status:**
+
+- ✅ Staging: Auto-deploy dari master branch
+- ✅ Production: Manual deploy dengan approval workflow
+- ✅ Database: Managed MySQL dengan automated backups
+- ✅ Monitoring: Real-time logs dan health checks
+- ✅ Security: CORS, security headers, rate limiting, JWT auth
+
+**Last Updated:** October 24, 2025  
 **Version:** 2.0.0  
 **Maintainer:** Infinite Track Development Team

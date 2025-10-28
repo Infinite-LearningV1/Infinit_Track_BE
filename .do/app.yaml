@@ -1,0 +1,111 @@
+name: infinit-track-staging
+region: sgp1
+
+services:
+  - name: api
+    github:
+      repo: <your-github-username>/Infinit_Track_BE
+      branch: master
+      deploy_on_push: true
+    
+    build_command: npm install
+    run_command: npm run migrate && npm start
+    
+    environment_slug: node-js
+    
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    
+    http_port: 3000
+    
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+    
+    envs:
+      # Node Environment
+      - key: NODE_ENV
+        value: "production"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      # Server Configuration
+      - key: PORT
+        value: "3000"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      - key: TZ
+        value: "Asia/Jakarta"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      - key: LOG_LEVEL
+        value: "info"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      # CORS Configuration
+      - key: CORS_ORIGIN
+        value: "${APP_URL}"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      # Database Configuration (Set via DO Console - Environment Variables)
+      - key: DB_HOST
+        scope: RUN_TIME
+        type: SECRET
+      
+      - key: DB_NAME
+        scope: RUN_TIME
+        type: SECRET
+      
+      - key: DB_USER
+        scope: RUN_TIME
+        type: SECRET
+      
+      - key: DB_PASS
+        scope: RUN_TIME
+        type: SECRET
+      
+      # JWT Configuration (Set via DO Console - Environment Variables)
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      
+      - key: JWT_TTL_SECONDS
+        value: "86400"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      # Geofence Configuration (from business flow requirements)
+      - key: GEOFENCE_RADIUS_DEFAULT_M
+        value: "100"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      # Auto Checkout Configuration (from business flow requirements)
+      - key: AUTO_CHECKOUT_IDLE_MIN
+        value: "10"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      - key: AUTO_CHECKOUT_TBUFFER_MIN
+        value: "30"
+        scope: RUN_TIME
+        type: GENERAL
+      
+      # Optional: Geoapify Key (if needed)
+      - key: GEOAPIFY_KEY
+        scope: RUN_TIME
+        type: SECRET
+      
+      # Optional: Cloudinary Configuration (if needed)
+      - key: CLOUDINARY_URL
+        scope: RUN_TIME
+        type: SECRET
+
