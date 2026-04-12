@@ -35,51 +35,9 @@ import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
-export const clockIn = async (req, res) => {
-  try {
-    const { location } = req.body;
-    const userId = req.user.id;
-
-    // Check if user already clocked in today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const existingAttendance = await Attendance.findOne({
-      where: {
-        userId,
-        clockIn: {
-          [Op.gte]: today
-        }
-      }
-    });
-
-    if (existingAttendance) {
-      return res.status(400).json({ message: 'Already clocked in today' });
-    }
-
-    const attendance = await Attendance.create({
-      userId,
-      clockIn: new Date(),
-      location
-    });
-
-    res.status(201).json({ message: 'Clock in successful', attendance });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
  * Admin/Management only
- * Body schema:
- * {
- *   candidates: { HIST?: string|Date, CHECKIN?: string|Date, CONTEXT?: string|Date, TRANSITION?: string|Date },
- *   weights: number[4], // [HIST, CHECKIN, CONTEXT, TRANSITION]
- *   targetDate: string (YYYY-MM-DD),
- *   timeIn: string|Date (ISO),
- *   fallbackEndStr?: string (HH:mm:ss)
- * }
  */
 export const testWeightedPrediction = async (req, res) => {
   try {
@@ -165,36 +123,6 @@ export const testWeightedPrediction = async (req, res) => {
   } catch (error) {
     logger.error('Error in testWeightedPrediction:', error);
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
-  }
-};
-
-export const clockOut = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // Find today's attendance record
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const attendance = await Attendance.findOne({
-      where: {
-        userId,
-        clockIn: {
-          [Op.gte]: today
-        },
-        clockOut: null
-      }
-    });
-
-    if (!attendance) {
-      return res.status(400).json({ message: 'No clock in record found for today' });
-    }
-
-    await attendance.update({ clockOut: new Date() });
-
-    res.json({ message: 'Clock out successful', attendance });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -1122,7 +1050,7 @@ export const checkOut = async (req, res, next) => {
     const activeBooking = await Booking.findOne({
       where: {
         user_id: userId,
-        status: 2, // status approved (assuming 2 is approved)
+        status: 1, // approved (booking_status: 1=approved, 2=rejected, 3=pending)
         schedule_date: todayDate
       },
       include: [
@@ -1651,7 +1579,7 @@ export const logLocationEvent = async (req, res, next) => {
       });
     }
 
-    if (activeAttendance.check_out_time) {
+    if (activeAttendance.time_out) {
       return res.status(400).json({
         success: false,
         message:
