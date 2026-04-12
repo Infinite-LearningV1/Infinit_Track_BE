@@ -44,6 +44,9 @@ jobs:
           DB_USER: test_user
           DB_PASS: test_pass
           JWT_SECRET: test_secret_for_ci_only
+          CLOUDINARY_CLOUD_NAME: test_cloud
+          CLOUDINARY_API_KEY: test_key
+          CLOUDINARY_API_SECRET: test_secret
         continue-on-error: false # Fail build on test failures
 
   # Job 2: Deploy to DigitalOcean App Platform (Staging)
