@@ -1,0 +1,17 @@
+# Adjust storageClassName for your cloud provider:
+#   DigitalOcean: do-block-storage
+#   AWS EBS:      gp2 or gp3
+#   GCP:          standard or premium-rwo
+#   Local/minikube: standard
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: infinit-track
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: do-block-storage
+  resources:
+    requests:
+      storage: 10Gi
