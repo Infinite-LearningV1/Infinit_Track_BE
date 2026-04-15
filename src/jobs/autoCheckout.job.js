@@ -275,7 +275,15 @@ export const runSmartAutoCheckoutForDate = async (targetDate) => {
 
     let smartUsed = 0;
     let fallbackUsed = 0;
-    let skipped = 0;
+    const finalizedAttendances = await Attendance.findAll({
+      where: {
+        attendance_date: targetDate,
+        time_in: { [Op.not]: null },
+        time_out: { [Op.not]: null }
+      },
+      attributes: ['id_attendance']
+    });
+    let skipped = finalizedAttendances.length;
 
     // Use batch processing for large datasets
     const queryOptions = {

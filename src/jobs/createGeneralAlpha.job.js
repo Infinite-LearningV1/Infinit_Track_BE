@@ -282,14 +282,17 @@ export const runGeneralAlphaForDate = async (targetDate) => {
     const alphaUserIds = requiredUserIds.filter(
       (uid) => !presentUserIds.includes(uid) && !wfaUserIds.includes(uid)
     );
+    const alreadyFinalizedCount = requiredUserIds.length - alphaUserIds.length;
 
     if (alphaUserIds.length === 0) {
-      logger.info('GENERAL alpha override: No candidates');
-      return { created: 0, skipped: 0 };
+      logger.info(
+        `GENERAL alpha override: strict no-op for ${targetDate}, skipped=${alreadyFinalizedCount}`
+      );
+      return { created: 0, skipped: alreadyFinalizedCount };
     }
 
     let created = 0;
-    let skipped = 0;
+    let skipped = alreadyFinalizedCount;
 
     // Execution time in Jakarta for stamping on target date
     const currentTime = new Date();
