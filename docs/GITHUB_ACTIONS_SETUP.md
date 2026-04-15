@@ -51,3 +51,17 @@ These may still exist historically, but are not part of the active backend image
 - `deploy`: image publication branch for DOCR review/testing
 
 Current image publication workflow is intentionally bound to `deploy` so release artifacts can be reviewed without coupling normal development pushes to image publication.
+
+## Publication-to-Runtime Handoff
+
+Current artifact flow is:
+
+1. Branch `deploy` publishes backend images to DOCR
+2. Runtime deployment on the Droplet selects an exact SHA using:
+   - `APP_IMAGE_TAG=<sha>`
+3. Docker Compose pulls and runs that exact image
+
+Important:
+- `deploy-latest` is a convenience publication tag
+- runtime source of truth should remain the exact SHA tag
+- the publish workflow does not deploy to the Droplet automatically

@@ -22,10 +22,51 @@ This document should not be used to justify new App Platform deployment work unl
 - Registry: `registry.digitalocean.com/infinit-track`
 - Repository: `infinit-track-backend`
 
-### Phase 2: Runtime remains on Droplet + Docker Compose
-- Current runtime path is still droplet-based
-- Docker Compose runtime has not yet been switched from `build:` to `image:` in this phase
-- Any future move to image-pull runtime should be treated as a separate tracked change
+### Phase 2: Runtime consumes exact SHA images on Droplet + Docker Compose
+- Current runtime path remains droplet-based
+- Docker Compose app runtime now consumes a DOCR image selected through `APP_IMAGE_TAG`
+- Runtime source of truth is the exact published SHA image, not a host-side rebuild
+
+## Runtime Image Selection Contract
+
+The backend app service on the Droplet must run an exact DOCR image selected by:
+
+- `APP_IMAGE_TAG=<sha>`
+
+Runtime source of truth is the exact published SHA image, not a host-side rebuild.
+
+## Host Registry Auth Prerequisite
+
+Before pulling backend images from DOCR, the Droplet host must already be logged in to:
+
+- `registry.digitalocean.com`
+
+Recommended posture for this phase:
+- host-level Docker login is present before deploy starts
+- registry credentials are not stored in the repository
+- runtime deploy procedure assumes valid host auth already exists
+
+## Deploy Procedure
+
+1. Choose the exact backend image SHA to deploy.
+2. Set or update:
+   - `APP_IMAGE_TAG=<sha>`
+3. Pull the selected backend image:
+   - `docker compose pull app`
+4. Restart the backend app service:
+   - `docker compose up -d app`
+5. Verify runtime health and logs.
+
+## Rollback Procedure
+
+1. Choose the previous known-good SHA.
+2. Set:
+   - `APP_IMAGE_TAG=<old-sha>`
+3. Pull the previous image:
+   - `docker compose pull app`
+4. Restart the backend app service:
+   - `docker compose up -d app`
+5. Re-run health and log verification.
 
 ## Obsolete Historical Guidance
 
@@ -65,19 +106,14 @@ They are not part of the supported active backend deploy path and should be trea
 - [ ] image tag to be deployed is explicitly chosen
 - [ ] rollback path is known
 
-## Verification Expectations
+## Verification Evidence
 
-### Minimum verification for publish-only phase
-- [ ] DOCR workflow pushes SHA tag successfully
-- [ ] DOCR workflow pushes `deploy-latest` successfully
-- [ ] image appears in `registry.digitalocean.com/infinit-track/infinit-track-backend`
-- [ ] no runtime deployment is implied by the publish workflow summary
-
-### Minimum verification for future runtime pull phase
-- [ ] droplet can authenticate to the registry
-- [ ] Docker Compose can pull the selected image tag
-- [ ] backend health endpoint returns success after compose restart
-- [ ] logs confirm backend boot + DB connectivity
+Minimum evidence expected for this phase:
+- proof the selected SHA exists in DOCR
+- output from `docker compose pull app`
+- output from `docker compose up -d app`
+- successful `/health` check after restart
+- backend boot log + DB connectivity confirmation
 
 ## Notes for future follow-up
 - If runtime later moves from `build:` to `image:`, update this document again instead of silently reusing old assumptions.

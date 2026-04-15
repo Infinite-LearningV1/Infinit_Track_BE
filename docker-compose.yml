@@ -21,9 +21,7 @@ services:
       start_period: 30s
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: registry.digitalocean.com/infinit-track/infinit-track-backend:${APP_IMAGE_TAG:?APP_IMAGE_TAG is required}
     container_name: infinit-track-app
     restart: unless-stopped
     ports:
