@@ -1,8 +1,7 @@
-# Adjust storageClassName for your cloud provider:
-#   DigitalOcean: do-block-storage
-#   AWS EBS:      gp2 or gp3
-#   GCP:          standard or premium-rwo
-#   Local/minikube: standard
+# DigitalOcean-specific PVC configuration.
+# This manifest intentionally targets DigitalOcean block storage.
+# If you need a portable or multi-provider deployment, use an environment-specific overlay
+# or replace storageClassName with the correct class for the target cluster.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
