@@ -49,9 +49,9 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — checkout → Node 18 → `np
 
 **Auth**: JWT via cookie or Bearer. Chain: `authJwt.js` (verify + sliding TTL) → `roleGuard.js` (RBAC). Roles: Admin, Management, User.
 
-**Timezone**: All business logic uses **WIB (Asia/Jakarta, UTC+7)** — set in server.js, Sequelize config, Docker/cron.
+**Timezone**: All business logic uses **WIB (Asia/Jakarta, UTC+7)** — set in server.js, Sequelize config, and scheduled job runtime.
 
-**Docker**: `docker-compose.yml` (db + app), `Dockerfile` (multi-stage Node 18 Alpine). `DB_HOST=localhost` local, `DB_HOST=db` in Docker.
+**Deployment**: Repository-managed deployment configuration is defined in `.do/app*.yaml` rather than root-level `docker-compose.yml`/`Dockerfile` artifacts. Use `DB_HOST=localhost` for local development; in managed or containerized environments, set `DB_HOST` to the database service hostname provided by that platform.
 
 ## Search & Research Routing
 
