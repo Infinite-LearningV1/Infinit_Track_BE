@@ -13,8 +13,8 @@ Key domains: authentication, attendance (check-in/out/status), WFA booking, FAHP
 npm run dev                          # Start with nodemon
 npm start                            # Production: node src/server.js
 
-# Database (Docker MySQL)
-docker compose up -d db              # Start MySQL container only
+# Database (local MySQL)
+# Ensure a local MySQL instance is running and environment variables are configured
 npm run migrate                      # Run Sequelize migrations
 npm run migrate:status               # Check migration state
 npm run seed                         # Run seeders
@@ -69,9 +69,9 @@ Handle with extra caution — always read current state, identify risks, plan ve
 - **Attendance final state**: `src/controllers/attendance.controller.js`, `src/jobs/createGeneralAlpha.job.js`, `src/jobs/autoCheckout.job.js`
 - **Auth/session**: `src/middlewares/authJwt.js`, `src/middlewares/roleGuard.js`
 - **Background jobs**: `src/jobs/*.js`, `src/utils/jobHelper.js`
-- **Env/deploy contract**: `src/config/index.js`, `.env.example`, `docs/ENVIRONMENT_VARIABLES.md`
+- **Env/deploy contract**: `src/config/index.js`, `.env.example`
 - **FAHP engine**: `src/utils/fuzzyAhpEngine.js`, `src/analytics/fahp*.js`, `src/analytics/config.fahp.js`
-- **API contract**: `docs/openapi.yaml`, `docs/API_DOCUMENTATION.md`
+- **API contract**: `docs/openapi.yaml`
 - **External integrations**: Cloudinary (`src/config/cloudinary.js`), Geoapify (`GEOAPIFY_API_KEY`)
 
 ## Backend Standards Sync
