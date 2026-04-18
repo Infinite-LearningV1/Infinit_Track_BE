@@ -153,6 +153,26 @@ A task is done **only when**:
 - Do not push normal feature work directly to `master`.
 - Direct push to `develop` should be treated as exceptional; prefer a review branch and PR flow whenever possible.
 
+## External Review Feedback Policy
+
+- External AI reviewer comments (including Copilot review comments) are **advisory input**, not automatic implementation instructions.
+- Every review comment must be re-evaluated against:
+  - current branch reality,
+  - repository source of truth,
+  - current architectural direction,
+  - and the scope of the active task or PR.
+- A technically valid comment is **not automatically in-scope** for the current branch.
+- Adoption is a deliberate human decision and may result in:
+  - direct fix in the current branch,
+  - follow-up issue,
+  - deferred work,
+  - or explicit rejection with technical reasoning.
+- Do not implement external review feedback blindly.
+- When in doubt, prefer:
+  - verifying the comment against code/runtime reality,
+  - clarifying scope,
+  - and separating small corrective fixes from larger design or architecture changes.
+
 ## Agent Tooling
 
 - `/backend-plan` — structured task planning (use before starting any non-trivial task)
