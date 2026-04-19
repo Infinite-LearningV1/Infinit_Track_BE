@@ -374,6 +374,14 @@ export const getAttendanceHistory = async (req, res) => {
 export const checkIn = async (req, res, next) => {
   const transaction = await sequelize.transaction();
 
+  const respondDuplicateCheckIn = async () => {
+    await transaction.rollback();
+    return res.status(409).json({
+      success: false,
+      message: 'Anda sudah melakukan check-in hari ini.'
+    });
+  };
+
   try {
     // 1. Get Input Data
     const userId = req.user.id;
@@ -395,11 +403,7 @@ export const checkIn = async (req, res, next) => {
     });
 
     if (existingAttendance) {
-      await transaction.rollback();
-      return res.status(409).json({
-        success: false,
-        message: 'Anda sudah melakukan check-in hari ini.'
-      });
+      return respondDuplicateCheckIn();
     } // 2. Get Settings from Database
     const settings = await Settings.findAll({
       where: {
@@ -680,11 +684,7 @@ export const checkIn = async (req, res, next) => {
       });
     } catch (error) {
       if (isAttendanceDuplicateConstraintError(error)) {
-        await transaction.rollback();
-        return res.status(409).json({
-          success: false,
-          message: 'Anda sudah melakukan check-in hari ini.'
-        });
+        return respondDuplicateCheckIn();
       }
 
       throw error;

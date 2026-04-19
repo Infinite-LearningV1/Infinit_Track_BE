@@ -45,6 +45,10 @@ describe('checkIn duplicate-safe behavior', () => {
     jest.clearAllMocks();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('returns 409 when check-in pre-check finds existing attendance', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
@@ -161,9 +165,9 @@ describe('checkIn duplicate-safe behavior', () => {
       },
       Settings: {
         findAll: jest.fn().mockResolvedValue([
-          { setting_key: 'checkin.start_time', setting_value: '08:00:00' },
-          { setting_key: 'checkin.end_time', setting_value: '18:00:00' },
-          { setting_key: 'checkin.late_time', setting_value: '10:00:00' },
+          { setting_key: 'checkin.start_time', setting_value: '00:00:00' },
+          { setting_key: 'checkin.end_time', setting_value: '23:59:59' },
+          { setting_key: 'checkin.late_time', setting_value: '23:59:59' },
           { setting_key: 'workday.holiday_checkin_enabled', setting_value: 'true' },
           { setting_key: 'workday.weekend_checkin_enabled', setting_value: 'true' },
           { setting_key: 'workday.holiday_region', setting_value: 'ID' }
@@ -229,6 +233,7 @@ describe('checkIn duplicate-safe behavior', () => {
 
     await checkIn(req, res, next);
 
+    expect(mockedAttendance.create).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(409);
     expect(next).not.toHaveBeenCalled();
     expect(rollback).toHaveBeenCalled();
