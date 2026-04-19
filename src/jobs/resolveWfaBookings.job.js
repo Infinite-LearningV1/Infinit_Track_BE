@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 import { Booking, Attendance } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout } from '../utils/jobHelper.js';
+import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 
 /**
  * Resolve unused WFA bookings and expired pending bookings
@@ -124,6 +125,14 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
           );
         }
       } catch (error) {
+        if (isAttendanceDuplicateConstraintError(error)) {
+          skippedBookings++;
+          logger.info(
+            `Duplicate-safe skip for booking ID: ${booking.booking_id}, user ID: ${booking.user_id}`
+          );
+          continue;
+        }
+
         logger.error(`Error processing booking ID: ${booking.booking_id} - ${error.message}`);
       }
     }
