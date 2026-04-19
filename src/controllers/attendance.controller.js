@@ -370,13 +370,13 @@ export const getAttendanceHistory = async (req, res) => {
 
 export const checkIn = async (req, res, next) => {
   const transaction = await sequelize.transaction();
+  let transactionFinished = false;
+  let rollbackAttempted = false;
 
-  const respondDuplicateCheckIn = async () => {
+  const rollbackDuplicateCheckIn = async () => {
+    rollbackAttempted = true;
     await transaction.rollback();
-    return res.status(409).json({
-      success: false,
-      message: 'Anda sudah melakukan check-in hari ini.'
-    });
+    transactionFinished = true;
   };
 
   try {
@@ -400,7 +400,11 @@ export const checkIn = async (req, res, next) => {
     });
 
     if (existingAttendance) {
-      return respondDuplicateCheckIn();
+      await rollbackDuplicateCheckIn();
+      return res.status(409).json({
+        success: false,
+        message: 'Anda sudah melakukan check-in hari ini.'
+      });
     } // 2. Get Settings from Database
     const settings = await Settings.findAll({
       where: {
@@ -661,6 +665,7 @@ export const checkIn = async (req, res, next) => {
     try {
       const newAttendance = await Attendance.create(attendanceData, { transaction });
       await transaction.commit();
+      transactionFinished = true;
 
       // 8. Send Success Response dengan informasi status yang telah ditentukan
       return res.status(201).json({
@@ -681,13 +686,20 @@ export const checkIn = async (req, res, next) => {
       });
     } catch (error) {
       if (isAttendanceDuplicateConstraintError(error)) {
-        return respondDuplicateCheckIn();
+        await rollbackDuplicateCheckIn();
+        return res.status(409).json({
+          success: false,
+          message: 'Anda sudah melakukan check-in hari ini.'
+        });
       }
 
       throw error;
     }
   } catch (error) {
-    await transaction.rollback();
+    if (!transactionFinished && !rollbackAttempted) {
+      await transaction.rollback();
+      transactionFinished = true;
+    }
     next(error);
   }
 };
