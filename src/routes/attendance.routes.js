@@ -1,8 +1,6 @@
 import express from 'express';
 
 import {
-  clockIn,
-  clockOut as clockOutOld,
   getAttendanceHistory,
   getAttendanceStatus,
   checkIn,
@@ -45,8 +43,6 @@ router.post('/location-event', locationEventValidation, validate, logLocationEve
 // GET / - Get all attendances for admin/management with search and pagination
 router.get('/', roleGuard(['Admin', 'Management']), getAllAttendances);
 
-router.post('/clock-in', clockIn);
-router.post('/clock-out', clockOutOld);
 router.post('/check-in', checkInValidation, validate, checkIn);
 router.post('/checkout/:id', checkOutValidation, validate, checkOut);
 router.get('/history', getAttendanceHistory);

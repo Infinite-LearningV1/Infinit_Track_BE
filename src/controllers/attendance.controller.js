@@ -23,10 +23,7 @@ import {
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
-import {
-  isAttendanceDuplicateConstraintError,
-  createAttendanceConflictError
-} from '../utils/attendanceDuplicateError.js';
+import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
