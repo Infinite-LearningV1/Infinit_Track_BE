@@ -369,17 +369,18 @@ export const getAttendanceHistory = async (req, res) => {
 };
 
 export const checkIn = async (req, res, next) => {
-  const transaction = await sequelize.transaction();
+  let transaction;
   let transactionFinished = false;
   let rollbackAttempted = false;
 
-  const rollbackDuplicateCheckIn = async () => {
+  const rollbackTransaction = async () => {
     rollbackAttempted = true;
     await transaction.rollback();
     transactionFinished = true;
   };
 
   try {
+    transaction = await sequelize.transaction();
     // 1. Get Input Data
     const userId = req.user.id;
     const { category_id, latitude, longitude, notes = '', booking_id } = req.body;
@@ -400,7 +401,7 @@ export const checkIn = async (req, res, next) => {
     });
 
     if (existingAttendance) {
-      await rollbackDuplicateCheckIn();
+      await rollbackTransaction();
       return res.status(409).json({
         success: false,
         message: 'Anda sudah melakukan check-in hari ini.'
@@ -444,7 +445,7 @@ export const checkIn = async (req, res, next) => {
       const isWeekend = localTime.getDay() === 0 || localTime.getDay() === 6;
 
       if ((isHoliday && !holidayCheckinEnabled) || (isWeekend && !weekendCheckinEnabled)) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Check-in tidak diizinkan pada hari libur.'
@@ -462,7 +463,7 @@ export const checkIn = async (req, res, next) => {
       parseInt(checkinEndTime.split(':')[0]) * 60 + parseInt(checkinEndTime.split(':')[1]);
 
     if (currentTimeMinutes < checkinStartMinutes || currentTimeMinutes > checkinEndMinutes) {
-      await transaction.rollback();
+      await rollbackTransaction();
       return res.status(400).json({
         success: false,
         message: `Check-in hanya bisa dilakukan pada jam ${checkinStartTime.substring(0, 5)} - ${checkinEndTime.substring(0, 5)}.`
@@ -483,7 +484,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!wfoLocation) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(500).json({
           success: false,
           message: 'Konfigurasi lokasi kantor (WFO) tidak ditemukan. Silakan hubungi admin.'
@@ -499,7 +500,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > wfoLocation.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -519,7 +520,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!wfhLocation) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Lokasi WFH tidak ditemukan. Silakan hubungi admin.'
@@ -534,7 +535,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > wfhLocation.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -545,7 +546,7 @@ export const checkIn = async (req, res, next) => {
     } else if (category_id === 3) {
       // WFA (Work From Anywhere)
       if (!booking_id) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking ID wajib untuk WFA.'
@@ -566,7 +567,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!booking) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak ditemukan.'
@@ -575,7 +576,7 @@ export const checkIn = async (req, res, next) => {
 
       // Additional validations for WFA booking
       if (booking.user_id !== userId) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak valid untuk user ini.'
@@ -583,7 +584,7 @@ export const checkIn = async (req, res, next) => {
       }
 
       if (booking.status !== 1) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking belum disetujui.'
@@ -591,7 +592,7 @@ export const checkIn = async (req, res, next) => {
       }
 
       if (booking.schedule_date !== todayDate) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak berlaku untuk hari ini.'
@@ -605,7 +606,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > booking.location.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -686,7 +687,7 @@ export const checkIn = async (req, res, next) => {
       });
     } catch (error) {
       if (isAttendanceDuplicateConstraintError(error)) {
-        await rollbackDuplicateCheckIn();
+        await rollbackTransaction();
         return res.status(409).json({
           success: false,
           message: 'Anda sudah melakukan check-in hari ini.'
@@ -697,8 +698,11 @@ export const checkIn = async (req, res, next) => {
     }
   } catch (error) {
     if (!transactionFinished && !rollbackAttempted) {
-      await transaction.rollback();
-      transactionFinished = true;
+      try {
+        await rollbackTransaction();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+      }
     }
     next(error);
   }
