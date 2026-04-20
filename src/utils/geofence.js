@@ -1,5 +1,3 @@
-import { getDistance } from 'geolib';
-
 /**
  * JAKARTA TIMEZONE UTILITIES - Fixed Implementation V4
  * ALWAYS record in WIB (UTC+7) regardless of server location
@@ -90,7 +88,7 @@ export const getJakartaDateString = () => {
 };
 
 /**
- * Calculate distance between two coordinates in meters
+ * Calculate distance between two coordinates in meters (Haversine formula)
  * @param {number} lat1 - First latitude
  * @param {number} lon1 - First longitude
  * @param {number} lat2 - Second latitude
@@ -98,7 +96,22 @@ export const getJakartaDateString = () => {
  * @returns {number} Distance in meters
  */
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  return getDistance({ latitude: lat1, longitude: lon1 }, { latitude: lat2, longitude: lon2 });
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const earthRadiusMeters = 6371000; // Mean Earth radius in meters
+
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const deltaPhi = toRad(lat2 - lat1);
+  const deltaLambda = toRad(lon2 - lon1);
+
+  const sinDeltaPhi = Math.sin(deltaPhi / 2);
+  const sinDeltaLambda = Math.sin(deltaLambda / 2);
+
+  const a =
+    sinDeltaPhi * sinDeltaPhi + Math.cos(phi1) * Math.cos(phi2) * sinDeltaLambda * sinDeltaLambda;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusMeters * c;
 };
 
 /**

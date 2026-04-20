@@ -1,0 +1,67 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(npm run lint *)",
+      "Bash(npm test *)",
+      "Bash(npm run migrate:status)",
+      "Bash(docker compose ps)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "deny": [
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.development.local)",
+      "Read(.env.production.local)",
+      "Edit(k8s/secret.yaml)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/pretooluse-guard.py",
+            "timeout": 10,
+            "statusMessage": "Checking sensitive backend paths and branch workflow"
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/filechanged-verify.py",
+            "timeout": 10,
+            "async": true,
+            "statusMessage": "Triggering async backend verification"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/taskcompleted-docs-snippet.py",
+            "timeout": 10,
+            "statusMessage": "Preparing docs/ADR note snippet"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "claude-md-management@claude-plugins-official": true,
+    "learning-output-style@claude-plugins-official": true
+  }
+}

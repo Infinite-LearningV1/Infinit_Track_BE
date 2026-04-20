@@ -23,6 +23,7 @@ import {
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
+import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
@@ -35,51 +36,9 @@ import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
-export const clockIn = async (req, res) => {
-  try {
-    const { location } = req.body;
-    const userId = req.user.id;
-
-    // Check if user already clocked in today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const existingAttendance = await Attendance.findOne({
-      where: {
-        userId,
-        clockIn: {
-          [Op.gte]: today
-        }
-      }
-    });
-
-    if (existingAttendance) {
-      return res.status(400).json({ message: 'Already clocked in today' });
-    }
-
-    const attendance = await Attendance.create({
-      userId,
-      clockIn: new Date(),
-      location
-    });
-
-    res.status(201).json({ message: 'Clock in successful', attendance });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
  * Admin/Management only
- * Body schema:
- * {
- *   candidates: { HIST?: string|Date, CHECKIN?: string|Date, CONTEXT?: string|Date, TRANSITION?: string|Date },
- *   weights: number[4], // [HIST, CHECKIN, CONTEXT, TRANSITION]
- *   targetDate: string (YYYY-MM-DD),
- *   timeIn: string|Date (ISO),
- *   fallbackEndStr?: string (HH:mm:ss)
- * }
  */
 export const testWeightedPrediction = async (req, res) => {
   try {
@@ -165,36 +124,6 @@ export const testWeightedPrediction = async (req, res) => {
   } catch (error) {
     logger.error('Error in testWeightedPrediction:', error);
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
-  }
-};
-
-export const clockOut = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // Find today's attendance record
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const attendance = await Attendance.findOne({
-      where: {
-        userId,
-        clockIn: {
-          [Op.gte]: today
-        },
-        clockOut: null
-      }
-    });
-
-    if (!attendance) {
-      return res.status(400).json({ message: 'No clock in record found for today' });
-    }
-
-    await attendance.update({ clockOut: new Date() });
-
-    res.json({ message: 'Clock out successful', attendance });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -440,9 +369,18 @@ export const getAttendanceHistory = async (req, res) => {
 };
 
 export const checkIn = async (req, res, next) => {
-  const transaction = await sequelize.transaction();
+  let transaction;
+  let transactionFinished = false;
+  let rollbackAttempted = false;
+
+  const rollbackTransaction = async () => {
+    rollbackAttempted = true;
+    await transaction.rollback();
+    transactionFinished = true;
+  };
 
   try {
+    transaction = await sequelize.transaction();
     // 1. Get Input Data
     const userId = req.user.id;
     const { category_id, latitude, longitude, notes = '', booking_id } = req.body;
@@ -463,8 +401,8 @@ export const checkIn = async (req, res, next) => {
     });
 
     if (existingAttendance) {
-      await transaction.rollback();
-      return res.status(400).json({
+      await rollbackTransaction();
+      return res.status(409).json({
         success: false,
         message: 'Anda sudah melakukan check-in hari ini.'
       });
@@ -507,7 +445,7 @@ export const checkIn = async (req, res, next) => {
       const isWeekend = localTime.getDay() === 0 || localTime.getDay() === 6;
 
       if ((isHoliday && !holidayCheckinEnabled) || (isWeekend && !weekendCheckinEnabled)) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Check-in tidak diizinkan pada hari libur.'
@@ -525,7 +463,7 @@ export const checkIn = async (req, res, next) => {
       parseInt(checkinEndTime.split(':')[0]) * 60 + parseInt(checkinEndTime.split(':')[1]);
 
     if (currentTimeMinutes < checkinStartMinutes || currentTimeMinutes > checkinEndMinutes) {
-      await transaction.rollback();
+      await rollbackTransaction();
       return res.status(400).json({
         success: false,
         message: `Check-in hanya bisa dilakukan pada jam ${checkinStartTime.substring(0, 5)} - ${checkinEndTime.substring(0, 5)}.`
@@ -546,7 +484,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!wfoLocation) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(500).json({
           success: false,
           message: 'Konfigurasi lokasi kantor (WFO) tidak ditemukan. Silakan hubungi admin.'
@@ -562,7 +500,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > wfoLocation.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -582,7 +520,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!wfhLocation) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Lokasi WFH tidak ditemukan. Silakan hubungi admin.'
@@ -597,7 +535,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > wfhLocation.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -608,7 +546,7 @@ export const checkIn = async (req, res, next) => {
     } else if (category_id === 3) {
       // WFA (Work From Anywhere)
       if (!booking_id) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking ID wajib untuk WFA.'
@@ -629,7 +567,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!booking) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak ditemukan.'
@@ -638,7 +576,7 @@ export const checkIn = async (req, res, next) => {
 
       // Additional validations for WFA booking
       if (booking.user_id !== userId) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak valid untuk user ini.'
@@ -646,7 +584,7 @@ export const checkIn = async (req, res, next) => {
       }
 
       if (booking.status !== 1) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking belum disetujui.'
@@ -654,7 +592,7 @@ export const checkIn = async (req, res, next) => {
       }
 
       if (booking.schedule_date !== todayDate) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak berlaku untuk hari ini.'
@@ -668,7 +606,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > booking.location.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -725,28 +663,47 @@ export const checkIn = async (req, res, next) => {
       updated_at: wibTimeForDB // SAVE WIB TIME
     };
 
-    const newAttendance = await Attendance.create(attendanceData, { transaction });
-    await transaction.commit();
+    try {
+      const newAttendance = await Attendance.create(attendanceData, { transaction });
+      await transaction.commit();
+      transactionFinished = true;
 
-    // 8. Send Success Response dengan informasi status yang telah ditentukan
-    res.status(201).json({
-      success: true,
-      data: {
-        ...newAttendance.toJSON(),
-        status_classification: {
-          status_id: determinedStatusId,
-          status_label: statusLabel,
-          check_in_time: `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`,
-          time_rules: {
-            start_time: checkinStartTime,
-            late_time: lateTime
+      // 8. Send Success Response dengan informasi status yang telah ditentukan
+      return res.status(201).json({
+        success: true,
+        data: {
+          ...newAttendance.toJSON(),
+          status_classification: {
+            status_id: determinedStatusId,
+            status_label: statusLabel,
+            check_in_time: `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`,
+            time_rules: {
+              start_time: checkinStartTime,
+              late_time: lateTime
+            }
           }
-        }
-      },
-      message: `Check-in berhasil dengan status: ${statusLabel}`
-    });
+        },
+        message: `Check-in berhasil dengan status: ${statusLabel}`
+      });
+    } catch (error) {
+      if (isAttendanceDuplicateConstraintError(error)) {
+        await rollbackTransaction();
+        return res.status(409).json({
+          success: false,
+          message: 'Anda sudah melakukan check-in hari ini.'
+        });
+      }
+
+      throw error;
+    }
   } catch (error) {
-    await transaction.rollback();
+    if (!transactionFinished && !rollbackAttempted) {
+      try {
+        await rollbackTransaction();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+      }
+    }
     next(error);
   }
 };
@@ -1122,7 +1079,7 @@ export const checkOut = async (req, res, next) => {
     const activeBooking = await Booking.findOne({
       where: {
         user_id: userId,
-        status: 2, // status approved (assuming 2 is approved)
+        status: 1, // approved (booking_status: 1=approved, 2=rejected, 3=pending)
         schedule_date: todayDate
       },
       include: [
@@ -1651,7 +1608,7 @@ export const logLocationEvent = async (req, res, next) => {
       });
     }
 
-    if (activeAttendance.check_out_time) {
+    if (activeAttendance.time_out) {
       return res.status(400).json({
         success: false,
         message:
