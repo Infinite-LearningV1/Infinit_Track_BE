@@ -5,8 +5,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --only=production && \
-    cp -R node_modules /prod_modules && \
-    npm ci
+    cp -R node_modules /prod_modules
 
 # Stage 2: Production image
 FROM node:18-alpine AS production

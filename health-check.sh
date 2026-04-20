@@ -24,11 +24,28 @@ echo ""
 
 # 1. API Health
 print_header "API HEALTH"
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health" 2>/dev/null)
-if [ "$RESPONSE" = "200" ]; then
+RESPONSE=""
+
+if command -v curl &> /dev/null; then
+    RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health" 2>/dev/null)
+elif command -v wget &> /dev/null; then
+    wget -q --spider "$APP_URL/health" 2>/dev/null
+    WGET_EXIT=$?
+    if [ "$WGET_EXIT" -eq 0 ]; then
+        RESPONSE="200"
+    else
+        RESPONSE="000"
+    fi
+else
+    print_warning "Neither curl nor wget is available; skipping API health probe"
+fi
+
+if [ -z "$RESPONSE" ]; then
+    print_warning "API health probe skipped"
+elif [ "$RESPONSE" = "200" ]; then
     print_success "API is healthy (HTTP $RESPONSE)"
 else
-    print_error "API is not responding (HTTP $RESPONSE)"
+    print_error "API is not responding (HTTP ${RESPONSE:-000})"
 fi
 
 # 2. Environment Detection

@@ -39,6 +39,7 @@
     "mysql2": "^3.14.1",
     "node-cron": "^4.1.0",
     "sequelize": "^6.37.7",
+    "sequelize-cli": "^6",
     "swagger-ui-express": "^4",
     "winston": "^3",
     "winston-daily-rotate-file": "^4",
@@ -52,7 +53,6 @@
     "jest": "^29",
     "nodemon": "^3",
     "prettier": "^3",
-    "sequelize-cli": "^6",
     "supertest": "^7.1.4"
   },
   "overrides": {
