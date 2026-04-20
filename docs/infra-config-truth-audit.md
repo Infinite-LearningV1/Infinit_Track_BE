@@ -13,23 +13,24 @@ Target staging host: DigitalOcean droplet `it-backend-staging-sgp1`
 
 ## Executive summary
 The backend is currently in a mixed-state configuration posture:
-- the agreed deployment target is **Droplet + Docker**
+- the agreed deployment target in this rollout is **Droplet + Docker**
 - repository still contains historical **App Platform** and **Kubernetes** artifacts
-- the active runtime contract in code does **not** fully match `.env.example`, CI, or `.do/*.yaml`
+- `CLAUDE.md` documents repository-managed deployment via `.do/app*.yaml`, while this rollout targets a droplet runtime
+- the active runtime contract in code does **not** fully match `.env.example`, GitHub Actions workflow surfaces, or `.do/*.yaml`
 - several important deploy assumptions are duplicated across surfaces with different names or defaults
 
-This means staging deployment can succeed or fail depending on which surface an operator treats as source of truth. The biggest immediate risk is not a missing single variable, but **configuration drift** across repo/runtime surfaces.
+This means staging deployment can succeed or fail depending on which surface an operator treats as source of truth. The biggest immediate risk is not a missing single variable, but **configuration drift** across repo/runtime surfaces, including conflicting deployment guidance.
 
 ## Config truth map
 
-| Config / concept | Declared in | Read by runtime | Local behavior | Docker / droplet behavior | CI behavior | Docs / deploy expectation | Drift / ambiguity |
+| Config / concept | Declared in | Read by runtime | Local behavior | Docker / droplet behavior | GitHub Actions behavior (`ci.yml` vs deploy-*) | Docs / deploy expectation | Drift / ambiguity |
 |---|---|---|---|---|---|---|---|
-| `DB_HOST` | `.env.example`, `.do/app*.yaml`, `docker-compose.yml` env | `src/config/index.js`, `src/config/database.js` | defaults to local MySQL expectation | compose sets `db`; droplet target likely needs external DB host | CI sets `localhost` | CLAUDE says droplet target, `.do` says App Platform | same concept but surface-dependent value, no single canonical source |
-| `DB_USER`, `DB_PASS`, `DB_NAME` | `.env.example`, `.do/app*.yaml`, `docker-compose.yml`, CI | `src/config/index.js` | env-driven | compose defaults to sample values | CI sets test values | docs mention env-driven workflow | no explicit staging source-of-truth document |
-| `DB_SSL` | `.env.example`, `.do/app-production.yaml`, `k8s/configmap.yaml` | **not read by active runtime config** | no effect | no effect unless future code reads it | not used in CI | production app spec assumes it exists | declared but unused by `src/config/index.js` / `database.js` |
-| `JWT_SECRET` | `.env.example`, `.do/app*.yaml`, CI | `src/config/index.js` / auth middleware | required in prod only | required in droplet runtime | CI sets test secret | docs imply backend-only secret | okay conceptually, but only production validation enforces it |
-| `JWT_TTL_SECONDS` | `.env.example`, `.do/app*.yaml`, CI | `src/config/index.js` | defaults to 86400 | env-driven | only CI test env sets JWT secret, not TTL | consistent enough | low drift |
-| `CORS_ORIGIN` | `.env.example`, `.do/app*.yaml`, README | `src/config/index.js`, `src/middlewares/security.js` | defaults to `*` | compose does not set explicit value | CI does not set it | production guidance exists | dangerous local default can leak into staging if not explicitly set |
+| `DB_HOST` | `.env.example`, `.do/app*.yaml`, `docker-compose.yml` env | `src/config/index.js`, `src/config/database.js` | defaults to local MySQL expectation | compose sets `db`; droplet target likely needs external DB host | `ci.yml` sets `localhost`; deploy-* workflows and `.do` surfaces imply other runtime targets | `CLAUDE.md` points to `.do/app*.yaml`, while this rollout targets droplet staging | same concept but surface-dependent value, no single canonical source |
+| `DB_USER`, `DB_PASS`, `DB_NAME` | `.env.example`, `.do/app*.yaml`, `docker-compose.yml` | `src/config/index.js` | env-driven | compose defaults to sample values | `ci.yml` sets test values; deploy-* workflows and `.do` imply runtime values elsewhere | docs mention env-driven workflow | no explicit staging source-of-truth document |
+| `DB_SSL` | `.env.example`, `.do/app-production.yaml`, `k8s/configmap.yaml` | **not read by active runtime config** | no effect | no effect unless future code reads it | not used in `ci.yml` | production app spec assumes it exists | declared but unused by `src/config/index.js` / `database.js` |
+| `JWT_SECRET` | `.env.example`, `.do/app*.yaml` | `src/config/index.js` / auth middleware | validated only in production; functionally required wherever JWT sign/verify flows run | required in droplet runtime for auth-enabled deployments | `ci.yml` sets a test secret | docs imply backend-only secret | wording must distinguish prod-only validation from broader runtime requirement |
+| `JWT_TTL_SECONDS` | `.env.example`, `.do/app*.yaml` | `src/config/index.js` | defaults to 86400 | env-driven | `ci.yml` does not set it | consistent enough | low drift |
+| `CORS_ORIGIN` | `.env.example`, `.do/app*.yaml`, README | `src/config/index.js`, `src/middlewares/security.js` | defaults to `*` | compose does not set explicit value | `ci.yml` does not set it | production guidance exists | dangerous local default can leak into staging if not explicitly set |
 | `GEOFENCE_RADIUS_DEFAULT_M` | `.env.example`, `.do/app*.yaml` | `src/config/index.js` | defaulted | env-driven | not relevant to CI tests | documented | low drift |
 | `AUTO_CHECKOUT_IDLE_MIN` | `.env.example`, `.do/app*.yaml`, `k8s/configmap.yaml` | `src/config/index.js` | defaulted | env-driven | not set in CI | documented | low drift |
 | `AUTO_CHECKOUT_TBUFFER_MIN` | `.env.example`, `.do/app*.yaml`, `k8s/configmap.yaml` | `src/config/index.js` | defaulted | env-driven | not set in CI | documented | low drift |
@@ -45,7 +46,7 @@ This means staging deployment can succeed or fail depending on which surface an 
 ### 1. Local development
 - `.env.example` assumes **local MySQL** with `DB_HOST=localhost`
 - local workflow is env-driven and simple
-- no explicit local-vs-droplet split artifact besides comments in `CLAUDE.md`
+- no explicit documented local-vs-droplet split artifact was found in the repository
 
 ### 2. Docker Compose / droplet target
 - `docker-compose.yml` still uses `build:` for the app service rather than `image:`
@@ -55,7 +56,8 @@ This means staging deployment can succeed or fail depending on which surface an 
 
 ### 3. CI
 - `.github/workflows/ci.yml` runs lint and test only
-- CI test env does not set Cloudinary/Geoapify contract symmetrically with all runtime docs
+- `ci.yml` sets test DB credentials and Cloudinary test credentials, but does not represent droplet runtime env truth
+- deploy-specific workflows (`deploy-staging.yml`, `docker-deploy.yml`) represent a different surface and should not be conflated with `ci.yml`
 - CI currently proves code quality, not droplet runtime truth
 
 ### 4. Historical App Platform specs
@@ -92,7 +94,7 @@ This means staging deployment can succeed or fail depending on which surface an 
 4. CI validates code but not droplet-runtime assumptions
 
 ### Informational
-1. Kubernetes artifacts exist but no active DOKS cluster is present in the connected DigitalOcean account
+1. Kubernetes artifacts exist, but there is no evidence in the repository itself of an active DOKS backend deployment target; the connected DigitalOcean account queried during this audit also did not return any active DOKS clusters on 2026-04-20
 2. Dockerfile is production-oriented and healthcheck-aware, but compose target still points to local build flow
 3. FE App Platform app exists and can confuse backend deploy discussion if not explicitly excluded
 
