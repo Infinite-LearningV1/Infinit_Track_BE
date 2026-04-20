@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: infinit-track-config
+  namespace: infinit-track
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  TZ: "Asia/Jakarta"
+  LOG_LEVEL: "warn"
+  DB_SSL: "false"
+  CORS_ORIGIN: "https://your-domain.com"
+  JWT_TTL_SECONDS: "14400"
+  GEOFENCE_RADIUS_DEFAULT_M: "100"
+  AUTO_CHECKOUT_IDLE_MIN: "10"
+  AUTO_CHECKOUT_TBUFFER_MIN: "30"
+  LATE_CHECKOUT_TOLERANCE_MIN: "15"
+  DEFAULT_SHIFT_END: "17:00"
+  AHP_CR_THRESHOLD: "0.10"

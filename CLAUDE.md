@@ -69,9 +69,9 @@ Handle with extra caution — always read current state, identify risks, plan ve
 - **Attendance final state**: `src/controllers/attendance.controller.js`, `src/jobs/createGeneralAlpha.job.js`, `src/jobs/autoCheckout.job.js`
 - **Auth/session**: `src/middlewares/authJwt.js`, `src/middlewares/roleGuard.js`
 - **Background jobs**: `src/jobs/*.js`, `src/utils/jobHelper.js`
-- **Env/deploy contract**: `src/config/index.js`, `.env.example`, `docs/ENVIRONMENT_VARIABLES.md`
+- **Env/deploy contract**: `src/config/index.js`, `.env.example`, `docker-compose.yml`, `.github/workflows/*.yml`
 - **FAHP engine**: `src/utils/fuzzyAhpEngine.js`, `src/analytics/fahp*.js`, `src/analytics/config.fahp.js`
-- **API contract**: `docs/openapi.yaml`, `docs/API_DOCUMENTATION.md`
+- **API contract**: `docs/openapi.yaml`
 - **External integrations**: Cloudinary (`src/config/cloudinary.js`), Geoapify (`GEOAPIFY_API_KEY`)
 
 ## Backend Standards Sync
@@ -140,6 +140,38 @@ A task is done **only when**:
 - No risk left without explicit annotation
 - Docs/ADR update note created if change touches architectural area
 - PR notes draft available if task produces code changes
+
+## Branch Promotion Workflow
+
+- Start implementation on a **feature branch**.
+- When work is ready to be reviewed, create or use a **review-focused branch** rather than pushing feature work straight toward release branches.
+- The normal promotion path is:
+  - `feature/*` or review branch → PR/review → `develop`
+  - `develop` → QA/review → PR → `master`
+- Treat `develop` as the **integration branch** that should already have passed review and QA expectations before promotion.
+- Treat `master` as the **final release branch** and source for code that is considered ready to run on the server.
+- Do not push normal feature work directly to `master`.
+- Direct push to `develop` should be treated as exceptional; prefer a review branch and PR flow whenever possible.
+
+## External Review Feedback Policy
+
+- External AI reviewer comments (including Copilot review comments) are **advisory input**, not automatic implementation instructions.
+- Every review comment must be re-evaluated against:
+  - current branch reality,
+  - repository source of truth,
+  - current architectural direction,
+  - and the scope of the active task or PR.
+- A technically valid comment is **not automatically in-scope** for the current branch.
+- Adoption is a deliberate human decision and may result in:
+  - direct fix in the current branch,
+  - follow-up issue,
+  - deferred work,
+  - or explicit rejection with technical reasoning.
+- Do not implement external review feedback blindly.
+- When in doubt, prefer:
+  - verifying the comment against code/runtime reality,
+  - clarifying scope,
+  - and separating small corrective fixes from larger design or architecture changes.
 
 ## Agent Tooling
 
