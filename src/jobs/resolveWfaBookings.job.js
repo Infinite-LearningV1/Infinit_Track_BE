@@ -50,9 +50,16 @@ export const resolveWfaBookingsForDate = async (targetDate) => {
     const jakartaTime = new Date(jakartaTimeString);
 
     logger.info(`Resolve WFA bookings for explicit date: ${targetDate}`);
-    await handleUnusedApprovedBookings(targetDate, jakartaTime);
-    await handleExpiredPendingBookings(targetDate, jakartaTime);
-    return { success: true, targetDate };
+    const alphaResult = await handleUnusedApprovedBookings(targetDate, jakartaTime);
+    const expiredResult = await handleExpiredPendingBookings(targetDate, jakartaTime);
+    return {
+      success: true,
+      targetDate,
+      mutations: {
+        createdAlpha: alphaResult.createdAlpha,
+        rejectedExpired: expiredResult.rejectedExpired
+      }
+    };
   } catch (error) {
     logger.error('Error in resolveWfaBookingsForDate:', error);
     return { success: false, error: error.message };
@@ -140,8 +147,17 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
     logger.info(
       `Task A completed. Alpha records created: ${alphaRecordsCreated}, Skipped: ${skippedBookings}`
     );
+    return {
+      createdAlpha: alphaRecordsCreated,
+      skippedAlreadyFinal: skippedBookings
+    };
   } catch (error) {
     logger.error('Error in Task A (unused approved bookings):', error);
+    return {
+      createdAlpha: 0,
+      skippedAlreadyFinal: 0,
+      error: error.message
+    };
   }
 };
 
@@ -193,8 +209,17 @@ const handleExpiredPendingBookings = async (todayDate, _jakartaTime) => {
     logger.info(
       `Task B completed. Expired bookings rejected: ${rejectedBookings}, Errors: ${errorCount}`
     );
+    return {
+      rejectedExpired: rejectedBookings,
+      errorCount
+    };
   } catch (error) {
     logger.error('Error in Task B (expired pending bookings):', error);
+    return {
+      rejectedExpired: 0,
+      errorCount: 1,
+      error: error.message
+    };
   }
 };
 

@@ -1,0 +1,27 @@
+# Requires: nginx-ingress controller + cert-manager installed in cluster
+# Replace api.your-domain.com with your actual domain
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: infinit-track-ingress
+  namespace: infinit-track
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.your-domain.com
+      secretName: infinit-track-tls
+  rules:
+    - host: api.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: infinit-track-app
+                port:
+                  number: 80
