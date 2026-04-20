@@ -13,7 +13,7 @@ const requiredEnvVars = {
 
 // Check if all required variables are present
 const missingVars = Object.entries(requiredEnvVars)
-  .filter(([value]) => !value)
+  .filter(([, value]) => !value)
   .map(([key]) => key);
 
 if (missingVars.length > 0) {
