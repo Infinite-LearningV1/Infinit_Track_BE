@@ -26,7 +26,9 @@ export default {
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
     dialect: 'mysql',
-    ssl: String(process.env.DB_SSL || 'false').toLowerCase() === 'true'
+    ssl: String(process.env.DB_SSL || 'false').toLowerCase() === 'true',
+    sslRejectUnauthorized:
+      String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() === 'true'
   },
   geofence: {
     radiusDefaultM: parseInt(process.env.GEOFENCE_RADIUS_DEFAULT_M || '100', 10)

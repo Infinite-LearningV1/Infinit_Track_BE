@@ -14,17 +14,19 @@ describe('backend runtime config contract', () => {
     process.env = { ...envBackup };
   });
 
-  test('reads DB_SSL from environment into runtime config', async () => {
+  test('reads DB_SSL and DB_SSL_REJECT_UNAUTHORIZED from environment into runtime config', async () => {
     process.env.JWT_SECRET = 'test-secret';
     process.env.DB_HOST = 'db.example.internal';
     process.env.DB_NAME = 'infinite_track';
     process.env.DB_USER = 'trackuser';
     process.env.DB_PASS = 'trackpass';
     process.env.DB_SSL = 'true';
+    process.env.DB_SSL_REJECT_UNAUTHORIZED = 'false';
 
     const { default: config } = await import('../src/config/index.js');
 
     expect(config.db.ssl).toBe(true);
+    expect(config.db.sslRejectUnauthorized).toBe(false);
   });
 
   test('declares explicit DB_HOST and DB_SSL app env in docker compose', () => {
