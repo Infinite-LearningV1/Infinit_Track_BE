@@ -39,6 +39,7 @@ services:
       DB_PASS: ${DB_PASS:-trackpassword}
       DB_NAME: ${DB_NAME:-v1_infinite_track}
       DB_SSL: ${DB_SSL:-false}
+      DB_SSL_REJECT_UNAUTHORIZED: ${DB_SSL_REJECT_UNAUTHORIZED:-true}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       TZ: Asia/Jakarta
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}

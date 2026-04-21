@@ -37,5 +37,6 @@ describe('backend runtime config contract', () => {
 
     expect(compose).toContain('DB_HOST: ${DB_HOST:-db}');
     expect(compose).toContain('DB_SSL: ${DB_SSL:-false}');
+    expect(compose).toContain('DB_SSL_REJECT_UNAUTHORIZED: ${DB_SSL_REJECT_UNAUTHORIZED:-true}');
   });
 });
