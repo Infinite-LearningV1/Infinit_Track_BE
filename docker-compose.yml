@@ -34,10 +34,11 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DB_HOST: db
+      DB_HOST: ${DB_HOST:-db}
       DB_USER: ${DB_USER:-trackuser}
       DB_PASS: ${DB_PASS:-trackpassword}
       DB_NAME: ${DB_NAME:-v1_infinite_track}
+      DB_SSL: ${DB_SSL:-false}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       TZ: Asia/Jakarta
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
