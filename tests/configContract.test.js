@@ -60,8 +60,12 @@ describe('backend runtime config contract', () => {
     expect(config.jwt.refreshInactivityWindowSeconds).toBe(172800);
   });
 
-  test('declares explicit DB_HOST, DB_SSL, and refresh-token app env in docker compose', () => {
+  test('declares image-based runtime with explicit BACKEND_IMAGE_TAG in docker compose', () => {
     const compose = readDockerCompose();
+
+    expect(compose).toContain('image: registry.digitalocean.com/infinit-track/infinit-track-backend:${BACKEND_IMAGE_TAG:-latest}');
+    expect(compose).toContain('BACKEND_IMAGE_TAG: ${BACKEND_IMAGE_TAG:-latest}');
+    expect(compose).not.toContain('build:');
 
     expect(compose).toContain('DB_HOST: ${DB_HOST:-db}');
     expect(compose).toContain('DB_SSL: ${DB_SSL:-false}');

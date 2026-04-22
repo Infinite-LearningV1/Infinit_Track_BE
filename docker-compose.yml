@@ -21,9 +21,7 @@ services:
       start_period: 30s
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: registry.digitalocean.com/infinit-track/infinit-track-backend:${BACKEND_IMAGE_TAG:-latest}
     container_name: infinit-track-app
     restart: unless-stopped
     ports:
@@ -34,6 +32,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
+      BACKEND_IMAGE_TAG: ${BACKEND_IMAGE_TAG:-latest}
       DB_HOST: ${DB_HOST:-db}
       DB_USER: ${DB_USER:-trackuser}
       DB_PASS: ${DB_PASS:-trackpassword}
