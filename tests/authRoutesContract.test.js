@@ -47,13 +47,13 @@ describe('Auth route contract', () => {
     jest.clearAllMocks();
   });
 
-  it('allows logout to proceed with refresh-token fallback even when access token is expired', async () => {
+  it('requires verifyToken before logout', async () => {
     const res = await request(app).post('/api/auth/logout').send({
       refresh_token: 'refresh-token-value'
     });
 
-    expect(res.status).toBe(200);
-    expect(mockLogout).toHaveBeenCalled();
-    expect(mockVerifyToken).not.toHaveBeenCalled();
+    expect(res.status).toBe(401);
+    expect(mockVerifyToken).toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
   });
 });
