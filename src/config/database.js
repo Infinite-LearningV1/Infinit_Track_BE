@@ -10,7 +10,15 @@ const sequelize = new Sequelize(config.db.database, config.db.username, config.d
   dialectOptions: {
     timezone: '+07:00',
     dateStrings: true,
-    typeCast: true
+    typeCast: true,
+    ...(config.db.ssl
+      ? {
+          ssl: {
+            require: true,
+            rejectUnauthorized: config.db.sslRejectUnauthorized
+          }
+        }
+      : {})
   },
   define: {
     charset: 'utf8mb4',

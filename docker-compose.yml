@@ -34,11 +34,17 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DB_HOST: db
+      DB_HOST: ${DB_HOST:-db}
       DB_USER: ${DB_USER:-trackuser}
       DB_PASS: ${DB_PASS:-trackpassword}
       DB_NAME: ${DB_NAME:-v1_infinite_track}
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_REJECT_UNAUTHORIZED: ${DB_SSL_REJECT_UNAUTHORIZED:-true}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-14400}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-2592000}
+      JWT_REFRESH_INACTIVITY_WINDOW_SECONDS: ${JWT_REFRESH_INACTIVITY_WINDOW_SECONDS:-172800}
       TZ: Asia/Jakarta
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
