@@ -14,6 +14,17 @@ The staging droplet runs the backend from a DOCR image, not from a local compose
    export BACKEND_IMAGE_TAG=<git-sha>
    ```
 2. Authenticate Docker to DOCR on the droplet.
+   - If `registry.digitalocean.com/infinit-track/infinit-track-backend` is private, authenticate before pulling.
+   - Prerequisite: a DigitalOcean personal access token with Container Registry read access.
+   - Direct Docker login:
+     ```bash
+     export DOCR_TOKEN=<digitalocean-pat-with-registry-read-access>
+     echo "$DOCR_TOKEN" | docker login registry.digitalocean.com -u doctl --password-stdin
+     ```
+   - Or, if `doctl` is installed and already authenticated:
+     ```bash
+     doctl registry login
+     ```
 3. Pull the selected image:
    ```bash
    docker compose pull app

@@ -75,4 +75,10 @@ describe('backend runtime config contract', () => {
     expect(compose).toContain('JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-2592000}');
     expect(compose).toContain('JWT_REFRESH_INACTIVITY_WINDOW_SECONDS: ${JWT_REFRESH_INACTIVITY_WINDOW_SECONDS:-172800}');
   });
+
+  test('documents BACKEND_IMAGE_TAG in env example for operators', () => {
+    const envExample = fs.readFileSync(path.resolve(process.cwd(), '.env.example'), 'utf8');
+
+    expect(envExample).toContain('BACKEND_IMAGE_TAG=latest');
+  });
 });
