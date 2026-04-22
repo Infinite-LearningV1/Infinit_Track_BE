@@ -60,8 +60,12 @@ describe('backend runtime config contract', () => {
     expect(config.jwt.refreshInactivityWindowSeconds).toBe(172800);
   });
 
-  test('declares explicit DB_HOST, DB_SSL, and refresh-token app env in docker compose', () => {
+  test('declares image-based runtime with explicit BACKEND_IMAGE_TAG in docker compose', () => {
     const compose = readDockerCompose();
+
+    expect(compose).toContain('image: registry.digitalocean.com/infinit-track/infinit-track-backend:${BACKEND_IMAGE_TAG:-latest}');
+    expect(compose).toContain('BACKEND_IMAGE_TAG: ${BACKEND_IMAGE_TAG:-latest}');
+    expect(compose).not.toContain('build:');
 
     expect(compose).toContain('DB_HOST: ${DB_HOST:-db}');
     expect(compose).toContain('DB_SSL: ${DB_SSL:-false}');
@@ -70,5 +74,11 @@ describe('backend runtime config contract', () => {
     expect(compose).toContain('JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}');
     expect(compose).toContain('JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-2592000}');
     expect(compose).toContain('JWT_REFRESH_INACTIVITY_WINDOW_SECONDS: ${JWT_REFRESH_INACTIVITY_WINDOW_SECONDS:-172800}');
+  });
+
+  test('documents BACKEND_IMAGE_TAG in env example for operators', () => {
+    const envExample = fs.readFileSync(path.resolve(process.cwd(), '.env.example'), 'utf8');
+
+    expect(envExample).toContain('BACKEND_IMAGE_TAG=latest');
   });
 });
