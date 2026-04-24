@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
 import config from '../config/index.js';
-import { buildUserProfilePhotoKey, uploadBufferToSpaces } from '../config/spaces.js';
+import { buildUserProfilePhotoKey, uploadBufferToSpaces, deleteSpacesObject } from '../config/spaces.js';
 import {
   User,
   Photo,
@@ -225,6 +225,7 @@ export const logout = (req, res) => {
 
 export const register = async (req, res) => {
   const transaction = await sequelize.transaction();
+  let uploadResult;
 
   try {
     const {
@@ -316,7 +317,6 @@ export const register = async (req, res) => {
       { transaction }
     );
 
-    let uploadResult;
     try {
       const storageKey = buildUserProfilePhotoKey(user.id_users, req.file.originalname);
       uploadResult = await uploadBufferToSpaces({
@@ -415,6 +415,14 @@ export const register = async (req, res) => {
       message: 'Registrasi berhasil'
     });
   } catch (err) {
+    if (uploadResult?.key) {
+      try {
+        await deleteSpacesObject(uploadResult.key);
+      } catch (cleanupError) {
+        logger.warn(`Failed to clean up Spaces object ${uploadResult.key}: ${cleanupError.message}`);
+      }
+    }
+
     // Rollback transaksi jika ada error
     await transaction.rollback();
 
