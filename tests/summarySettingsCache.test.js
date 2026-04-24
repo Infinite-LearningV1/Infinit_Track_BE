@@ -50,6 +50,65 @@ const buildRes = () => ({
   json: jest.fn().mockReturnThis()
 });
 
+const buildSummaryRows = () => [
+  {
+    id_attendance: 101,
+    attendance_date: '2026-04-23',
+    time_in: new Date('2026-04-23T01:15:00.000Z'),
+    time_out: new Date('2026-04-23T10:00:00.000Z'),
+    work_hour: 8,
+    notes: '',
+    user: {
+      id_users: 7,
+      full_name: 'Febri',
+      email: 'f@example.com',
+      nip_nim: '001',
+      role: { role_name: 'User' }
+    },
+    location: null,
+    attendance_category: { category_name: 'WFO' },
+    status: { attendance_status_name: 'Tepat Waktu' }
+  },
+  {
+    id_attendance: 102,
+    attendance_date: '2026-04-23',
+    time_in: new Date('2026-04-23T01:20:00.000Z'),
+    time_out: new Date('2026-04-23T10:00:00.000Z'),
+    work_hour: 8,
+    notes: '',
+    user: {
+      id_users: 8,
+      full_name: 'Diana',
+      email: 'd@example.com',
+      nip_nim: '002',
+      role: { role_name: 'User' }
+    },
+    location: null,
+    attendance_category: { category_name: 'WFH' },
+    status: { attendance_status_name: 'Terlambat' }
+  }
+];
+
+const arrangeAttendanceFindAllForSummary = () => {
+  mockAttendanceFindAll
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([
+      {
+        time_in: new Date('2026-04-23T01:15:00.000Z'),
+        work_hour: 8,
+        status: { attendance_status_name: 'Tepat Waktu' }
+      }
+    ])
+    .mockResolvedValueOnce([
+      {
+        time_in: new Date('2026-04-23T01:20:00.000Z'),
+        work_hour: 8,
+        status: { attendance_status_name: 'Terlambat' }
+      }
+    ]);
+};
+
 describe('summary settings cache', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -66,63 +125,10 @@ describe('summary settings cache', () => {
 
     mockAttendanceFindAndCountAll.mockResolvedValue({
       count: 2,
-      rows: [
-        {
-          id_attendance: 101,
-          attendance_date: '2026-04-23',
-          time_in: new Date('2026-04-23T01:15:00.000Z'),
-          time_out: new Date('2026-04-23T10:00:00.000Z'),
-          work_hour: 8,
-          notes: '',
-          user: {
-            id_users: 7,
-            full_name: 'Febri',
-            email: 'f@example.com',
-            nip_nim: '001',
-            role: { role_name: 'User' }
-          },
-          location: null,
-          attendance_category: { category_name: 'WFO' },
-          status: { attendance_status_name: 'Tepat Waktu' }
-        },
-        {
-          id_attendance: 102,
-          attendance_date: '2026-04-23',
-          time_in: new Date('2026-04-23T01:20:00.000Z'),
-          time_out: new Date('2026-04-23T10:00:00.000Z'),
-          work_hour: 8,
-          notes: '',
-          user: {
-            id_users: 8,
-            full_name: 'Diana',
-            email: 'd@example.com',
-            nip_nim: '002',
-            role: { role_name: 'User' }
-          },
-          location: null,
-          attendance_category: { category_name: 'WFH' },
-          status: { attendance_status_name: 'Terlambat' }
-        }
-      ]
+      rows: buildSummaryRows()
     });
 
-    mockAttendanceFindAll
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          time_in: new Date('2026-04-23T01:15:00.000Z'),
-          work_hour: 8,
-          status: { attendance_status_name: 'Tepat Waktu' }
-        }
-      ])
-      .mockResolvedValueOnce([
-        {
-          time_in: new Date('2026-04-23T01:20:00.000Z'),
-          work_hour: 8,
-          status: { attendance_status_name: 'Terlambat' }
-        }
-      ]);
+    arrangeAttendanceFindAllForSummary();
 
     const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
 
@@ -135,5 +141,28 @@ describe('summary settings cache', () => {
     expect(next).not.toHaveBeenCalled();
     expect(mockSettingsFindAll).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test('continues summary generation when settings preload fails', async () => {
+    mockSettingsFindAll.mockRejectedValueOnce(new Error('settings unavailable'));
+
+    mockAttendanceFindAndCountAll.mockResolvedValue({
+      count: 2,
+      rows: buildSummaryRows()
+    });
+
+    arrangeAttendanceFindAllForSummary();
+
+    const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
+
+    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockFuzzyCalculate).toHaveBeenCalledTimes(2);
   });
 });

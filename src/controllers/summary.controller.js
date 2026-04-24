@@ -382,18 +382,22 @@ export const getSummaryReport = async (req, res, next) => {
       }
     });
 
-    const settings = await Settings.findAll({
-      where: {
-        setting_key: {
-          [Op.in]: ['checkin.start_time']
-        }
-      }
-    });
-
     const settingsMap = {};
-    settings.forEach((setting) => {
-      settingsMap[setting.setting_key] = setting.setting_value;
-    });
+    try {
+      const settings = await Settings.findAll({
+        where: {
+          setting_key: {
+            [Op.in]: ['checkin.start_time']
+          }
+        }
+      });
+
+      settings.forEach((setting) => {
+        settingsMap[setting.setting_key] = setting.setting_value;
+      });
+    } catch (error) {
+      logger.error('Error preloading summary settings:', error);
+    }
 
     // Calculate discipline index for each user
     const userDisciplineMap = {};
