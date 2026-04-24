@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
 import config from '../config/index.js';
-import cloudinary from '../config/cloudinary.js';
+import { buildUserProfilePhotoKey, uploadBufferToSpaces } from '../config/spaces.js';
 import {
   User,
   Photo,
@@ -299,51 +299,7 @@ export const register = async (req, res) => {
     } // Hash password
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Upload photo to Cloudinary
-    let cloudinaryResult;
-    try {
-      cloudinaryResult = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: 'user_photos',
-            transformation: [
-              { width: 500, height: 500, crop: 'fill', gravity: 'face' },
-              { quality: 'auto' }
-            ],
-            resource_type: 'image'
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
-        stream.end(req.file.buffer);
-      });
-    } catch (uploadError) {
-      await transaction.rollback();
-      logger.error(`Cloudinary upload error: ${uploadError.message}`);
-      return res.status(500).json({
-        success: false,
-        code: 'E_UPLOAD',
-        message: 'Gagal mengupload foto ke cloud storage'
-      });
-    }
-
-    // Temporarily disable foreign key checks to handle circular dependency
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
-
-    // Create photo first
-    const photo = await Photo.create(
-      {
-        photo_url: cloudinaryResult.secure_url,
-        public_id: cloudinaryResult.public_id,
-        user_id: 1, // Temporary value, will be updated after user creation
-        photo_updated_at: new Date()
-      },
-      { transaction }
-    );
-
-    // Create user with photo reference
+    // Create user first, then upload photo to Spaces with final user id key
     const user = await User.create(
       {
         email,
@@ -355,21 +311,47 @@ export const register = async (req, res) => {
         id_position: id_position,
         id_divisions: id_divisions,
         id_programs: id_programs,
+        id_photos: null
+      },
+      { transaction }
+    );
+
+    let uploadResult;
+    try {
+      const storageKey = buildUserProfilePhotoKey(user.id_users, req.file.originalname);
+      uploadResult = await uploadBufferToSpaces({
+        key: storageKey,
+        buffer: req.file.buffer,
+        contentType: req.file.mimetype
+      });
+    } catch (uploadError) {
+      await transaction.rollback();
+      logger.error(`Spaces upload error: ${uploadError.message}`);
+      return res.status(500).json({
+        success: false,
+        code: 'E_UPLOAD',
+        message: 'Gagal mengupload foto ke cloud storage'
+      });
+    }
+
+    const photo = await Photo.create(
+      {
+        photo_url: uploadResult.url,
+        storage_provider: 'spaces',
+        storage_key: uploadResult.key,
+        public_id: null,
+        user_id: user.id_users,
+        photo_updated_at: new Date()
+      },
+      { transaction }
+    );
+
+    await user.update(
+      {
         id_photos: photo.id_photos
       },
       { transaction }
     );
-
-    // Update photo with correct user_id
-    await photo.update(
-      {
-        user_id: user.id_users
-      },
-      { transaction }
-    );
-
-    // Re-enable foreign key checks
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
 
     // Fetch user with role data for response
     const userWithRole = await User.findByPk(user.id_users, {
@@ -403,7 +385,7 @@ export const register = async (req, res) => {
       email: user.email,
       full_name: user.full_name,
       role_name: userWithRole.role?.role_name || null,
-      photo: cloudinaryResult.secure_url
+      photo: uploadResult.url
     };
 
     const token = jwt.sign(payload, config.jwt.secret, {
