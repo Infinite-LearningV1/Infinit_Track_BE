@@ -12,7 +12,8 @@ import {
   BookingStatus,
   User,
   Role,
-  LocationEvent
+  LocationEvent,
+  Photo
 } from '../models/index.js';
 import {
   calculateDistance,
@@ -1227,6 +1228,101 @@ export const deleteAttendance = async (req, res, next) => {
  * Get all attendances for admin/management with search, pagination and sorting
  * Protected route for admin and management roles only
  */
+export const getTodayLocations = async (req, res, next) => {
+  try {
+    const todayDate = getJakartaDateString();
+
+    const rows = await Attendance.findAll({
+      where: {
+        attendance_date: todayDate,
+        time_in: {
+          [Op.not]: null
+        }
+      },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id_users', 'full_name'],
+          include: [
+            {
+              model: Photo,
+              as: 'photo_file',
+              attributes: ['photo_url'],
+              required: false
+            }
+          ]
+        },
+        {
+          model: Location,
+          as: 'location',
+          attributes: ['latitude', 'longitude'],
+          required: false
+        },
+        {
+          model: AttendanceCategory,
+          as: 'attendance_category',
+          attributes: ['category_name']
+        }
+      ],
+      order: [['time_in', 'ASC']]
+    });
+
+    const heroMapStatusByCategory = {
+      WFO: 'WFO',
+      WFH: 'WFH',
+      WFA: 'WFA',
+      'Work From Office': 'WFO',
+      'Work From Home': 'WFH',
+      'Work From Anywhere': 'WFA'
+    };
+
+    const locations = rows
+      .map((attendance) => {
+        const latitude =
+          attendance.location?.latitude != null ? parseFloat(attendance.location.latitude) : null;
+        const longitude =
+          attendance.location?.longitude != null ? parseFloat(attendance.location.longitude) : null;
+        const categoryName = attendance.attendance_category?.category_name;
+        const status = categoryName ? heroMapStatusByCategory[categoryName] ?? null : null;
+
+        if (
+          latitude == null ||
+          longitude == null ||
+          Number.isNaN(latitude) ||
+          Number.isNaN(longitude) ||
+          !status
+        ) {
+          return null;
+        }
+
+        return {
+          user_id: attendance.user?.id_users,
+          full_name: attendance.user?.full_name || 'Unknown User',
+          photo: attendance.user?.photo_file?.photo_url || null,
+          status,
+          check_in_time: formatTimeOnly(attendance.time_in),
+          latitude,
+          longitude
+        };
+      })
+      .filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        date: todayDate,
+        timezone: 'Asia/Jakarta',
+        total_users: locations.length,
+        locations
+      },
+      message: 'Today locations retrieved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getAllAttendances = async (req, res, next) => {
   try {
     // Get query parameters with defaults

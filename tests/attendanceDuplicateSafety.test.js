@@ -72,7 +72,8 @@ describe('checkIn duplicate-safe behavior', () => {
       BookingStatus: {},
       User: {},
       Role: {},
-      LocationEvent: {}
+      LocationEvent: {},
+      Photo: {}
     }));
 
     jest.unstable_mockModule('../src/utils/geofence.js', () => ({
@@ -178,7 +179,8 @@ describe('checkIn duplicate-safe behavior', () => {
       BookingStatus: {},
       User: {},
       Role: {},
-      LocationEvent: {}
+      LocationEvent: {},
+      Photo: {}
     }));
 
     jest.unstable_mockModule('../src/utils/geofence.js', () => ({
@@ -261,7 +263,8 @@ describe('checkIn duplicate-safe behavior', () => {
       BookingStatus: {},
       User: {},
       Role: {},
-      LocationEvent: {}
+      LocationEvent: {},
+      Photo: {}
     }));
 
     jest.unstable_mockModule('../src/utils/geofence.js', () => ({
@@ -366,7 +369,8 @@ describe('checkIn duplicate-safe behavior', () => {
       BookingStatus: {},
       User: {},
       Role: {},
-      LocationEvent: {}
+      LocationEvent: {},
+      Photo: {}
     }));
 
     jest.unstable_mockModule('../src/utils/geofence.js', () => ({
@@ -446,7 +450,8 @@ describe('checkIn duplicate-safe behavior', () => {
       BookingStatus: {},
       User: {},
       Role: {},
-      LocationEvent: {}
+      LocationEvent: {},
+      Photo: {}
     }));
 
     jest.unstable_mockModule('../src/utils/geofence.js', () => ({
@@ -536,7 +541,8 @@ describe('checkIn duplicate-safe behavior', () => {
       BookingStatus: {},
       User: {},
       Role: {},
-      LocationEvent: {}
+      LocationEvent: {},
+      Photo: {}
     }));
 
     jest.unstable_mockModule('../src/utils/geofence.js', () => ({
