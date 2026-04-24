@@ -13,14 +13,22 @@ import {
   sequelize
 } from '../models/index.js';
 import logger from '../utils/logger.js';
-import { buildUserProfilePhotoKey, uploadBufferToSpaces } from '../config/spaces.js';
+import { buildUserProfilePhotoKey, uploadBufferToSpaces, deleteSpacesObject } from '../config/spaces.js';
 
 const deleteLegacyCloudinaryPhoto = async (publicId) => {
   try {
     const { default: cloudinary } = await import('../config/cloudinary.js');
-    await cloudinary.uploader.destroy(publicId);
-    logger.info(`Old photo deleted from Cloudinary: ${publicId}`);
-    return true;
+    const destroyResult = await cloudinary.uploader.destroy(publicId);
+
+    if (destroyResult?.result === 'ok') {
+      logger.info(`Old photo deleted from Cloudinary: ${publicId}`);
+      return true;
+    }
+
+    logger.warn(
+      `Old photo was not deleted from Cloudinary ${publicId}: ${destroyResult?.result ?? 'unknown result'}`
+    );
+    return false;
   } catch (deleteError) {
     logger.warn(`Failed to delete old photo from Cloudinary ${publicId}: ${deleteError.message}`);
     return false;
@@ -172,6 +180,8 @@ export const getAllUsers = async (req, res, next) => {
 
 // POST /users/:id/photo - Admin Upload Foto Wajah User
 export const uploadUserPhoto = async (req, res, next) => {
+  let uploadedSpacesKey = null;
+
   try {
     const { id } = req.params;
 
@@ -195,9 +205,10 @@ export const uploadUserPhoto = async (req, res, next) => {
     // Get old photo data for deletion
     let oldPublicId = null;
     let oldPhotoDeleted = false;
+    let oldPhoto = null;
 
     if (user.id_photos) {
-      const oldPhoto = await Photo.findByPk(user.id_photos);
+      oldPhoto = await Photo.findByPk(user.id_photos);
       if (oldPhoto && oldPhoto.public_id) {
         oldPublicId = oldPhoto.public_id;
       }
@@ -209,19 +220,20 @@ export const uploadUserPhoto = async (req, res, next) => {
       buffer: req.file.buffer,
       contentType: req.file.mimetype
     });
+    uploadedSpacesKey = uploadResult.key;
 
     // Create or update photo record
     let photo = await Photo.findOne({ where: { user_id: id } });
 
     if (photo) {
-      // Update existing photo
-      await photo.update({
+      const nextPhotoPayload = {
         photo_url: uploadResult.url,
         storage_provider: 'spaces',
         storage_key: uploadResult.key,
-        public_id: null,
         photo_updated_at: new Date()
-      });
+      };
+
+      await photo.update(nextPhotoPayload);
     } else {
       // Create new photo record
       photo = await Photo.create({
@@ -241,6 +253,10 @@ export const uploadUserPhoto = async (req, res, next) => {
 
     if (oldPublicId) {
       oldPhotoDeleted = await deleteLegacyCloudinaryPhoto(oldPublicId);
+
+      if (oldPhotoDeleted && oldPhoto) {
+        await photo.update({ public_id: null });
+      }
     }
 
     logger.info(`Photo uploaded for user ${id}: ${uploadResult.url}`);
@@ -257,6 +273,16 @@ export const uploadUserPhoto = async (req, res, next) => {
       }
     });
   } catch (error) {
+    if (uploadedSpacesKey) {
+      try {
+        await deleteSpacesObject(uploadedSpacesKey);
+      } catch (cleanupError) {
+        logger.warn(
+          `Failed to clean up orphaned Spaces object ${uploadedSpacesKey}: ${cleanupError.message}`
+        );
+      }
+    }
+
     logger.error(`Error uploading user photo: ${error.message}`, { stack: error.stack });
     next(error);
   }
@@ -484,6 +510,7 @@ export const deleteUser = async (req, res, next) => {
 // POST /users - Create New User (Admin and Management only)
 export const createUser = async (req, res, next) => {
   const transaction = await sequelize.transaction();
+  let uploadResult;
 
   try {
     const {
@@ -563,7 +590,7 @@ export const createUser = async (req, res, next) => {
     );
 
     const storageKey = buildUserProfilePhotoKey(newUser.id_users, req.file.originalname);
-    const uploadResult = await uploadBufferToSpaces({
+    uploadResult = await uploadBufferToSpaces({
       key: storageKey,
       buffer: req.file.buffer,
       contentType: req.file.mimetype
@@ -685,6 +712,14 @@ export const createUser = async (req, res, next) => {
       message: 'User created successfully'
     });
   } catch (error) {
+    if (uploadResult?.key) {
+      try {
+        await deleteSpacesObject(uploadResult.key);
+      } catch (cleanupError) {
+        logger.warn(`Failed to clean up Spaces object ${uploadResult.key}: ${cleanupError.message}`);
+      }
+    }
+
     await transaction.rollback();
     logger.error(`Error creating user: ${error.message}`, { stack: error.stack });
     next(error);

@@ -1,4 +1,24 @@
+import { jest } from '@jest/globals';
+
 describe('photo storage contract', () => {
+  const envBackup = { ...process.env };
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = {
+      ...envBackup,
+      SPACES_ENDPOINT: 'sgp1.digitaloceanspaces.com',
+      SPACES_REGION: 'sgp1',
+      SPACES_BUCKET: 'infinite-track-staging-sgp1',
+      SPACES_ACCESS_KEY_ID: 'test-access-key',
+      SPACES_SECRET_ACCESS_KEY: 'test-secret-key'
+    };
+  });
+
+  afterEach(() => {
+    process.env = { ...envBackup };
+  });
+
   test('photo model exposes photo_url + storage_provider + storage_key', async () => {
     const { default: Photo } = await import('../src/models/photo.model.js');
 
@@ -7,16 +27,15 @@ describe('photo storage contract', () => {
     expect(Photo.rawAttributes.storage_key).toBeDefined();
   });
 
-  test('new photo writes are expected to persist spaces metadata', () => {
-    const newPhoto = {
-      photo_url:
-        'https://infinite-track-staging-sgp1.sgp1.digitaloceanspaces.com/users/1/profile/file.jpg',
-      storage_provider: 'spaces',
-      storage_key: 'users/1/profile/file.jpg'
-    };
+  test('spaces helpers produce storage key and public url contract for new writes', async () => {
+    const { buildUserProfilePhotoKey, buildSpacesUrl } = await import('../src/config/spaces.js');
 
-    expect(newPhoto.storage_provider).toBe('spaces');
-    expect(newPhoto.storage_key).toMatch(/^users\/1\/profile\//);
-    expect(newPhoto.photo_url).toContain('digitaloceanspaces.com');
+    const storageKey = buildUserProfilePhotoKey(1, 'profile photo.jpg');
+    const photoUrl = buildSpacesUrl(storageKey);
+
+    expect(storageKey).toMatch(/^users\/1\/profile\//);
+    expect(storageKey).toContain('profile-photo.jpg');
+    expect(photoUrl).toContain('digitaloceanspaces.com');
+    expect(photoUrl).toContain(storageKey);
   });
 });

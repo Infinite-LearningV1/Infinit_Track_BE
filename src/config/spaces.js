@@ -90,9 +90,23 @@ export const uploadBufferToSpaces = async ({ key, buffer, contentType }) => {
   };
 };
 
+export const deleteSpacesObject = async (key) => {
+  const client = await getClient();
+  const { DeleteObjectCommand } = await import(awsS3ModuleName);
+  const { bucket } = getSpacesConfig();
+
+  return client.send(
+    new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key
+    })
+  );
+};
+
 export default {
   buildSpacesUrl,
   buildUserProfilePhotoKey,
   putSpacesObject,
-  uploadBufferToSpaces
+  uploadBufferToSpaces,
+  deleteSpacesObject
 };
