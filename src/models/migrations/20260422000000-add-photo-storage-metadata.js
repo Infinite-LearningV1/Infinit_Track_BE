@@ -1,7 +1,7 @@
 'use strict';
 
 /** @type {import('sequelize-cli').Migration} */
-module.exports = {
+const migration = {
   async up(queryInterface, Sequelize) {
     await queryInterface.addColumn('photos', 'storage_provider', {
       type: Sequelize.STRING(32),
@@ -21,3 +21,9 @@ module.exports = {
     await queryInterface.removeColumn('photos', 'storage_provider');
   }
 };
+
+export default migration;
+
+if (typeof module !== 'undefined') {
+  module.exports = migration;
+}

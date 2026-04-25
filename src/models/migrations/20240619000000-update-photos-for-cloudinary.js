@@ -1,24 +1,18 @@
-// 'use strict';
+'use strict';
 
-// /** @type {import('sequelize-cli').Migration} */
-// module.exports = {
-//   async up(queryInterface, Sequelize) {
-//     // Add public_id column
-//     await queryInterface.addColumn('photos', 'public_id', {
-//       type: Sequelize.STRING(255),
-//       allowNull: true,
-//       after: 'file_path'
-//     });
+/** @type {import('sequelize-cli').Migration} */
+const migration = {
+  async up() {
+    // Historical alignment stub: baseline schema already uses photo_url and public_id.
+  },
 
-//     // Rename file_path to photo_url
-//     await queryInterface.renameColumn('photos', 'file_path', 'photo_url');
-//   },
+  async down() {
+    // No rollback needed for historical alignment stub.
+  }
+};
 
-//   async down(queryInterface, Sequelize) {
-//     // Rename photo_url back to file_path
-//     await queryInterface.renameColumn('photos', 'photo_url', 'file_path');
+export default migration;
 
-//     // Remove public_id column
-//     await queryInterface.removeColumn('photos', 'public_id');
-//   }
-// };
+if (typeof module !== 'undefined') {
+  module.exports = migration;
+}

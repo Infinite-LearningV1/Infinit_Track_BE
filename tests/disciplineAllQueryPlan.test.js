@@ -7,6 +7,7 @@ const mockCalculateDisciplineIndex = jest.fn(async () => ({
   score: 82,
   label: 'Tinggi'
 }));
+const mockLoggerInfo = jest.fn();
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
   Attendance: { findAll: mockAttendanceFindAll },
@@ -22,7 +23,7 @@ jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
-  default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  default: { info: mockLoggerInfo, warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 
 const buildRes = () => ({
@@ -37,6 +38,7 @@ describe('discipline all query plan', () => {
     mockAttendanceFindAll.mockReset();
     mockGetDisciplineAhpWeights.mockClear();
     mockCalculateDisciplineIndex.mockClear();
+    mockLoggerInfo.mockClear();
   });
 
   test('loads attendance once for all users instead of once per user', async () => {
@@ -88,6 +90,7 @@ describe('discipline all query plan', () => {
     expect(next).not.toHaveBeenCalled();
     expect(mockUserFindAll).toHaveBeenCalledTimes(1);
     expect(mockAttendanceFindAll).toHaveBeenCalledTimes(1);
+    expect(mockLoggerInfo).toHaveBeenCalledWith('Fetched 2 attendance records in 1 query');
     expect(mockCalculateDisciplineIndex).toHaveBeenCalledTimes(2);
     expect(res.status).toHaveBeenCalledWith(200);
   });
