@@ -9,7 +9,7 @@ const indexExists = async (queryInterface, tableName, indexName, transaction) =>
 };
 
 /** @type {import('sequelize-cli').Migration} */
-module.exports = {
+const migration = {
   async up(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
       // Step 1: Check and clean duplicate attendance records
@@ -68,3 +68,9 @@ module.exports = {
     await queryInterface.removeIndex('bookings', 'idx_bookings_user_schedule');
   }
 };
+
+export default migration;
+
+if (typeof module !== 'undefined') {
+  module.exports = migration;
+}
