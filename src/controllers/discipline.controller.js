@@ -209,6 +209,8 @@ export const getAllDisciplineIndices = async (req, res, next) => {
 
     const attendancesByUser = groupAttendancesByUser(attendances);
 
+    logger.info(`Fetched ${attendances.length} attendance records in 1 query`);
+
     for (const user of users) {
       try {
         const userMetrics = aggregateMetricsFromAttendances(
