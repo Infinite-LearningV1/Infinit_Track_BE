@@ -98,23 +98,6 @@ services:
         scope: RUN_TIME
         type: GENERAL
 
-      # Geofence Configuration (from business flow requirements)
-      - key: GEOFENCE_RADIUS_DEFAULT_M
-        value: '100'
-        scope: RUN_TIME
-        type: GENERAL
-
-      # Auto Checkout Configuration (from business flow requirements)
-      - key: AUTO_CHECKOUT_IDLE_MIN
-        value: '10'
-        scope: RUN_TIME
-        type: GENERAL
-
-      - key: AUTO_CHECKOUT_TBUFFER_MIN
-        value: '30'
-        scope: RUN_TIME
-        type: GENERAL
-
       # Optional: Geoapify Key (if needed)
       - key: GEOAPIFY_KEY
         scope: RUN_TIME

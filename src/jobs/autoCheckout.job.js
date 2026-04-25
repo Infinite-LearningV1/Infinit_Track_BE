@@ -3,15 +3,9 @@ console.log('AutoCheckout job: Starting file execution...');
 import cron from 'node-cron';
 import { Op } from 'sequelize';
 
-import {
-  Attendance,
-  Settings,
-  User,
-  LocationEvent,
-  AttendanceCategory,
-  Booking
-} from '../models/index.js';
+import { Attendance, User, LocationEvent, AttendanceCategory, Booking } from '../models/index.js';
 import { calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
+import { getOperationalSettings } from '../utils/settings.js';
 import { toJakartaTime } from '../utils/geofence.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
@@ -19,9 +13,6 @@ import { executeJobWithTimeout, processBatchRecords } from '../utils/jobHelper.j
 import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
-
-const TOLERANCE_MIN = parseInt(process.env.LATE_CHECKOUT_TOLERANCE_MIN || '120', 10);
-const DEFAULT_SHIFT_END = process.env.DEFAULT_SHIFT_END || '17:00:00';
 
 export const startAutoCheckoutJob = () => {
   logger.info('Missed checkout flagger scheduled to run every 30 minutes');
@@ -268,10 +259,8 @@ export const runSmartAutoCheckoutForDate = async (targetDate) => {
   try {
     logger.info(`Smart Auto Checkout started for date: ${targetDate}`);
     const weights = getFahpWeights();
-    const fallbackSetting = await Settings.findOne({
-      where: { setting_key: 'checkout.fallback_time' }
-    });
-    const fallbackShiftEnd = fallbackSetting?.setting_value || '17:00:00';
+    const operationalSettings = await getOperationalSettings();
+    const fallbackShiftEnd = operationalSettings.defaultShiftEnd;
 
     let smartUsed = 0;
     let fallbackUsed = 0;
@@ -409,11 +398,9 @@ const runMissedCheckoutFlagger = async () => {
     const jakartaTime = new Date(jakartaTimeString);
     const todayDate = jakartaTime.toISOString().split('T')[0];
 
-    // Load fallback shift end from settings if available
-    const fallbackSetting = await Settings.findOne({
-      where: { setting_key: 'checkout.fallback_time' }
-    });
-    const fallbackShiftEnd = fallbackSetting?.setting_value || DEFAULT_SHIFT_END;
+    const operationalSettings = await getOperationalSettings();
+    const fallbackShiftEnd = operationalSettings.defaultShiftEnd;
+    const toleranceMin = operationalSettings.lateCheckoutToleranceMin;
 
     let totalFlagged = 0;
 
@@ -444,7 +431,7 @@ const runMissedCheckoutFlagger = async () => {
             // Determine shift end time in Jakarta timezone
             const shiftEndJakarta = new Date(`${todayDate}T${fallbackShiftEnd}+07:00`);
 
-            const toleranceMs = TOLERANCE_MIN * 60 * 1000;
+            const toleranceMs = toleranceMin * 60 * 1000;
             const deadline = new Date(shiftEndJakarta.getTime() + toleranceMs);
 
             if (jakartaTime >= deadline) {

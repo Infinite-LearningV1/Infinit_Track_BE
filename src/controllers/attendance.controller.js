@@ -23,6 +23,7 @@ import {
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
+import { getOperationalSettings } from '../utils/settings.js';
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
@@ -813,6 +814,7 @@ export const debugCheckInTime = async (req, res) => {
 export const getAttendanceStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const operationalSettings = await getOperationalSettings();
 
     // Effective time input: prioritize query ?now, then header X-Client-Now; fallback to server Jakarta time
     let effectiveNow = null;
@@ -945,7 +947,7 @@ export const getAttendanceStatus = async (req, res, next) => {
           location_id: null,
           latitude: -6.2088,
           longitude: 106.8456,
-          radius: 100,
+          radius: operationalSettings.geofenceRadiusDefaultM,
           description: 'Kantor Pusat Jakarta',
           address: 'Jl. Sudirman No. 1, Jakarta Pusat',
           category: 'Work From Office'
@@ -1697,8 +1699,9 @@ export const getSmartEngineConfig = async (req, res, next) => {
     }
 
     // Feature deprecated in FAHP refactor - only flagger configuration is returned
-    const toleranceMin = parseInt(process.env.LATE_CHECKOUT_TOLERANCE_MIN || '120', 10);
-    const defaultShiftEnd = process.env.DEFAULT_SHIFT_END || '17:00:00';
+    const operationalSettings = await getOperationalSettings();
+    const toleranceMin = operationalSettings.lateCheckoutToleranceMin;
+    const defaultShiftEnd = operationalSettings.defaultShiftEnd;
 
     res.status(200).json({
       success: true,
@@ -1724,6 +1727,8 @@ export const getSmartEngineConfig = async (req, res, next) => {
  */
 export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
   try {
+    const operationalSettings = await getOperationalSettings();
+
     // Get the auto checkout time setting from database
     const autoTimeSetting = await Settings.findOne({
       where: {
@@ -1787,7 +1792,7 @@ export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
           historicalHours = totalHours / userAttendances.length;
         }
         // Smart prediction removed; provide info using fallback time
-        const fallback = '17:00:00';
+        const fallback = operationalSettings.defaultShiftEnd;
         const [hours, minutes, seconds] = fallback.split(':').map(Number);
         const predictedCheckoutTime = new Date(timeIn);
         predictedCheckoutTime.setHours(hours, minutes, seconds || 0, 0);
@@ -1822,6 +1827,13 @@ export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
         auto_checkout_time: autoTimeSetting?.setting_value || 'Not configured',
         current_jakarta_time: currentTimeString,
         current_date: currentDate,
+        operational_settings: {
+          geofence_radius_default_m: operationalSettings.geofenceRadiusDefaultM,
+          auto_checkout_idle_min: operationalSettings.autoCheckoutIdleMin,
+          auto_checkout_tbuffer_min: operationalSettings.autoCheckoutTBufferMin,
+          late_checkout_tolerance_min: operationalSettings.lateCheckoutToleranceMin,
+          default_shift_end: operationalSettings.defaultShiftEnd
+        },
         active_attendances_count: activeAttendances.length,
         smart_predictions: smartPredictions,
         traditional_checkouts: activeAttendances.map((att) => ({
@@ -1830,7 +1842,7 @@ export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
           user_name: att.user?.full_name,
           time_in: formatTimeOnly(att.time_in),
           attendance_date: att.attendance_date,
-          traditional_checkout: autoTimeSetting?.setting_value || '17:00:00'
+          traditional_checkout: autoTimeSetting?.setting_value || operationalSettings.defaultShiftEnd
         }))
       }
     });
