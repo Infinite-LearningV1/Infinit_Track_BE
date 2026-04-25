@@ -60,6 +60,19 @@ describe('backend runtime config contract', () => {
     expect(config.jwt.refreshInactivityWindowSeconds).toBe(172800);
   });
 
+  test('does not expose operational attendance settings as env-backed runtime config', async () => {
+    process.env.JWT_SECRET = 'test-secret';
+    process.env.GEOFENCE_RADIUS_DEFAULT_M = '999';
+    process.env.AUTO_CHECKOUT_IDLE_MIN = '99';
+    process.env.AUTO_CHECKOUT_TBUFFER_MIN = '88';
+    setRequiredBaseEnv();
+
+    const config = await loadRuntimeConfig();
+
+    expect(config.geofence).toBeUndefined();
+    expect(config.autoCheckout).toBeUndefined();
+  });
+
   test('declares image-based runtime with explicit BACKEND_IMAGE_TAG in docker compose', () => {
     const compose = readDockerCompose();
 
