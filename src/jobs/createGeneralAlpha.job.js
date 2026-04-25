@@ -5,6 +5,7 @@ import Holidays from 'date-holidays';
 import { User, Role, Attendance, Booking } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout } from '../utils/jobHelper.js';
+import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 
 /**
  * Main function to create general alpha records for users who didn't check-in
@@ -163,6 +164,11 @@ const createGeneralAlphaRecords = async () => {
           logger.debug(`Skipping user ID: ${userId} - attendance record already exists`);
         }
       } catch (error) {
+        if (isAttendanceDuplicateConstraintError(error)) {
+          logger.info(`Skipping user ID: ${userId} - duplicate attendance detected during create`);
+          continue;
+        }
+
         errorCount++;
         logger.error(`Error creating alpha record for user ID: ${userId} - ${error.message}`);
       }
@@ -321,6 +327,12 @@ export const runGeneralAlphaForDate = async (targetDate) => {
         });
         created++;
       } catch (e) {
+        if (isAttendanceDuplicateConstraintError(e)) {
+          skipped++;
+          logger.info(`GENERAL alpha duplicate-safe skip for user ${userId} on ${targetDate}`);
+          continue;
+        }
+
         logger.error(`GENERAL alpha override failed for user ${userId}: ${e.message}`);
       }
     }

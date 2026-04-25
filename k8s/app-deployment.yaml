@@ -1,0 +1,63 @@
+# Replace <your-dockerhub-username> with your actual Docker Hub username
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infinit-track-app
+  namespace: infinit-track
+  labels:
+    app: infinit-track-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: infinit-track-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: infinit-track-app
+    spec:
+      initContainers:
+        - name: migrate
+          image: <your-dockerhub-username>/infinit-track-backend:latest
+          command: ["node", "scripts/migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: infinit-track-config
+            - secretRef:
+                name: infinit-track-secrets
+      containers:
+        - name: app
+          image: <your-dockerhub-username>/infinit-track-backend:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: infinit-track-config
+            - secretRef:
+                name: infinit-track-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3

@@ -4,7 +4,6 @@ import fuzzyEngine from '../src/utils/fuzzyAhpEngine.js';
 describe('WFA Recommendation FAHP Logic', () => {
   beforeAll(() => {
     process.env.FAHP_METHOD = 'extent';
-    process.env.AHP_CR_THRESHOLD = '0.10';
   });
 
   beforeEach(() => {

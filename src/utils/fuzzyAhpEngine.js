@@ -12,7 +12,7 @@ let cachedDiscWeights = null;
 let cachedWfaCR = null;
 let cachedDiscCR = null;
 
-const CR_THRESHOLD = parseFloat(process.env.AHP_CR_THRESHOLD || '0.10');
+const CR_THRESHOLD = 0.10;
 function selectWeights(matrixTFN) {
   return extentWeightsTFN(matrixTFN);
 }

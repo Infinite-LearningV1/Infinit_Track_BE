@@ -39,6 +39,18 @@ coverage/
 *.tmp
 *.temp
 docs/
+!docs/openapi.yaml
 .blackboxrules
 
 /memory-bank
+
+# Docker
+docker-compose.override.yml
+
+# Claude Code (keep settings.json, skills/, agents/ committed)
+.claude/settings.local.json
+.claude/worktrees/
+.worktrees/
+
+# Kubernetes secrets (never commit real secrets)
+k8s/secret.yaml

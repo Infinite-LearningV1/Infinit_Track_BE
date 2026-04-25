@@ -1,0 +1,29 @@
+'use strict';
+
+/** @type {import('sequelize-cli').Migration} */
+const migration = {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.addColumn('photos', 'storage_provider', {
+      type: Sequelize.STRING(32),
+      allowNull: true,
+      defaultValue: null
+    });
+
+    await queryInterface.addColumn('photos', 'storage_key', {
+      type: Sequelize.STRING,
+      allowNull: true,
+      defaultValue: null
+    });
+  },
+
+  async down(queryInterface) {
+    await queryInterface.removeColumn('photos', 'storage_key');
+    await queryInterface.removeColumn('photos', 'storage_provider');
+  }
+};
+
+export default migration;
+
+if (typeof module !== 'undefined') {
+  module.exports = migration;
+}

@@ -1,8 +1,5 @@
 import { v2 as cloudinary } from 'cloudinary';
-import dotenv from 'dotenv';
-
-// Ensure environment variables are loaded
-dotenv.config();
+import './loadEnv.js';
 
 // Validate required environment variables
 const requiredEnvVars = {
@@ -13,7 +10,7 @@ const requiredEnvVars = {
 
 // Check if all required variables are present
 const missingVars = Object.entries(requiredEnvVars)
-  .filter(([value]) => !value)
+  .filter(([, value]) => !value)
   .map(([key]) => key);
 
 if (missingVars.length > 0) {

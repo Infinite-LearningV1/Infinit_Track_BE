@@ -11,3 +11,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+        env:
+          CLOUDINARY_CLOUD_NAME: test_cloud
+          CLOUDINARY_API_KEY: test_key
+          CLOUDINARY_API_SECRET: test_secret

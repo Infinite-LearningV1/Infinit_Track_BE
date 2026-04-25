@@ -12,7 +12,8 @@ import {
   BookingStatus,
   User,
   Role,
-  LocationEvent
+  LocationEvent,
+  Photo
 } from '../models/index.js';
 import {
   calculateDistance,
@@ -23,6 +24,8 @@ import {
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
+import { getOperationalSettings } from '../utils/settings.js';
+import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
@@ -35,51 +38,9 @@ import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
-export const clockIn = async (req, res) => {
-  try {
-    const { location } = req.body;
-    const userId = req.user.id;
-
-    // Check if user already clocked in today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const existingAttendance = await Attendance.findOne({
-      where: {
-        userId,
-        clockIn: {
-          [Op.gte]: today
-        }
-      }
-    });
-
-    if (existingAttendance) {
-      return res.status(400).json({ message: 'Already clocked in today' });
-    }
-
-    const attendance = await Attendance.create({
-      userId,
-      clockIn: new Date(),
-      location
-    });
-
-    res.status(201).json({ message: 'Clock in successful', attendance });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
  * Admin/Management only
- * Body schema:
- * {
- *   candidates: { HIST?: string|Date, CHECKIN?: string|Date, CONTEXT?: string|Date, TRANSITION?: string|Date },
- *   weights: number[4], // [HIST, CHECKIN, CONTEXT, TRANSITION]
- *   targetDate: string (YYYY-MM-DD),
- *   timeIn: string|Date (ISO),
- *   fallbackEndStr?: string (HH:mm:ss)
- * }
  */
 export const testWeightedPrediction = async (req, res) => {
   try {
@@ -165,36 +126,6 @@ export const testWeightedPrediction = async (req, res) => {
   } catch (error) {
     logger.error('Error in testWeightedPrediction:', error);
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
-  }
-};
-
-export const clockOut = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // Find today's attendance record
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const attendance = await Attendance.findOne({
-      where: {
-        userId,
-        clockIn: {
-          [Op.gte]: today
-        },
-        clockOut: null
-      }
-    });
-
-    if (!attendance) {
-      return res.status(400).json({ message: 'No clock in record found for today' });
-    }
-
-    await attendance.update({ clockOut: new Date() });
-
-    res.json({ message: 'Clock out successful', attendance });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -440,9 +371,18 @@ export const getAttendanceHistory = async (req, res) => {
 };
 
 export const checkIn = async (req, res, next) => {
-  const transaction = await sequelize.transaction();
+  let transaction;
+  let transactionFinished = false;
+  let rollbackAttempted = false;
+
+  const rollbackTransaction = async () => {
+    rollbackAttempted = true;
+    await transaction.rollback();
+    transactionFinished = true;
+  };
 
   try {
+    transaction = await sequelize.transaction();
     // 1. Get Input Data
     const userId = req.user.id;
     const { category_id, latitude, longitude, notes = '', booking_id } = req.body;
@@ -463,8 +403,8 @@ export const checkIn = async (req, res, next) => {
     });
 
     if (existingAttendance) {
-      await transaction.rollback();
-      return res.status(400).json({
+      await rollbackTransaction();
+      return res.status(409).json({
         success: false,
         message: 'Anda sudah melakukan check-in hari ini.'
       });
@@ -507,7 +447,7 @@ export const checkIn = async (req, res, next) => {
       const isWeekend = localTime.getDay() === 0 || localTime.getDay() === 6;
 
       if ((isHoliday && !holidayCheckinEnabled) || (isWeekend && !weekendCheckinEnabled)) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Check-in tidak diizinkan pada hari libur.'
@@ -525,7 +465,7 @@ export const checkIn = async (req, res, next) => {
       parseInt(checkinEndTime.split(':')[0]) * 60 + parseInt(checkinEndTime.split(':')[1]);
 
     if (currentTimeMinutes < checkinStartMinutes || currentTimeMinutes > checkinEndMinutes) {
-      await transaction.rollback();
+      await rollbackTransaction();
       return res.status(400).json({
         success: false,
         message: `Check-in hanya bisa dilakukan pada jam ${checkinStartTime.substring(0, 5)} - ${checkinEndTime.substring(0, 5)}.`
@@ -546,7 +486,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!wfoLocation) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(500).json({
           success: false,
           message: 'Konfigurasi lokasi kantor (WFO) tidak ditemukan. Silakan hubungi admin.'
@@ -562,7 +502,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > wfoLocation.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -582,7 +522,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!wfhLocation) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Lokasi WFH tidak ditemukan. Silakan hubungi admin.'
@@ -597,7 +537,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > wfhLocation.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -608,7 +548,7 @@ export const checkIn = async (req, res, next) => {
     } else if (category_id === 3) {
       // WFA (Work From Anywhere)
       if (!booking_id) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking ID wajib untuk WFA.'
@@ -629,7 +569,7 @@ export const checkIn = async (req, res, next) => {
       });
 
       if (!booking) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak ditemukan.'
@@ -638,7 +578,7 @@ export const checkIn = async (req, res, next) => {
 
       // Additional validations for WFA booking
       if (booking.user_id !== userId) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak valid untuk user ini.'
@@ -646,7 +586,7 @@ export const checkIn = async (req, res, next) => {
       }
 
       if (booking.status !== 1) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking belum disetujui.'
@@ -654,7 +594,7 @@ export const checkIn = async (req, res, next) => {
       }
 
       if (booking.schedule_date !== todayDate) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Booking tidak berlaku untuk hari ini.'
@@ -668,7 +608,7 @@ export const checkIn = async (req, res, next) => {
       );
 
       if (distance > booking.location.radius) {
-        await transaction.rollback();
+        await rollbackTransaction();
         return res.status(400).json({
           success: false,
           message: 'Anda berada di luar radius lokasi yang diizinkan.'
@@ -725,28 +665,47 @@ export const checkIn = async (req, res, next) => {
       updated_at: wibTimeForDB // SAVE WIB TIME
     };
 
-    const newAttendance = await Attendance.create(attendanceData, { transaction });
-    await transaction.commit();
+    try {
+      const newAttendance = await Attendance.create(attendanceData, { transaction });
+      await transaction.commit();
+      transactionFinished = true;
 
-    // 8. Send Success Response dengan informasi status yang telah ditentukan
-    res.status(201).json({
-      success: true,
-      data: {
-        ...newAttendance.toJSON(),
-        status_classification: {
-          status_id: determinedStatusId,
-          status_label: statusLabel,
-          check_in_time: `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`,
-          time_rules: {
-            start_time: checkinStartTime,
-            late_time: lateTime
+      // 8. Send Success Response dengan informasi status yang telah ditentukan
+      return res.status(201).json({
+        success: true,
+        data: {
+          ...newAttendance.toJSON(),
+          status_classification: {
+            status_id: determinedStatusId,
+            status_label: statusLabel,
+            check_in_time: `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`,
+            time_rules: {
+              start_time: checkinStartTime,
+              late_time: lateTime
+            }
           }
-        }
-      },
-      message: `Check-in berhasil dengan status: ${statusLabel}`
-    });
+        },
+        message: `Check-in berhasil dengan status: ${statusLabel}`
+      });
+    } catch (error) {
+      if (isAttendanceDuplicateConstraintError(error)) {
+        await rollbackTransaction();
+        return res.status(409).json({
+          success: false,
+          message: 'Anda sudah melakukan check-in hari ini.'
+        });
+      }
+
+      throw error;
+    }
   } catch (error) {
-    await transaction.rollback();
+    if (!transactionFinished && !rollbackAttempted) {
+      try {
+        await rollbackTransaction();
+      } catch (rollbackError) {
+        error.rollbackError = rollbackError;
+      }
+    }
     next(error);
   }
 };
@@ -856,6 +815,7 @@ export const debugCheckInTime = async (req, res) => {
 export const getAttendanceStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const operationalSettings = await getOperationalSettings();
 
     // Effective time input: prioritize query ?now, then header X-Client-Now; fallback to server Jakarta time
     let effectiveNow = null;
@@ -988,7 +948,7 @@ export const getAttendanceStatus = async (req, res, next) => {
           location_id: null,
           latitude: -6.2088,
           longitude: 106.8456,
-          radius: 100,
+          radius: operationalSettings.geofenceRadiusDefaultM,
           description: 'Kantor Pusat Jakarta',
           address: 'Jl. Sudirman No. 1, Jakarta Pusat',
           category: 'Work From Office'
@@ -1122,7 +1082,7 @@ export const checkOut = async (req, res, next) => {
     const activeBooking = await Booking.findOne({
       where: {
         user_id: userId,
-        status: 2, // status approved (assuming 2 is approved)
+        status: 1, // approved (booking_status: 1=approved, 2=rejected, 3=pending)
         schedule_date: todayDate
       },
       include: [
@@ -1270,6 +1230,101 @@ export const deleteAttendance = async (req, res, next) => {
  * Get all attendances for admin/management with search, pagination and sorting
  * Protected route for admin and management roles only
  */
+export const getTodayLocations = async (req, res, next) => {
+  try {
+    const todayDate = getJakartaDateString();
+
+    const rows = await Attendance.findAll({
+      where: {
+        attendance_date: todayDate,
+        time_in: {
+          [Op.not]: null
+        }
+      },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id_users', 'full_name'],
+          include: [
+            {
+              model: Photo,
+              as: 'photo_file',
+              attributes: ['photo_url'],
+              required: false
+            }
+          ]
+        },
+        {
+          model: Location,
+          as: 'location',
+          attributes: ['latitude', 'longitude'],
+          required: false
+        },
+        {
+          model: AttendanceCategory,
+          as: 'attendance_category',
+          attributes: ['category_name']
+        }
+      ],
+      order: [['time_in', 'ASC']]
+    });
+
+    const heroMapStatusByCategory = {
+      WFO: 'WFO',
+      WFH: 'WFH',
+      WFA: 'WFA',
+      'Work From Office': 'WFO',
+      'Work From Home': 'WFH',
+      'Work From Anywhere': 'WFA'
+    };
+
+    const locations = rows
+      .map((attendance) => {
+        const latitude =
+          attendance.location?.latitude != null ? parseFloat(attendance.location.latitude) : null;
+        const longitude =
+          attendance.location?.longitude != null ? parseFloat(attendance.location.longitude) : null;
+        const categoryName = attendance.attendance_category?.category_name;
+        const status = categoryName ? heroMapStatusByCategory[categoryName] ?? null : null;
+
+        if (
+          latitude == null ||
+          longitude == null ||
+          Number.isNaN(latitude) ||
+          Number.isNaN(longitude) ||
+          !status
+        ) {
+          return null;
+        }
+
+        return {
+          user_id: attendance.user?.id_users,
+          full_name: attendance.user?.full_name || 'Unknown User',
+          photo: attendance.user?.photo_file?.photo_url || null,
+          status,
+          check_in_time: formatTimeOnly(attendance.time_in),
+          latitude,
+          longitude
+        };
+      })
+      .filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        date: todayDate,
+        timezone: 'Asia/Jakarta',
+        total_users: locations.length,
+        locations
+      },
+      message: 'Today locations retrieved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getAllAttendances = async (req, res, next) => {
   try {
     // Get query parameters with defaults
@@ -1651,7 +1706,7 @@ export const logLocationEvent = async (req, res, next) => {
       });
     }
 
-    if (activeAttendance.check_out_time) {
+    if (activeAttendance.time_out) {
       return res.status(400).json({
         success: false,
         message:
@@ -1740,8 +1795,9 @@ export const getSmartEngineConfig = async (req, res, next) => {
     }
 
     // Feature deprecated in FAHP refactor - only flagger configuration is returned
-    const toleranceMin = parseInt(process.env.LATE_CHECKOUT_TOLERANCE_MIN || '120', 10);
-    const defaultShiftEnd = process.env.DEFAULT_SHIFT_END || '17:00:00';
+    const operationalSettings = await getOperationalSettings();
+    const toleranceMin = operationalSettings.lateCheckoutToleranceMin;
+    const defaultShiftEnd = operationalSettings.defaultShiftEnd;
 
     res.status(200).json({
       success: true,
@@ -1767,6 +1823,8 @@ export const getSmartEngineConfig = async (req, res, next) => {
  */
 export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
   try {
+    const operationalSettings = await getOperationalSettings();
+
     // Get the auto checkout time setting from database
     const autoTimeSetting = await Settings.findOne({
       where: {
@@ -1830,7 +1888,7 @@ export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
           historicalHours = totalHours / userAttendances.length;
         }
         // Smart prediction removed; provide info using fallback time
-        const fallback = '17:00:00';
+        const fallback = operationalSettings.defaultShiftEnd;
         const [hours, minutes, seconds] = fallback.split(':').map(Number);
         const predictedCheckoutTime = new Date(timeIn);
         predictedCheckoutTime.setHours(hours, minutes, seconds || 0, 0);
@@ -1865,6 +1923,13 @@ export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
         auto_checkout_time: autoTimeSetting?.setting_value || 'Not configured',
         current_jakarta_time: currentTimeString,
         current_date: currentDate,
+        operational_settings: {
+          geofence_radius_default_m: operationalSettings.geofenceRadiusDefaultM,
+          auto_checkout_idle_min: operationalSettings.autoCheckoutIdleMin,
+          auto_checkout_tbuffer_min: operationalSettings.autoCheckoutTBufferMin,
+          late_checkout_tolerance_min: operationalSettings.lateCheckoutToleranceMin,
+          default_shift_end: operationalSettings.defaultShiftEnd
+        },
         active_attendances_count: activeAttendances.length,
         smart_predictions: smartPredictions,
         traditional_checkouts: activeAttendances.map((att) => ({
@@ -1873,7 +1938,7 @@ export const getEnhancedAutoCheckoutSettings = async (req, res, next) => {
           user_name: att.user?.full_name,
           time_in: formatTimeOnly(att.time_in),
           attendance_date: att.attendance_date,
-          traditional_checkout: autoTimeSetting?.setting_value || '17:00:00'
+          traditional_checkout: autoTimeSetting?.setting_value || operationalSettings.defaultShiftEnd
         }))
       }
     });
