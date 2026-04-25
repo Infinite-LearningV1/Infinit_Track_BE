@@ -21,21 +21,10 @@ import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
  * @param {Date} endDate - End date for calculation
  * @returns {Object} User metrics object
  */
-const calculateUserMetrics = async (userId, startDate, endDate) => {
+const calculateUserMetrics = async (userId, startDate, endDate, settingsMap = null) => {
   try {
-    // Load required attendance settings (use DB-configured values; fallback defaults)
-    const settings = await Settings.findAll({
-      where: {
-        setting_key: {
-          [Op.in]: ['checkin.start_time']
-        }
-      }
-    });
-    const settingsMap = {};
-    settings.forEach((s) => {
-      settingsMap[s.setting_key] = s.setting_value;
-    });
-    const checkinStartTime = settingsMap['checkin.start_time'] || '08:00:00';
+    const effectiveSettingsMap = settingsMap || {};
+    const checkinStartTime = effectiveSettingsMap['checkin.start_time'] || '08:00:00';
 
     const startParts = checkinStartTime.split(':').map((v) => parseInt(v, 10) || 0);
     const startMinutes = (startParts[0] || 0) * 60 + (startParts[1] || 0);
@@ -393,11 +382,28 @@ export const getSummaryReport = async (req, res, next) => {
       }
     });
 
+    const settingsMap = {};
+    try {
+      const settings = await Settings.findAll({
+        where: {
+          setting_key: {
+            [Op.in]: ['checkin.start_time']
+          }
+        }
+      });
+
+      settings.forEach((setting) => {
+        settingsMap[setting.setting_key] = setting.setting_value;
+      });
+    } catch (error) {
+      logger.error('Error preloading summary settings:', error);
+    }
+
     // Calculate discipline index for each user
     const userDisciplineMap = {};
     const disciplineCalculationPromises = Object.keys(uniqueUsers).map(async (userId) => {
       try {
-        const userMetrics = await calculateUserMetrics(parseInt(userId), startDate, endDate);
+        const userMetrics = await calculateUserMetrics(parseInt(userId, 10), startDate, endDate, settingsMap);
         const disciplineResult = await fuzzyAhpEngine.calculateDisciplineIndex(userMetrics);
 
         userDisciplineMap[userId] = {

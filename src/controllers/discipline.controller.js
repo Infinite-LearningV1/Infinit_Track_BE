@@ -191,9 +191,31 @@ export const getAllDisciplineIndices = async (req, res, next) => {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - parseInt(months));
 
+    const userIds = users.map((user) => user.id_users);
+
+    const attendances = userIds.length
+      ? await Attendance.findAll({
+          where: {
+            user_id: { [Op.in]: userIds },
+            attendance_date: {
+              [Op.between]: [
+                startDate.toISOString().split('T')[0],
+                endDate.toISOString().split('T')[0]
+              ]
+            }
+          }
+        })
+      : [];
+
+    const attendancesByUser = groupAttendancesByUser(attendances);
+
     for (const user of users) {
       try {
-        const userMetrics = await aggregateUserMetrics(user.id_users, startDate, endDate);
+        const userMetrics = aggregateMetricsFromAttendances(
+          attendancesByUser[user.id_users] || [],
+          startDate,
+          endDate
+        );
         const disciplineResult = await fuzzyEngine.calculateDisciplineIndex(
           userMetrics,
           ahpWeights
@@ -321,6 +343,96 @@ export const getDisciplineConfig = async (req, res, next) => {
 // ==========================================
 
 /**
+ * Group attendances by user id
+ * @param {Array} attendances - Attendance records
+ * @returns {Object} Attendances grouped by user id
+ */
+function groupAttendancesByUser(attendances) {
+  return attendances.reduce((grouped, attendance) => {
+    const key = attendance.user_id;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(attendance);
+    return grouped;
+  }, {});
+}
+
+/**
+ * Aggregate metrics from attendance records for discipline calculation
+ * @param {Array} attendances - Attendance records
+ * @param {Date} startDate - Start date for analysis
+ * @param {Date} endDate - End date for analysis
+ * @returns {Object} Aggregated metrics
+ */
+function aggregateMetricsFromAttendances(attendances, startDate, endDate) {
+  // Calculate total working days in period (excluding weekends)
+  const totalWorkingDays = calculateWorkingDays(startDate, endDate);
+
+  // Calculate metrics
+  const totalAttendances = attendances.length;
+  const lateAttendances = attendances.filter((att) => {
+    if (!att.time_in) return false;
+    const timeIn = new Date(att.time_in);
+    const hour = timeIn.getHours();
+    const minute = timeIn.getMinutes();
+    return hour > 9 || (hour === 9 && minute > 0); // After 09:00 considered late
+  }).length;
+
+  const overtimeAttendances = attendances.filter((att) => {
+    return att.work_hour && parseFloat(att.work_hour) > 8.0;
+  }).length;
+
+  const alphaAttendances = attendances.filter((att) => {
+    return att.status_id === 3; // Alpha status
+  }).length;
+
+  // Calculate rates (as percentages)
+  const lateness_rate = totalWorkingDays > 0 ? (lateAttendances / totalWorkingDays) * 100 : 0;
+  const absenteeism_rate = totalWorkingDays > 0 ? (alphaAttendances / totalWorkingDays) * 100 : 0;
+  const overtime_frequency =
+    totalAttendances > 0 ? (overtimeAttendances / totalAttendances) * 100 : 0;
+
+  // Calculate consistency (attendance rate)
+  const attendance_consistency =
+    totalWorkingDays > 0 ? (totalAttendances / totalWorkingDays) * 100 : 0;
+
+  // Lateness frequency over the last 1 month window (relative to endDate)
+  const lfStartDate = new Date(endDate);
+  lfStartDate.setMonth(lfStartDate.getMonth() - 1);
+
+  const workingDaysLastMonth = calculateWorkingDays(lfStartDate, endDate);
+
+  const lateAttendancesLastMonth = attendances.filter((att) => {
+    // Ensure attendance falls within the last 1 month window
+    const attDate = att.attendance_date ? new Date(att.attendance_date) : null;
+    if (!attDate || attDate < lfStartDate || attDate > endDate) return false;
+    if (!att.time_in) return false;
+    const timeIn = new Date(att.time_in);
+    const hour = timeIn.getHours();
+    const minute = timeIn.getMinutes();
+    return hour > 9 || (hour === 9 && minute > 0);
+  }).length;
+
+  const lateness_frequency =
+    workingDaysLastMonth > 0 ? (lateAttendancesLastMonth / workingDaysLastMonth) * 100 : 0;
+
+  return {
+    lateness_rate: Math.round(lateness_rate * 100) / 100,
+    absenteeism_rate: Math.round(absenteeism_rate * 100) / 100,
+    overtime_frequency: Math.round(overtime_frequency * 100) / 100,
+    attendance_consistency: Math.min(100, Math.round(attendance_consistency * 100) / 100),
+    // Added for FAHP engine compatibility (1-month period)
+    lateness_frequency: Math.round(lateness_frequency * 100) / 100,
+
+    // Additional details
+    total_working_days: totalWorkingDays,
+    total_attendances: totalAttendances,
+    late_days: lateAttendances,
+    overtime_days: overtimeAttendances,
+    alpha_days: alphaAttendances
+  };
+}
+
+/**
  * Aggregate user metrics for discipline calculation
  * @param {number} userId - User ID
  * @param {Date} startDate - Start date for analysis
@@ -339,72 +451,7 @@ async function aggregateUserMetrics(userId, startDate, endDate) {
       }
     });
 
-    // Calculate total working days in period (excluding weekends)
-    const totalWorkingDays = calculateWorkingDays(startDate, endDate);
-
-    // Calculate metrics
-    const totalAttendances = attendances.length;
-    const lateAttendances = attendances.filter((att) => {
-      if (!att.time_in) return false;
-      const timeIn = new Date(att.time_in);
-      const hour = timeIn.getHours();
-      const minute = timeIn.getMinutes();
-      return hour > 9 || (hour === 9 && minute > 0); // After 09:00 considered late
-    }).length;
-
-    const overtimeAttendances = attendances.filter((att) => {
-      return att.work_hour && parseFloat(att.work_hour) > 8.0;
-    }).length;
-
-    const alphaAttendances = attendances.filter((att) => {
-      return att.status_id === 3; // Alpha status
-    }).length;
-
-    // Calculate rates (as percentages)
-    const lateness_rate = totalWorkingDays > 0 ? (lateAttendances / totalWorkingDays) * 100 : 0;
-    const absenteeism_rate = totalWorkingDays > 0 ? (alphaAttendances / totalWorkingDays) * 100 : 0;
-    const overtime_frequency =
-      totalAttendances > 0 ? (overtimeAttendances / totalAttendances) * 100 : 0;
-
-    // Calculate consistency (attendance rate)
-    const attendance_consistency =
-      totalWorkingDays > 0 ? (totalAttendances / totalWorkingDays) * 100 : 0;
-
-    // Lateness frequency over the last 1 month window (relative to endDate)
-    const lfStartDate = new Date(endDate);
-    lfStartDate.setMonth(lfStartDate.getMonth() - 1);
-
-    const workingDaysLastMonth = calculateWorkingDays(lfStartDate, endDate);
-
-    const lateAttendancesLastMonth = attendances.filter((att) => {
-      // Ensure attendance falls within the last 1 month window
-      const attDate = att.attendance_date ? new Date(att.attendance_date) : null;
-      if (!attDate || attDate < lfStartDate || attDate > endDate) return false;
-      if (!att.time_in) return false;
-      const timeIn = new Date(att.time_in);
-      const hour = timeIn.getHours();
-      const minute = timeIn.getMinutes();
-      return hour > 9 || (hour === 9 && minute > 0);
-    }).length;
-
-    const lateness_frequency =
-      workingDaysLastMonth > 0 ? (lateAttendancesLastMonth / workingDaysLastMonth) * 100 : 0;
-
-    return {
-      lateness_rate: Math.round(lateness_rate * 100) / 100,
-      absenteeism_rate: Math.round(absenteeism_rate * 100) / 100,
-      overtime_frequency: Math.round(overtime_frequency * 100) / 100,
-      attendance_consistency: Math.min(100, Math.round(attendance_consistency * 100) / 100),
-      // Added for FAHP engine compatibility (1-month period)
-      lateness_frequency: Math.round(lateness_frequency * 100) / 100,
-
-      // Additional details
-      total_working_days: totalWorkingDays,
-      total_attendances: totalAttendances,
-      late_days: lateAttendances,
-      overtime_days: overtimeAttendances,
-      alpha_days: alphaAttendances
-    };
+    return aggregateMetricsFromAttendances(attendances, startDate, endDate);
   } catch (error) {
     logger.error(`Error aggregating metrics for user ${userId}:`, error);
     throw error;
