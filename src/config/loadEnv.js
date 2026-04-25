@@ -3,22 +3,19 @@ import path from 'path';
 import dotenv from 'dotenv';
 
 const resolveEnvPath = (startDir = process.cwd()) => {
-  let currentDir = path.resolve(startDir);
-
-  while (true) {
+  for (
+    let currentDir = path.resolve(startDir), parentDir = '';
+    currentDir !== parentDir;
+    parentDir = currentDir, currentDir = path.dirname(currentDir)
+  ) {
     const candidate = path.join(currentDir, '.env');
 
     if (fs.existsSync(candidate)) {
       return candidate;
     }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      return undefined;
-    }
-
-    currentDir = parentDir;
   }
+
+  return undefined;
 };
 
 const envPath = resolveEnvPath();

@@ -1,5 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
+import './loadEnv.js';
 
 // Validate critical environment variables
 const requiredEnvVars = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'];

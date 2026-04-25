@@ -60,6 +60,16 @@ describe('operational settings accessor', () => {
     expect(settings).toEqual(OPERATIONAL_SETTING_DEFAULTS);
   });
 
+  it('normalizes checkout fallback time from HH:mm to HH:mm:ss', async () => {
+    mockSettingsFindAll.mockResolvedValueOnce([
+      { setting_key: 'checkout.fallback_time', setting_value: '18:30' }
+    ]);
+
+    const settings = await getOperationalSettings();
+
+    expect(settings.defaultShiftEnd).toBe('18:30:00');
+  });
+
   it('exports stable DB keys and defaults for consumers', () => {
     expect(OPERATIONAL_SETTING_KEYS).toEqual({
       geofenceRadiusDefaultM: 'attendance.geofence.radius_default_m',

@@ -1,36 +1,25 @@
-import { jest } from '@jest/globals';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
-describe('env loading from git worktree cwd', () => {
-  const originalCloudinaryEnv = {
-    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
-    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
-    CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
-  };
+describe('worktree-aware env path resolution', () => {
+  test('resolveEnvPath finds parent .env from nested worktree-like directory', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'env-loader-'));
 
-  beforeEach(() => {
-    jest.resetModules();
-    delete process.env.CLOUDINARY_CLOUD_NAME;
-    delete process.env.CLOUDINARY_API_KEY;
-    delete process.env.CLOUDINARY_API_SECRET;
-  });
+    try {
+      const repoRoot = path.join(tempRoot, 'repo-root');
+      const worktreeDir = path.join(repoRoot, '.worktrees', 'feature-branch');
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originalCloudinaryEnv)) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
+      fs.mkdirSync(worktreeDir, { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, '.env'), 'TEST_SHARED_ENV=from-parent\n', 'utf8');
+
+      const { resolveEnvPath } = await import('../src/config/loadEnv.js');
+
+      const resolved = resolveEnvPath(worktreeDir);
+
+      expect(resolved).toBe(path.join(repoRoot, '.env'));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
     }
-  });
-
-  test('imports cloudinary config without throwing when cwd is a worktree', async () => {
-    expect(process.cwd()).toContain('.worktrees');
-
-    await expect(import('../src/config/cloudinary.js')).resolves.toBeDefined();
-
-    expect(process.env.CLOUDINARY_CLOUD_NAME).toBeTruthy();
-    expect(process.env.CLOUDINARY_API_KEY).toBeTruthy();
-    expect(process.env.CLOUDINARY_API_SECRET).toBeTruthy();
   });
 });

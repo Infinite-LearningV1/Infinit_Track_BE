@@ -18,7 +18,23 @@ export const OPERATIONAL_SETTING_DEFAULTS = {
   defaultShiftEnd: '17:00:00'
 };
 
-const isValidTimeFormat = (value) => /^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/.test(value);
+const normalizeTimeOrDefault = (value, fallback) => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const withSecondsMatch = value.match(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/);
+  if (withSecondsMatch) {
+    return value;
+  }
+
+  const withoutSecondsMatch = value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (withoutSecondsMatch) {
+    return `${value}:00`;
+  }
+
+  return fallback;
+};
 
 const toPositiveIntOrDefault = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -62,9 +78,10 @@ export const getOperationalSettings = async (transaction = null) => {
         settingsMap[OPERATIONAL_SETTING_KEYS.lateCheckoutToleranceMin],
         OPERATIONAL_SETTING_DEFAULTS.lateCheckoutToleranceMin
       ),
-      defaultShiftEnd: isValidTimeFormat(defaultShiftEnd)
-        ? defaultShiftEnd
-        : OPERATIONAL_SETTING_DEFAULTS.defaultShiftEnd
+      defaultShiftEnd: normalizeTimeOrDefault(
+        defaultShiftEnd,
+        OPERATIONAL_SETTING_DEFAULTS.defaultShiftEnd
+      )
     };
   } catch (error) {
     throw new Error(`Failed to get operational settings: ${error.message}`);
