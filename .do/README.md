@@ -1,8 +1,16 @@
-# DigitalOcean App Platform Deployment
+# DigitalOcean App Platform Deployment (Historical Reference)
 
 ## 📋 Overview
 
-Konfigurasi ini mendukung deployment otomatis aplikasi Infinit Track Backend ke DigitalOcean App Platform menggunakan GitOps-style deployment.
+Dokumen ini menyimpan referensi historis untuk backend DigitalOcean App Platform, bukan deployment truth aktif.
+
+Active backend deployment truth saat ini adalah:
+
+- `.github/workflows/ci.yml` untuk validation gate
+- `.github/workflows/docker-deploy.yml` untuk publish image ke DOCR
+- Droplet + Docker Compose sebagai runtime aktif
+
+Gunakan dokumen ini hanya jika jalur App Platform memang sengaja diaktifkan kembali.
 
 ## 🚀 Deployment Methods
 
@@ -74,20 +82,15 @@ Konfigurasi ini mendukung deployment otomatis aplikasi Infinit Track Backend ke 
    - Click "Create Resources"
    - Tunggu hingga deployment selesai (~5-10 menit)
 
-### Method 2: Via GitHub Actions (Automated CD)
+### Method 2: Historical GitHub Actions path
 
-Lihat file `.github/workflows/deploy-staging.yml` untuk workflow otomatis.
+The old `.github/workflows/deploy-staging.yml` App Platform deployment path is retained only as a manual historical marker.
 
-**Prerequisites:**
+Active backend release flow now uses:
 
-1. Set GitHub Secrets:
-
-   - `DIGITALOCEAN_ACCESS_TOKEN` - Token API dari DO
-   - Environment-specific secrets di GitHub Environments
-
-2. Workflow akan otomatis trigger saat:
-   - Push ke branch `master`
-   - Atau manual trigger via GitHub Actions tab
+1. `.github/workflows/ci.yml` for lint/test validation.
+2. `.github/workflows/docker-deploy.yml` to publish the backend image to DOCR.
+3. Droplet + Docker Compose runtime pull using an explicit `BACKEND_IMAGE_TAG`.
 
 ## 🔒 Environment Variables Security
 
@@ -102,12 +105,10 @@ Lihat file `.github/workflows/deploy-staging.yml` untuk workflow otomatis.
 
 ## 🏥 Health Check
 
-App Platform akan melakukan health check ke endpoint `/health` setiap 10 detik:
+Jika App Platform diaktifkan kembali, gunakan endpoint `/health` sebagai health check target:
 
 - **Success Response:** `{"status":"OK","timestamp":"..."}`
 - **HTTP Status:** 200
-
-Jika health check gagal 3x berturut-turut, container akan di-restart otomatis.
 
 ## 📊 Monitoring & Logs
 
@@ -128,18 +129,6 @@ Jika health check gagal 3x berturut-turut, container akan di-restart otomatis.
    - Monitor CPU, Memory, Request rate
 
 ## 🔄 Update Deployment
-
-### Auto Deploy (Recommended)
-
-Push perubahan ke branch `master`:
-
-```bash
-git add .
-git commit -m "Update feature XYZ"
-git push origin master
-```
-
-DO App Platform akan otomatis detect dan deploy.
 
 ### Manual Deploy via Dashboard
 

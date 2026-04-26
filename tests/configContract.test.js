@@ -23,6 +23,10 @@ function readDockerCompose() {
   return fs.readFileSync(path.resolve(repoRoot, 'docker-compose.yml'), 'utf8');
 }
 
+function readWorkflow(name) {
+  return fs.readFileSync(path.resolve(repoRoot, '.github/workflows', name), 'utf8');
+}
+
 function loadCliConfig() {
   const require = createRequire(import.meta.url);
   const configPath = path.resolve(repoRoot, 'src/config/database-cli.cjs');
@@ -177,5 +181,23 @@ describe('backend runtime config contract', () => {
 
     expect(`${appSpec}\n${productionAppSpec}\n${appReadme}`).toContain('GEOAPIFY_API_KEY');
     expect(`${appSpec}\n${productionAppSpec}\n${appReadme}`).not.toContain('GEOAPIFY_KEY');
+  });
+
+  test('keeps historical App Platform deploy manual-only and non-deploying', () => {
+    const workflow = readWorkflow('deploy-staging.yml');
+
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).not.toContain('branches:');
+    expect(workflow).not.toContain('doctl apps create-deployment');
+    expect(workflow).toContain('No App Platform deployment was attempted.');
+  });
+
+  test('requires a DigitalOcean token before publishing backend image to DOCR', () => {
+    const workflow = readWorkflow('docker-deploy.yml');
+
+    expect(workflow).toContain('Validate DigitalOcean token secret');
+    expect(workflow).toContain('DIGITALOCEAN_ACCESS_TOKEN repository secret is required');
+    expect(workflow).toContain('digitalocean/action-doctl@v2');
+    expect(workflow).toContain('docker/build-push-action@v5');
   });
 });
