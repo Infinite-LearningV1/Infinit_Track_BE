@@ -95,9 +95,12 @@ PORT=3005
 
 # Database Configuration
 DB_HOST=localhost
+DB_PORT=3306
 DB_NAME=v1_infinite_track
 DB_USER=your_db_user
 DB_PASS=your_db_password
+DB_SSL=false
+DB_SSL_REJECT_UNAUTHORIZED=true
 
 # JWT Configuration
 JWT_SECRET=your_super_secure_jwt_secret_minimum_256_characters_long

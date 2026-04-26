@@ -3,6 +3,8 @@
 ## Runtime source of truth
 The staging droplet runs the backend from a DOCR image, not from a local compose build.
 
+The compose file is part of the image-based runtime procedure. Local host-run development still follows the native MySQL workflow in `README.md` / `CLAUDE.md`, so the compose `db` service is not a host-published replacement for that setup.
+
 ## Image contract
 - Repository: `registry.digitalocean.com/infinit-track/infinit-track-backend`
 - Runtime tag source: `BACKEND_IMAGE_TAG`
