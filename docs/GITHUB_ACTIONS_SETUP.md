@@ -18,14 +18,14 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 - **Output:** verification signal only
 
 ### 2. DOCR Publish (`docker-deploy.yml`)
-- **Trigger:** push to `deploy` branch + manual dispatch
+- **Trigger:** push to `master` branch + manual dispatch
 - **Purpose:** build backend Docker image and push it to DOCR
 - **Output:** image tags in `registry.digitalocean.com/infinit-track/infinit-track-backend`
-- **Guardrail:** manual dispatch is still enforced to publish only from branch `deploy`
+- **Guardrail:** manual dispatch is still enforced to publish only from branch `master`
 
 ### Current non-goals
 - GitHub Actions does **not** deploy backend runtime directly to the droplet yet.
-- Docker Compose on the droplet still uses the current build-based path until runtime contract is switched intentionally.
+- Runtime deployment remains a separate operational step after image publication.
 
 ## Required Secrets
 
@@ -33,7 +33,7 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 
 1. `DIGITALOCEAN_ACCESS_TOKEN`
    - Used by: DOCR publish workflow
-   - Needed for: `doctl registries login`
+   - Needed for: `doctl registry login`
 
 ### No longer active for backend deploy truth
 These may still exist historically, but are not part of the active backend image publication path:
@@ -47,7 +47,6 @@ These may still exist historically, but are not part of the active backend image
 ## Branch Contract
 
 - `develop`: normal integration work
-- `master`: final release-ready branch
-- `deploy`: image publication branch for DOCR review/testing
+- `master`: final release-ready branch and image publication trigger
 
-Current image publication workflow is intentionally bound to `deploy` so release artifacts can be reviewed without coupling normal development pushes to image publication.
+Current image publication workflow is intentionally bound to `master` so the release branch is the same branch that produces the published artifact.

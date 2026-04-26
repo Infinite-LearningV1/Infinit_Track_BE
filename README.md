@@ -95,9 +95,12 @@ PORT=3005
 
 # Database Configuration
 DB_HOST=localhost
+DB_PORT=3306
 DB_NAME=v1_infinite_track
 DB_USER=your_db_user
 DB_PASS=your_db_password
+DB_SSL=false
+DB_SSL_REJECT_UNAUTHORIZED=true
 
 # JWT Configuration
 JWT_SECRET=your_super_secure_jwt_secret_minimum_256_characters_long
@@ -375,7 +378,7 @@ Jobs Schedule
   - `calculateDisciplineIndex(metrics)` → `{ score(0..100), label, breakdown, weights, CR, warning? }`
   - `getWfaAhpWeights()`, `getDisciplineAhpWeights()` → `{... , consistency_ratio}`
 - Configuration: TFN scales and pairwise matrices in `src/analytics/config.fahp.js`.
-- Consistency: CR computed from defuzzified matrix; threshold configurable via `AHP_CR_THRESHOLD` (default 0.10).
+- Consistency: CR computed from defuzzified matrix; threshold is fixed in backend code at `0.10` because it is a theoretical FAHP guardrail, not an operational setting.
 - Auto-checkout: prediction removed; system flags likely-missed-checkout using time tolerance only.
 
 ## 7. Fuzzy AHP Intelligence System

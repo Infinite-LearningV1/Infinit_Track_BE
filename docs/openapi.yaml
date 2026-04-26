@@ -228,7 +228,247 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/analysis/fuzzy-ahp:
+    get:
+      tags:
+        - Analysis
+      summary: Get Fuzzy AHP analysis
+      description: Retrieve dashboard-ready Fuzzy AHP analysis for WFA, discipline, or smart auto checkout.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [wfa, discipline, smart_ac]
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [weekly, monthly]
+            default: monthly
+      responses:
+        '200':
+          description: Analysis retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        example: discipline
+                      period:
+                        type: string
+                        example: monthly
+                      generated_at:
+                        type: string
+                        format: date-time
+                      timezone:
+                        type: string
+                        example: Asia/Jakarta
+                      window:
+                        type: object
+                        properties:
+                          start_at:
+                            type: string
+                            format: date-time
+                          end_at:
+                            type: string
+                            format: date-time
+                      entity_kind:
+                        type: string
+                        example: user
+                      consistency:
+                        type: object
+                        properties:
+                          CR:
+                            type: number
+                          CI:
+                            type: number
+                          lambda_max:
+                            type: number
+                          threshold:
+                            type: number
+                          is_consistent:
+                            type: boolean
+                          verdict:
+                            type: string
+                      weights:
+                        type: object
+                        properties:
+                          criteria:
+                            type: array
+                            items:
+                              type: string
+                          values:
+                            type: array
+                            items:
+                              type: number
+                          method:
+                            type: string
+                      distribution:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      ranking:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            rank:
+                              type: integer
+                            id:
+                              oneOf:
+                                - type: integer
+                                - type: string
+                            name:
+                              type: string
+                            score:
+                              type: number
+                            label:
+                              type: string
+                            breakdown:
+                              type: object
+                              additionalProperties: true
+                example:
+                  success: true
+                  data:
+                    type: discipline
+                    period: monthly
+                    generated_at: '2026-04-23T10:30:00+07:00'
+                    timezone: Asia/Jakarta
+                    window:
+                      start_at: '2026-04-01T00:00:00+07:00'
+                      end_at: '2026-04-23T10:30:00+07:00'
+                    entity_kind: user
+                    consistency:
+                      CR: 0.037
+                      CI: 0
+                      lambda_max: 0
+                      threshold: 0.1
+                      is_consistent: true
+                      verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
+                    weights:
+                      criteria: ['alpha_rate', 'lateness_severity', 'lateness_frequency', 'work_focus']
+                      values: [0.45, 0.25, 0.18, 0.12]
+                      method: "Chang's Extent Analysis"
+                    distribution:
+                      Sangat Tinggi: 1
+                      Tinggi: 0
+                      Sedang: 0
+                      Rendah: 0
+                      Sangat Rendah: 0
+                    ranking:
+                      - rank: 1
+                        id: 7
+                        name: Andi
+                        score: 87.5
+                        label: Sangat Tinggi
+                        breakdown:
+                          alpha_rate: 0
+                          avg_lateness_minutes: 3
+                          lateness_frequency: 5
+                          work_hour_consistency: 95
+                  message: 'Fuzzy AHP analysis retrieved successfully'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   # Attendance Endpoints
+  /api/attendance/today-locations:
+    get:
+      tags:
+        - Attendance
+      summary: Get today hero map locations
+      description: Retrieve render-ready hero map locations for users who already checked in today (Asia/Jakarta) and have valid coordinates.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Today locations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      date:
+                        type: string
+                        format: date
+                        example: '2026-04-22'
+                      timezone:
+                        type: string
+                        example: 'Asia/Jakarta'
+                      total_users:
+                        type: integer
+                        example: 1
+                      locations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user_id:
+                              type: integer
+                              example: 7
+                            full_name:
+                              type: string
+                              example: 'Febri'
+                            photo:
+                              type: string
+                              nullable: true
+                              example: 'https://cdn.example.com/photos/febri.jpg'
+                            status:
+                              type: string
+                              example: 'WFO'
+                            check_in_time:
+                              type: string
+                              example: '08:15'
+                            latitude:
+                              type: number
+                              format: float
+                              example: -0.8917
+                            longitude:
+                              type: number
+                              format: float
+                              example: 119.8707
+                example:
+                  success: true
+                  data:
+                    date: '2026-04-22'
+                    timezone: 'Asia/Jakarta'
+                    total_users: 1
+                    locations:
+                      - user_id: 7
+                        full_name: 'Febri'
+                        photo: 'https://cdn.example.com/photos/febri.jpg'
+                        status: 'WFO'
+                        check_in_time: '08:15'
+                        latitude: -0.8917
+                        longitude: 119.8707
+                  message: 'Today locations retrieved successfully'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/attendance:
     get:
       tags:

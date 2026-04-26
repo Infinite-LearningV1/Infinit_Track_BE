@@ -2,6 +2,92 @@ import { Op } from 'sequelize';
 
 import { Settings } from '../models/index.js';
 
+export const OPERATIONAL_SETTING_KEYS = {
+  geofenceRadiusDefaultM: 'attendance.geofence.radius_default_m',
+  autoCheckoutIdleMin: 'attendance.auto_checkout.idle_min',
+  autoCheckoutTBufferMin: 'attendance.auto_checkout.tbuffer_min',
+  lateCheckoutToleranceMin: 'attendance.auto_checkout.late_tolerance_min',
+  defaultShiftEnd: 'checkout.fallback_time'
+};
+
+export const OPERATIONAL_SETTING_DEFAULTS = {
+  geofenceRadiusDefaultM: 100,
+  autoCheckoutIdleMin: 10,
+  autoCheckoutTBufferMin: 30,
+  lateCheckoutToleranceMin: 15,
+  defaultShiftEnd: '17:00:00'
+};
+
+const normalizeTimeOrDefault = (value, fallback) => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const withSecondsMatch = value.match(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/);
+  if (withSecondsMatch) {
+    return value;
+  }
+
+  const withoutSecondsMatch = value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (withoutSecondsMatch) {
+    return `${value}:00`;
+  }
+
+  return fallback;
+};
+
+const toPositiveIntOrDefault = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+export const getOperationalSettings = async (transaction = null) => {
+  try {
+    const keys = Object.values(OPERATIONAL_SETTING_KEYS);
+
+    const settings = await Settings.findAll({
+      where: {
+        setting_key: {
+          [Op.in]: keys
+        }
+      },
+      transaction
+    });
+
+    const settingsMap = {};
+    settings.forEach((setting) => {
+      settingsMap[setting.setting_key] = setting.setting_value;
+    });
+
+    const defaultShiftEnd = settingsMap[OPERATIONAL_SETTING_KEYS.defaultShiftEnd];
+
+    return {
+      geofenceRadiusDefaultM: toPositiveIntOrDefault(
+        settingsMap[OPERATIONAL_SETTING_KEYS.geofenceRadiusDefaultM],
+        OPERATIONAL_SETTING_DEFAULTS.geofenceRadiusDefaultM
+      ),
+      autoCheckoutIdleMin: toPositiveIntOrDefault(
+        settingsMap[OPERATIONAL_SETTING_KEYS.autoCheckoutIdleMin],
+        OPERATIONAL_SETTING_DEFAULTS.autoCheckoutIdleMin
+      ),
+      autoCheckoutTBufferMin: toPositiveIntOrDefault(
+        settingsMap[OPERATIONAL_SETTING_KEYS.autoCheckoutTBufferMin],
+        OPERATIONAL_SETTING_DEFAULTS.autoCheckoutTBufferMin
+      ),
+      lateCheckoutToleranceMin: toPositiveIntOrDefault(
+        settingsMap[OPERATIONAL_SETTING_KEYS.lateCheckoutToleranceMin],
+        OPERATIONAL_SETTING_DEFAULTS.lateCheckoutToleranceMin
+      ),
+      defaultShiftEnd: normalizeTimeOrDefault(
+        defaultShiftEnd,
+        OPERATIONAL_SETTING_DEFAULTS.defaultShiftEnd
+      )
+    };
+  } catch (error) {
+    throw new Error(`Failed to get operational settings: ${error.message}`);
+  }
+};
+
 /**
  * Helper function to get attendance settings from database
  * @param {Array} settingKeys - Array of setting keys to retrieve

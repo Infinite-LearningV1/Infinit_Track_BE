@@ -22,6 +22,16 @@ const Photo = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: false
     },
+    storage_provider: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      defaultValue: null
+    },
+    storage_key: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null
+    },
     public_id: {
       type: DataTypes.STRING(255),
       allowNull: true

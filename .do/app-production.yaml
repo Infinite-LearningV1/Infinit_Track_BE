@@ -98,30 +98,45 @@ services:
         scope: RUN_TIME
         type: GENERAL
 
-      # Geofence Configuration (from business flow requirements)
-      - key: GEOFENCE_RADIUS_DEFAULT_M
-        value: '100'
-        scope: RUN_TIME
-        type: GENERAL
-
-      # Auto Checkout Configuration (from business flow requirements)
-      - key: AUTO_CHECKOUT_IDLE_MIN
-        value: '10'
-        scope: RUN_TIME
-        type: GENERAL
-
-      - key: AUTO_CHECKOUT_TBUFFER_MIN
-        value: '30'
-        scope: RUN_TIME
-        type: GENERAL
-
       # Optional: Geoapify Key (if needed)
-      - key: GEOAPIFY_KEY
+      - key: GEOAPIFY_API_KEY
         scope: RUN_TIME
         type: SECRET
 
-      # Optional: Cloudinary Configuration (if needed)
-      - key: CLOUDINARY_URL
+      # Media storage: DigitalOcean Spaces is the primary upload target.
+      - key: SPACES_ENDPOINT
+        value: sgp1.digitaloceanspaces.com
+        scope: RUN_TIME
+        type: GENERAL
+
+      - key: SPACES_REGION
+        value: sgp1
+        scope: RUN_TIME
+        type: GENERAL
+
+      - key: SPACES_BUCKET
+        value: infinite-track-staging-sgp1
+        scope: RUN_TIME
+        type: GENERAL
+
+      - key: SPACES_ACCESS_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: SPACES_SECRET_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      # Transitional legacy cleanup only: used when deleting old Cloudinary assets referenced by public_id.
+      - key: CLOUDINARY_CLOUD_NAME
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: CLOUDINARY_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: CLOUDINARY_API_SECRET
         scope: RUN_TIME
         type: SECRET
 # Optional: Add database component if using DO Managed Database

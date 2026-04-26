@@ -2,7 +2,7 @@ name: Publish Docker Image to DOCR
 
 on:
   push:
-    branches: [deploy]
+    branches: [master]
   workflow_dispatch:
 
 env:
@@ -19,11 +19,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Enforce deploy branch for manual runs
+      - name: Enforce master branch for manual runs
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [ "${GITHUB_REF_NAME}" != "deploy" ]; then
-            echo "This workflow may only publish from the deploy branch."
+          if [ "${GITHUB_REF_NAME}" != "master" ]; then
+            echo "This workflow may only publish from the master branch."
             exit 1
           fi
 
@@ -51,6 +51,9 @@ jobs:
           DB_NAME: test_db
           DB_USER: test_user
           DB_PASS: test_pass
+          CLOUDINARY_CLOUD_NAME: test_cloud
+          CLOUDINARY_API_KEY: test_key
+          CLOUDINARY_API_SECRET: test_secret
 
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
@@ -58,13 +61,13 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Log in to DOCR
-        run: doctl registries login --expiry-seconds 1200
+        run: doctl registry login --expiry-seconds 1200
 
       - name: Set image tags
         id: meta
         run: |
           echo "sha_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "latest_tag=deploy-latest" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=latest" >> "$GITHUB_OUTPUT"
           echo "image_uri=${REGISTRY}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -92,9 +95,9 @@ jobs:
           echo "- Repository: infinit-track-backend" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: ${GITHUB_REF_NAME}" >> "$GITHUB_STEP_SUMMARY"
           echo "- SHA tag: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Rolling tag: deploy-latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Rolling tag: latest" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image URI: registry.digitalocean.com/infinit-track/infinit-track-backend" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Non-goals:" >> "$GITHUB_STEP_SUMMARY"
-          echo "- No Droplet deploy performed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- docker-compose.yml still uses build-based runtime" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No runtime deploy performed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime should pin a SHA tag explicitly" >> "$GITHUB_STEP_SUMMARY"

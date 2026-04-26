@@ -3,5 +3,6 @@
   "transform": {},
   "moduleNameMapper": {},
   "setupFiles": ["<rootDir>/tests/jest.setup.js"],
-  "testMatch": ["**/tests/**/*.test.js"]
+  "testMatch": ["**/tests/**/*.test.js"],
+  "testPathIgnorePatterns": ["<rootDir>/node_modules/", "<rootDir>/.worktrees/", "<rootDir>/.claude/worktrees/"]
 }

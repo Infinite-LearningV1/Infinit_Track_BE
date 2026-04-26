@@ -1,0 +1,16 @@
+# DigitalOcean-specific PVC configuration.
+# This manifest intentionally targets DigitalOcean block storage.
+# If you need a portable or multi-provider deployment, use an environment-specific overlay
+# or replace storageClassName with the correct class for the target cluster.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: infinit-track
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: do-block-storage
+  resources:
+    requests:
+      storage: 10Gi

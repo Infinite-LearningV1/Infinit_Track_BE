@@ -48,8 +48,25 @@ Konfigurasi ini mendukung deployment otomatis aplikasi Infinit Track Backend ke 
    **Optional Services:**
 
    ```
-   GEOAPIFY_KEY=<your-geoapify-key>
-   CLOUDINARY_URL=<your-cloudinary-url>
+   GEOAPIFY_API_KEY=<your-geoapify-key>
+   ```
+
+   **Media Storage:**
+
+   ```env
+   SPACES_ENDPOINT=sgp1.digitaloceanspaces.com
+   SPACES_REGION=sgp1
+   SPACES_BUCKET=infinite-track-staging-sgp1
+   SPACES_ACCESS_KEY_ID=<your-spaces-access-key>
+   SPACES_SECRET_ACCESS_KEY=<your-spaces-secret-key>
+   ```
+
+   **Optional transitional legacy cleanup:**
+
+   ```env
+   CLOUDINARY_CLOUD_NAME=<your-cloudinary-cloud-name>
+   CLOUDINARY_API_KEY=<your-cloudinary-api-key>
+   CLOUDINARY_API_SECRET=<your-cloudinary-api-secret>
    ```
 
 5. **Deploy**
