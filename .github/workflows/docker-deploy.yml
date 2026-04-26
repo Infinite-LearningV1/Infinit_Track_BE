@@ -27,6 +27,15 @@ jobs:
             exit 1
           fi
 
+      - name: Validate DigitalOcean token secret
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$DIGITALOCEAN_ACCESS_TOKEN" ]; then
+            echo "DIGITALOCEAN_ACCESS_TOKEN repository secret is required to publish the backend image to DOCR." >&2
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -54,15 +63,6 @@ jobs:
           CLOUDINARY_CLOUD_NAME: test_cloud
           CLOUDINARY_API_KEY: test_key
           CLOUDINARY_API_SECRET: test_secret
-
-      - name: Validate DigitalOcean token secret
-        env:
-          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-        run: |
-          if [ -z "$DIGITALOCEAN_ACCESS_TOKEN" ]; then
-            echo "DIGITALOCEAN_ACCESS_TOKEN repository secret is required to publish the backend image to DOCR." >&2
-            exit 1
-          fi
 
       - name: Install doctl
         uses: digitalocean/action-doctl@v2

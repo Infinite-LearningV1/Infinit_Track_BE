@@ -199,5 +199,8 @@ describe('backend runtime config contract', () => {
     expect(workflow).toContain('DIGITALOCEAN_ACCESS_TOKEN repository secret is required');
     expect(workflow).toContain('digitalocean/action-doctl@v2');
     expect(workflow).toContain('docker/build-push-action@v5');
+    expect(workflow.indexOf('Validate DigitalOcean token secret')).toBeLessThan(
+      workflow.indexOf('Checkout code')
+    );
   });
 });
