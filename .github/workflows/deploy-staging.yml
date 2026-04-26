@@ -1,142 +1,23 @@
-name: Deploy to Staging
+name: Historical App Platform Deploy
 
 on:
-  push:
-    branches:
-      - master # Trigger on push to master branch
-  pull_request:
-    branches:
-      - master # Also run on PR to master (for testing)
-  workflow_dispatch: # Allow manual trigger from GitHub Actions tab
-
-env:
-  NODE_VERSION: '18' # Match your Node.js version
+  workflow_dispatch:
 
 jobs:
-  # Job 1: Lint and Test
-  test:
-    name: Lint & Test
+  disabled:
+    name: Historical path disabled
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-        continue-on-error: true # Don't fail build on lint warnings
-
-      - name: Run tests
-        run: npm test
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_NAME: test_db
-          DB_USER: test_user
-          DB_PASS: test_pass
-          JWT_SECRET: test_secret_for_ci_only
-          CLOUDINARY_CLOUD_NAME: test_cloud
-          CLOUDINARY_API_KEY: test_key
-          CLOUDINARY_API_SECRET: test_secret
-        continue-on-error: false # Fail build on test failures
-
-  # Job 2: Deploy to DigitalOcean App Platform (Staging)
-  deploy-staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: test # Run only after tests pass
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-
-    environment:
-      name: staging
-      url: https://infinit-track-staging.ondigitalocean.app
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Deploy to DigitalOcean App Platform
+      - name: Explain active backend deployment path
         run: |
-          # Get app ID (you need to set this after creating the app)
-          APP_ID="${{ secrets.DO_APP_ID_STAGING }}"
-
-          if [ -z "$APP_ID" ]; then
-            echo "❌ DO_APP_ID_STAGING secret is not set!"
-            echo "Please set it in GitHub Secrets after creating the app on DigitalOcean"
-            exit 1
-          fi
-
-          echo "🚀 Triggering deployment for App ID: $APP_ID"
-
-          # Trigger deployment
-          doctl apps create-deployment $APP_ID --wait
-
-          echo "✅ Deployment triggered successfully!"
-
-      - name: Wait for deployment to complete
-        run: |
-          echo "⏳ Waiting for deployment to be live..."
-          sleep 30  # Give it time to start
-
-      - name: Get deployment status
-        run: |
-          APP_ID="${{ secrets.DO_APP_ID_STAGING }}"
-          doctl apps get $APP_ID --format ID,Tier,Phase,ActiveDeployment.Phase
-
-      - name: Run smoke tests
-        run: |
-          npm run smoke-test https://infinit-track-staging.ondigitalocean.app
-        continue-on-error: true
-
-      - name: Deployment summary
-        run: |
-          echo "## 🚀 Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Deployment triggered successfully" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**App URL:** https://infinit-track-staging.ondigitalocean.app" >> $GITHUB_STEP_SUMMARY
-          echo "**Health Check:** https://infinit-track-staging.ondigitalocean.app/health" >> $GITHUB_STEP_SUMMARY
-          echo "**API Docs:** https://infinit-track-staging.ondigitalocean.app/docs" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Smoke Tests:** See step above for results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Verify smoke tests passed ✅" >> $GITHUB_STEP_SUMMARY
-          echo "2. Check database connection in logs" >> $GITHUB_STEP_SUMMARY
-          echo "3. Test critical user flows" >> $GITHUB_STEP_SUMMARY
-          echo "4. Monitor error logs for 15 minutes" >> $GITHUB_STEP_SUMMARY
-
-  # Job 3: Notify on failure
-  notify-failure:
-    name: Notify on Failure
-    runs-on: ubuntu-latest
-    needs: [test, deploy-staging]
-    if: failure()
-
-    steps:
-      - name: Deployment failed
-        run: |
-          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The staging deployment has failed. Please check the logs above for details." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Common Issues:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Tests failed" >> $GITHUB_STEP_SUMMARY
-          echo "- Linting errors" >> $GITHUB_STEP_SUMMARY
-          echo "- DO_APP_ID_STAGING secret not set" >> $GITHUB_STEP_SUMMARY
-          echo "- DIGITALOCEAN_ACCESS_TOKEN invalid" >> $GITHUB_STEP_SUMMARY
-          echo "- Migration errors" >> $GITHUB_STEP_SUMMARY
+          echo "## Historical App Platform Deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow is retained only as a historical marker." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Active backend deployment truth:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Validate code with .github/workflows/ci.yml" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Publish Docker image with .github/workflows/docker-deploy.yml" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Run backend runtime on Droplet + Docker Compose" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "No App Platform deployment was attempted." >> "$GITHUB_STEP_SUMMARY"

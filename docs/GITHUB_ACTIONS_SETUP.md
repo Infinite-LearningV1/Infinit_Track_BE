@@ -6,6 +6,7 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 
 - `.github/workflows/ci.yml` = validation gate (lint + test)
 - `.github/workflows/docker-deploy.yml` = build and publish Docker image ke **DigitalOcean Container Registry (DOCR)**
+- `.github/workflows/deploy-staging.yml` = manual-only historical marker, no active deploy
 - active backend runtime target = **Droplet + Docker Compose**
 - App Platform = **historical / obsolete path**
 - Kubernetes = **optional / non-active path**
@@ -22,6 +23,12 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 - **Purpose:** build backend Docker image and push it to DOCR
 - **Output:** image tags in `registry.digitalocean.com/infinit-track/infinit-track-backend`
 - **Guardrail:** manual dispatch is still enforced to publish only from branch `master`
+- **Required secret:** `DIGITALOCEAN_ACCESS_TOKEN`; the workflow fails fast with an explicit message when it is missing
+
+### 3. Historical App Platform marker (`deploy-staging.yml`)
+- **Trigger:** manual dispatch only
+- **Purpose:** document that App Platform deployment is not the active backend path
+- **Output:** summary only; no `doctl apps create-deployment` call is made
 
 ### Current non-goals
 - GitHub Actions does **not** deploy backend runtime directly to the droplet yet.

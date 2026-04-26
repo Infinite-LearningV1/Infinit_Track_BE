@@ -72,6 +72,7 @@ They are not part of the supported active backend deploy path and should be trea
 - [ ] DOCR workflow pushes `latest` successfully
 - [ ] image appears in `registry.digitalocean.com/infinit-track/infinit-track-backend`
 - [ ] no runtime deployment is implied by the publish workflow summary
+- [ ] historical App Platform workflow remains manual-only and does not trigger from `master`
 
 ### Minimum verification for runtime pull phase
 - [ ] droplet can authenticate to the registry
