@@ -1,4 +1,5 @@
 import express from 'express';
+import { Op } from 'sequelize';
 import { jest } from '@jest/globals';
 import request from 'supertest';
 
@@ -162,9 +163,13 @@ describe('analysis fuzzy ahp contract', () => {
   });
 
   it('returns user-ranked analysis for discipline mode', async () => {
-    mockUser.findAll.mockResolvedValue([{ id_users: 7, full_name: 'Andi' }]);
+    mockUser.findAll.mockResolvedValue([
+      { id_users: 7, full_name: 'Andi' },
+      { id_users: 8, full_name: 'Budi' }
+    ]);
     mockAttendance.findAll.mockResolvedValue([
       {
+        user_id: 7,
         status_id: 1,
         time_in: '2026-04-01T01:03:00.000Z',
         time_out: '2026-04-01T09:00:00.000Z',
@@ -173,6 +178,7 @@ describe('analysis fuzzy ahp contract', () => {
         notes: ''
       },
       {
+        user_id: 7,
         status_id: 2,
         time_in: '2026-04-02T02:15:00.000Z',
         time_out: '2026-04-02T10:00:00.000Z',
@@ -191,6 +197,16 @@ describe('analysis fuzzy ahp contract', () => {
 
     await getFuzzyAhpAnalysis(req, res, next);
 
+    expect(mockAttendance.findAll).toHaveBeenCalledTimes(1);
+    expect(mockAttendance.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user_id: {
+            [Op.in]: [7, 8]
+          }
+        })
+      })
+    );
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(
@@ -208,9 +224,9 @@ describe('analysis fuzzy ahp contract', () => {
             CR: expect.any(Number),
             CI: expect.any(Number),
             lambda_max: expect.any(Number),
-            threshold: expect.any(Number),
+            threshold: 0.1,
             is_consistent: expect.any(Boolean),
-            verdict: expect.any(String)
+            verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
           }),
           ranking: expect.arrayContaining([
             expect.objectContaining({
@@ -304,6 +320,15 @@ describe('analysis fuzzy ahp contract', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
+    const response = res.json.mock.calls[0][0];
+    const [rankedUser] = response.data.ranking;
+
+    expect(rankedUser.breakdown).toEqual({
+      history_checkout_minutes: 1020,
+      checkin_pattern_minutes: 480,
+      context_checkout_minutes: 975,
+      transition_checkout_minutes: 15
+    });
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         success: true,

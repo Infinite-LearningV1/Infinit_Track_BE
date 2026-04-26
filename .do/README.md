@@ -48,7 +48,7 @@ Konfigurasi ini mendukung deployment otomatis aplikasi Infinit Track Backend ke 
    **Optional Services:**
 
    ```
-   GEOAPIFY_KEY=<your-geoapify-key>
+   GEOAPIFY_API_KEY=<your-geoapify-key>
    ```
 
    **Media Storage:**

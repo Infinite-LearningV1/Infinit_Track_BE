@@ -2,8 +2,9 @@ import { Op } from 'sequelize';
 
 import { Attendance, Location, LocationEvent, User } from '../models/index.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
+import { toJakartaTime } from '../utils/geofence.js';
 
-const CR_THRESHOLD = parseFloat(process.env.AHP_CR_THRESHOLD || '0.10');
+const CR_THRESHOLD = 0.1;
 
 const EMPTY_DISTRIBUTION = {
   'Sangat Tinggi': 0,
@@ -30,16 +31,16 @@ const getAnalysisWindow = (period) => {
   return { startAt: start, endAt: wibNow };
 };
 
-const buildConsistency = ({ CR, CI = 0, lambda_max = 0, threshold = CR_THRESHOLD }) => ({
+const buildConsistency = ({ CR, CI = 0, lambda_max = 0 }) => ({
   CR,
   CI,
   lambda_max,
-  threshold,
-  is_consistent: CR <= threshold,
+  threshold: CR_THRESHOLD,
+  is_consistent: CR <= CR_THRESHOLD,
   verdict:
-    CR <= threshold
-      ? 'Matriks perbandingan konsisten (CR < 0.10)'
-      : 'Matriks perbandingan belum konsisten (CR >= 0.10)'
+    CR <= CR_THRESHOLD
+      ? `Matriks perbandingan konsisten (CR < ${CR_THRESHOLD.toFixed(2)})`
+      : `Matriks perbandingan belum konsisten (CR >= ${CR_THRESHOLD.toFixed(2)})`
 });
 
 const buildDistribution = (ranking) => {
@@ -62,6 +63,11 @@ const getWorkdayCount = (startAt, endAt) => {
   return count;
 };
 
+const getJakartaMinutesOfDay = (dateLike) => {
+  const jakartaTime = toJakartaTime(dateLike);
+  return jakartaTime.getUTCHours() * 60 + jakartaTime.getUTCMinutes();
+};
+
 const buildDisciplineMetrics = (attendances, startAt, endAt) => {
   const totalWorkingDays = getWorkdayCount(startAt, endAt);
   const lateAttendances = attendances.filter((att) => Number(att.status_id) === 2).length;
@@ -69,10 +75,7 @@ const buildDisciplineMetrics = (attendances, startAt, endAt) => {
 
   const avgLatenessMinutes = attendances.length
     ? attendances
-        .map((att) => {
-          const timeIn = new Date(att.time_in);
-          return timeIn.getUTCHours() * 60 + timeIn.getUTCMinutes();
-        })
+        .map((att) => getJakartaMinutesOfDay(att.time_in))
         .reduce((sum, minutes) => sum + minutes, 0) / attendances.length
     : 0;
 
@@ -97,22 +100,31 @@ const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
     weightsObj.work_focus
   ];
 
+  const attendanceDateRange = [startAt.toISOString().split('T')[0], endAt.toISOString().split('T')[0]];
+  const userIds = users.map((user) => user.id_users);
+  const attendances = userIds.length
+    ? await Attendance.findAll({
+        where: {
+          user_id: {
+            [Op.in]: userIds
+          },
+          attendance_date: {
+            [Op.between]: attendanceDateRange
+          }
+        }
+      })
+    : [];
+  const attendancesByUserId = attendances.reduce((acc, attendance) => {
+    const userAttendances = acc.get(attendance.user_id) || [];
+    userAttendances.push(attendance);
+    acc.set(attendance.user_id, userAttendances);
+    return acc;
+  }, new Map());
+
   const ranking = [];
 
   for (const user of users) {
-    const attendances = await Attendance.findAll({
-      where: {
-        user_id: user.id_users,
-        attendance_date: {
-          [Op.between]: [
-            startAt.toISOString().split('T')[0],
-            endAt.toISOString().split('T')[0]
-          ]
-        }
-      }
-    });
-
-    const metrics = buildDisciplineMetrics(attendances, startAt, endAt);
+    const metrics = buildDisciplineMetrics(attendancesByUserId.get(user.id_users) || [], startAt, endAt);
     const result = await fuzzyEngine.calculateDisciplineIndex(metrics, weightsObj);
 
     ranking.push({
@@ -230,9 +242,9 @@ const buildSmartAcMetrics = async (user, startAt, endAt) => {
     : null;
 
   return {
-    history_checkout_minutes: latest?.time_out ? new Date(latest.time_out).getUTCHours() * 60 : 0,
-    checkin_pattern_minutes: latest?.time_in ? new Date(latest.time_in).getUTCHours() * 60 : 0,
-    context_checkout_minutes: event?.event_timestamp ? new Date(event.event_timestamp).getUTCHours() * 60 : 0,
+    history_checkout_minutes: latest?.time_out ? getJakartaMinutesOfDay(latest.time_out) : 0,
+    checkin_pattern_minutes: latest?.time_in ? getJakartaMinutesOfDay(latest.time_in) : 0,
+    context_checkout_minutes: event?.event_timestamp ? getJakartaMinutesOfDay(event.event_timestamp) : 0,
     transition_checkout_minutes: latest?.notes?.includes('TRANSITION') ? 15 : 0
   };
 };

@@ -377,6 +377,8 @@ export const checkIn = async (req, res, next) => {
 
   const rollbackTransaction = async () => {
     rollbackAttempted = true;
+    if (!transaction) return;
+
     await transaction.rollback();
     transactionFinished = true;
   };

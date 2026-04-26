@@ -54,7 +54,8 @@ const normalizeSettingValue = ({ envKey, defaultValue }) => {
   return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : defaultValue;
 };
 
-module.exports = {
+/** @type {import('sequelize-cli').Migration} */
+const migration = {
   async up(queryInterface) {
     const keys = OPERATIONAL_SETTINGS.map((setting) => setting.key);
     const [existingRows] = await queryInterface.sequelize.query(
@@ -97,3 +98,9 @@ module.exports = {
     });
   }
 };
+
+export default migration;
+
+if (typeof module !== 'undefined') {
+  module.exports = migration;
+}

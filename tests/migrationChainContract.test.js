@@ -51,10 +51,13 @@ describe('migration chain contract', () => {
   test('modern JS migrations keep the guarded ESM/CommonJS export pattern', () => {
     const uniqueAttendance = readFile('20260403000000-add-unique-constraint-attendance.js');
     const photoMetadata = readFile('20260422000000-add-photo-storage-metadata.js');
+    const operationalSettings = readFile('20260424000000-bootstrap-operational-settings.js');
 
     expect(uniqueAttendance).toContain('export default migration');
     expect(uniqueAttendance).toContain("typeof module !== 'undefined'");
     expect(photoMetadata).toContain('export default migration');
     expect(photoMetadata).toContain("typeof module !== 'undefined'");
+    expect(operationalSettings).toContain('export default migration');
+    expect(operationalSettings).toContain("typeof module !== 'undefined'");
   });
 });

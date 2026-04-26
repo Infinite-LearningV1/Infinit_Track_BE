@@ -1,7 +1,10 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { createRequire } from 'module';
 import { jest } from '@jest/globals';
+
+const repoRoot = process.cwd();
 
 function setRequiredBaseEnv() {
   process.env.DB_HOST = 'db.example.internal';
@@ -17,12 +20,12 @@ async function loadRuntimeConfig() {
 }
 
 function readDockerCompose() {
-  return fs.readFileSync(path.resolve(process.cwd(), 'docker-compose.yml'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, 'docker-compose.yml'), 'utf8');
 }
 
 function loadCliConfig() {
   const require = createRequire(import.meta.url);
-  const configPath = path.resolve(process.cwd(), 'src/config/database-cli.cjs');
+  const configPath = path.resolve(repoRoot, 'src/config/database-cli.cjs');
 
   delete require.cache[configPath];
 
@@ -86,6 +89,50 @@ describe('backend runtime config contract', () => {
     expect(config.production.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
   });
 
+  test('loads sequelize-cli env from a parent repo .env when invoked inside a worktree', () => {
+    const cwdBackup = process.cwd();
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-env-'));
+
+    try {
+      const fakeRepoRoot = path.join(tempRoot, 'repo-root');
+      const worktreeDir = path.join(fakeRepoRoot, '.worktrees', 'feature-branch');
+
+      fs.mkdirSync(worktreeDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeRepoRoot, '.env'),
+        [
+          'DB_HOST=parent-host',
+          'DB_NAME=parent-db',
+          'DB_USER=parent-user',
+          'DB_PASS=parent-pass',
+          'DB_PORT=25060',
+          'DB_SSL=true',
+          'DB_SSL_REJECT_UNAUTHORIZED=false'
+        ].join('\n') + '\n',
+        'utf8'
+      );
+
+      delete process.env.DB_HOST;
+      delete process.env.DB_NAME;
+      delete process.env.DB_USER;
+      delete process.env.DB_PASS;
+      delete process.env.DB_PORT;
+      delete process.env.DB_SSL;
+      delete process.env.DB_SSL_REJECT_UNAUTHORIZED;
+
+      process.chdir(worktreeDir);
+      const config = loadCliConfig();
+
+      expect(config.production.host).toBe('parent-host');
+      expect(config.production.database).toBe('parent-db');
+      expect(config.production.port).toBe(25060);
+      expect(config.production.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
+    } finally {
+      process.chdir(cwdBackup);
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   test('does not expose operational attendance settings as env-backed runtime config', async () => {
     process.env.JWT_SECRET = 'test-secret';
     process.env.GEOFENCE_RADIUS_DEFAULT_M = '999';
@@ -117,9 +164,18 @@ describe('backend runtime config contract', () => {
   });
 
   test('documents BACKEND_IMAGE_TAG and DB_PORT in env example for operators', () => {
-    const envExample = fs.readFileSync(path.resolve(process.cwd(), '.env.example'), 'utf8');
+    const envExample = fs.readFileSync(path.resolve(repoRoot, '.env.example'), 'utf8');
 
     expect(envExample).toContain('BACKEND_IMAGE_TAG=latest');
     expect(envExample).toContain('DB_PORT=3306');
+  });
+
+  test('uses GEOAPIFY_API_KEY as the canonical Geoapify env name in deployment references', () => {
+    const appSpec = fs.readFileSync(path.resolve(repoRoot, '.do/app.yaml'), 'utf8');
+    const productionAppSpec = fs.readFileSync(path.resolve(repoRoot, '.do/app-production.yaml'), 'utf8');
+    const appReadme = fs.readFileSync(path.resolve(repoRoot, '.do/README.md'), 'utf8');
+
+    expect(`${appSpec}\n${productionAppSpec}\n${appReadme}`).toContain('GEOAPIFY_API_KEY');
+    expect(`${appSpec}\n${productionAppSpec}\n${appReadme}`).not.toContain('GEOAPIFY_KEY');
   });
 });

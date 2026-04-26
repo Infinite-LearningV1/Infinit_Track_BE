@@ -99,7 +99,7 @@ services:
         type: GENERAL
 
       # Optional: Geoapify Key (if needed)
-      - key: GEOAPIFY_KEY
+      - key: GEOAPIFY_API_KEY
         scope: RUN_TIME
         type: SECRET
 

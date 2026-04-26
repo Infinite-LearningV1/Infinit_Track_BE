@@ -36,8 +36,8 @@ This means staging deployment can succeed or fail depending on which surface an 
 | `AUTO_CHECKOUT_TBUFFER_MIN` | `.env.example`, `.do/app*.yaml`, `k8s/configmap.yaml` | `src/config/index.js` | defaulted | env-driven | not set in CI | documented | low drift |
 | `LATE_CHECKOUT_TOLERANCE_MIN` | `.env.example`, `k8s/configmap.yaml` | `src/controllers/attendance.controller.js`, `src/jobs/autoCheckout.job.js` | default fallback used | env-driven if set | not set in CI | only partially documented | runtime uses it outside config module; contract split |
 | `DEFAULT_SHIFT_END` | `.env.example`, `k8s/configmap.yaml` | `src/controllers/attendance.controller.js`, `src/jobs/autoCheckout.job.js` | default fallback used | env-driven if set | not set in CI | only partially documented | same drift as above |
-| `AHP_CR_THRESHOLD` | `.env.example` | `src/utils/fuzzyAhpEngine.js` | default fallback used | env-driven if set | not set in CI | minimally documented | low drift but outside config module |
-| `GEOAPIFY_API_KEY` | `.env.example` | `src/controllers/booking.controller.js`, `src/controllers/wfa.controller.js` | env-driven | env-driven | not required in current CI | docs mention Geoapify | `.do/*.yaml` and `.do/README.md` still use `GEOAPIFY_KEY` instead |
+| Fuzzy AHP consistency threshold | code constant | `src/utils/fuzzyAhpEngine.js`, `src/controllers/analysis.controller.js` | fixed at `0.10` | fixed at `0.10` | fixed in tests | response exposes threshold value | no env-backed runtime knob; keep deploy surfaces from reintroducing one |
+| `GEOAPIFY_API_KEY` | `.env.example`, `.do/app*.yaml`, `.do/README.md` | `src/controllers/booking.controller.js`, `src/controllers/wfa.controller.js` | env-driven | env-driven | not required in current CI | docs mention Geoapify | canonical name aligned; App Platform specs remain historical |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | `.env.example`, CI | `src/config/cloudinary.js`, user controller diagnostics | env-driven | env-driven | CI sets all 3 test values | docs mention Cloudinary | `.do/*.yaml` and `.do/README.md` still use `CLOUDINARY_URL` instead |
 | `PORT`, `NODE_ENV`, `TZ`, `LOG_LEVEL` | `.env.example`, compose, `.do/app*.yaml`, Dockerfile | runtime code + logger | default/local env | compose and Dockerfile both set values | CI sets only test-specific env | consistent enough | low drift |
 
@@ -62,7 +62,7 @@ This means staging deployment can succeed or fail depending on which surface an 
 
 ### 4. Historical App Platform specs
 - `.do/app.yaml` and `.do/app-production.yaml` still encode an App Platform worldview
-- they use `GEOAPIFY_KEY` and `CLOUDINARY_URL`, but active Node runtime reads `GEOAPIFY_API_KEY` and split Cloudinary credentials
+- they now use the runtime Geoapify key name `GEOAPIFY_API_KEY`, but still include Cloudinary/App Platform assumptions outside the active droplet target
 - this makes `.do/*.yaml` unsuitable as source of truth for the droplet deployment target without translation
 
 ### 5. Health / readiness / docs
@@ -73,16 +73,13 @@ This means staging deployment can succeed or fail depending on which surface an 
 ## Drift and ambiguity report
 
 ### Blocking
-1. **Active runtime vs historical App Platform env mismatch**
-   - runtime reads `GEOAPIFY_API_KEY`
-   - `.do/*.yaml` declare `GEOAPIFY_KEY`
-2. **Cloudinary contract mismatch**
+1. **Cloudinary contract mismatch**
    - runtime reads 3 separate variables
    - `.do/*.yaml` declare `CLOUDINARY_URL`
-3. **Compose local DB assumption may not match droplet staging DB truth**
+2. **Compose local DB assumption may not match droplet staging DB truth**
    - compose uses `DB_HOST=db`
    - droplet target likely needs an explicit external DB host
-4. **No single staging env source-of-truth artifact exists**
+3. **No single staging env source-of-truth artifact exists**
    - `.env.example` is local-first
    - compose is local-compose-first
    - `.do/*.yaml` are App Platform-first
