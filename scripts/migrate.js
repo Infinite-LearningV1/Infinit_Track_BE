@@ -15,6 +15,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import sequelize from '../src/config/database.js';
 import logger from '../src/utils/logger.js';
+import { reconcileMigrationMeta } from './migrationMetaCompatibility.js';
 
 const execAsync = promisify(exec);
 
@@ -29,7 +30,12 @@ async function runMigrations() {
     await sequelize.authenticate();
     logger.info('✓ Database connection successful');
 
-    // Step 2: Check migration status
+    // Step 2: Reconcile legacy migration filenames before status/migrate checks
+    logger.info('Reconciling legacy migration metadata...');
+    const reconciliationOps = await reconcileMigrationMeta(sequelize);
+    logger.info('Migration metadata reconciliation operations:', reconciliationOps);
+
+    // Step 3: Check migration status
     logger.info('Checking migration status...');
     try {
       const { stdout: statusOutput } = await execAsync(
@@ -41,7 +47,7 @@ async function runMigrations() {
       logger.warn('Could not check migration status (this is OK for first run)');
     }
 
-    // Step 3: Run migrations
+    // Step 4: Run migrations
     logger.info('Running pending migrations...');
     const { stdout, stderr } = await execAsync(
       'npx sequelize-cli db:migrate --migrations-path src/models/migrations',

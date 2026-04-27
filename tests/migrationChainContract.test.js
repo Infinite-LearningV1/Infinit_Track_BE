@@ -23,14 +23,11 @@ describe('migration chain contract', () => {
     expect(typeof migration.default?.down || typeof migration.down).toBe('function');
   });
 
-  test('legacy cloudinary migrations export callable up/down methods', async () => {
-    const migrationCjs = await import('../src/models/migrations/20240619000000-update-photos-for-cloudinary.cjs');
-    const migrationJs = await import('../src/models/migrations/20240619000000-update-photos-for-cloudinary.js');
+  test('legacy cloudinary migration exports callable up/down methods through the CommonJS file', async () => {
+    const migration = await import('../src/models/migrations/20240619000000-update-photos-for-cloudinary.cjs');
 
-    expect(typeof migrationCjs.default?.up || typeof migrationCjs.up).toBe('function');
-    expect(typeof migrationCjs.default?.down || typeof migrationCjs.down).toBe('function');
-    expect(typeof migrationJs.default?.up || typeof migrationJs.up).toBe('function');
-    expect(typeof migrationJs.default?.down || typeof migrationJs.down).toBe('function');
+    expect(typeof migration.default?.up || typeof migration.up).toBe('function');
+    expect(typeof migration.default?.down || typeof migration.down).toBe('function');
   });
 
   test('legacy create-user migration is documented as a no-op stub rather than an empty commented file', () => {
@@ -41,20 +38,16 @@ describe('migration chain contract', () => {
     expect(source).toContain('async down');
   });
 
-  test('legacy cloudinary JS migration keeps the guarded ESM/CommonJS export pattern', () => {
-    const source = readFile('20240619000000-update-photos-for-cloudinary.js');
+  test('migration files use CommonJS-only exports for sequelize-cli compatibility', () => {
+    const cloudinary = readFile('20240619000000-update-photos-for-cloudinary.cjs');
+    const uniqueAttendance = readFile('20260403000000-add-unique-constraint-attendance.cjs');
+    const photoMetadata = readFile('20260422000000-add-photo-storage-metadata.cjs');
 
-    expect(source).toContain('export default migration');
-    expect(source).toContain("typeof module !== 'undefined'");
-  });
-
-  test('modern JS migrations keep the guarded ESM/CommonJS export pattern', () => {
-    const uniqueAttendance = readFile('20260403000000-add-unique-constraint-attendance.js');
-    const photoMetadata = readFile('20260422000000-add-photo-storage-metadata.js');
-
-    expect(uniqueAttendance).toContain('export default migration');
-    expect(uniqueAttendance).toContain("typeof module !== 'undefined'");
-    expect(photoMetadata).toContain('export default migration');
-    expect(photoMetadata).toContain("typeof module !== 'undefined'");
+    expect(cloudinary).toContain('module.exports');
+    expect(cloudinary).not.toContain('export default');
+    expect(uniqueAttendance).toContain('module.exports');
+    expect(uniqueAttendance).not.toContain('export default');
+    expect(photoMetadata).toContain('module.exports');
+    expect(photoMetadata).not.toContain('export default');
   });
 });

@@ -8,8 +8,7 @@ const indexExists = async (queryInterface, tableName, indexName, transaction) =>
   return rows.some((row) => row.Key_name === indexName);
 };
 
-/** @type {import('sequelize-cli').Migration} */
-const migration = {
+module.exports = {
   async up(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
       if (!(await indexExists(queryInterface, 'attendance', 'idx_attendance_date', transaction))) {
@@ -25,9 +24,3 @@ const migration = {
     await queryInterface.removeIndex('attendance', 'idx_attendance_date');
   }
 };
-
-export default migration;
-
-if (typeof module !== 'undefined') {
-  module.exports = migration;
-}

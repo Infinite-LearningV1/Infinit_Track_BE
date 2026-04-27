@@ -4,12 +4,12 @@ services:
     build:
       context: .
       target: production
+      network: host
     container_name: infinit-track-app
     restart: unless-stopped
+    network_mode: host
     env_file:
       - ${BACKEND_ENV_FILE:-./deploy/env/backend.production.env}
-    ports:
-      - "127.0.0.1:${HOST_PORT:-3005}:3005"
     environment:
       NODE_ENV: production
       PORT: 3005
@@ -18,7 +18,7 @@ services:
     volumes:
       - app_logs:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3005/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3005/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
