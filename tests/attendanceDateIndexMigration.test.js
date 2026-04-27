@@ -26,7 +26,7 @@ describe('attendance date index migration', () => {
   test('adds idx_attendance_date when the index is missing', async () => {
     mockQuery.mockResolvedValueOnce([[{ Key_name: 'uq_attendance_user_date' }]]);
 
-    const migration = await import('../src/models/migrations/20260423010000-add-attendance-date-index.js');
+    const migration = await import('../src/models/migrations/20260423010000-add-attendance-date-index.cjs');
     await migration.default.up(queryInterface);
 
     expect(mockAddIndex).toHaveBeenCalledWith(
@@ -42,14 +42,14 @@ describe('attendance date index migration', () => {
   test('does not add idx_attendance_date when the index already exists', async () => {
     mockQuery.mockResolvedValueOnce([[{ Key_name: 'idx_attendance_date' }]]);
 
-    const migration = await import('../src/models/migrations/20260423010000-add-attendance-date-index.js');
+    const migration = await import('../src/models/migrations/20260423010000-add-attendance-date-index.cjs');
     await migration.default.up(queryInterface);
 
     expect(mockAddIndex).not.toHaveBeenCalled();
   });
 
   test('removes idx_attendance_date on rollback', async () => {
-    const migration = await import('../src/models/migrations/20260423010000-add-attendance-date-index.js');
+    const migration = await import('../src/models/migrations/20260423010000-add-attendance-date-index.cjs');
     await migration.default.down(queryInterface);
 
     expect(mockRemoveIndex).toHaveBeenCalledWith('attendance', 'idx_attendance_date');
