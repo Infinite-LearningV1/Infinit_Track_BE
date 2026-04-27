@@ -9,10 +9,9 @@ const indexExists = async (queryInterface, tableName, indexName, transaction) =>
 };
 
 /** @type {import('sequelize-cli').Migration} */
-const migration = {
+module.exports = {
   async up(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
-      // Step 1: Check and clean duplicate attendance records
       const [attendanceDupes] = await queryInterface.sequelize.query(
         `SELECT user_id, attendance_date, COUNT(*) as cnt
          FROM attendance
@@ -22,11 +21,7 @@ const migration = {
       );
 
       if (attendanceDupes.length > 0) {
-        console.warn(
-          'Found duplicate attendance records:',
-          JSON.stringify(attendanceDupes)
-        );
-        // Keep only the latest record for each (user_id, attendance_date) pair
+        console.warn('Found duplicate attendance records:', JSON.stringify(attendanceDupes));
         await queryInterface.sequelize.query(
           `
             DELETE a1 FROM attendance a1
@@ -40,7 +35,6 @@ const migration = {
         console.log('Duplicate attendance records cleaned up (kept latest per user+date)');
       }
 
-      // Step 2: Add unique constraint on attendance (user_id, attendance_date)
       if (!(await indexExists(queryInterface, 'attendance', 'uq_attendance_user_date', transaction))) {
         await queryInterface.addIndex('attendance', ['user_id', 'attendance_date'], {
           unique: true,
@@ -49,12 +43,7 @@ const migration = {
         });
       }
 
-      // Step 3: Add composite index on bookings for lookup performance
-      // Note: NOT unique — MySQL lacks partial unique indexes,
-      // and rejected bookings must allow resubmission for the same date
-      if (
-        !(await indexExists(queryInterface, 'bookings', 'idx_bookings_user_schedule', transaction))
-      ) {
+      if (!(await indexExists(queryInterface, 'bookings', 'idx_bookings_user_schedule', transaction))) {
         await queryInterface.addIndex('bookings', ['user_id', 'schedule_date'], {
           name: 'idx_bookings_user_schedule',
           transaction
@@ -68,9 +57,3 @@ const migration = {
     await queryInterface.removeIndex('bookings', 'idx_bookings_user_schedule');
   }
 };
-
-export default migration;
-
-if (typeof module !== 'undefined') {
-  module.exports = migration;
-}

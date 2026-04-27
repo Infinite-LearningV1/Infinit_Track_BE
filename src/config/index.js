@@ -34,6 +34,7 @@ export default {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || '3306', 10),
     dialect: 'mysql',
     ssl: String(process.env.DB_SSL || 'false').toLowerCase() === 'true',
     sslRejectUnauthorized:
