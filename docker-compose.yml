@@ -1,57 +1,28 @@
 services:
-  db:
-    image: mysql:8.0
-    container_name: infinit-track-db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
-      MYSQL_DATABASE: ${DB_NAME:-v1_infinite_track}
-      MYSQL_USER: ${DB_USER:-trackuser}
-      MYSQL_PASSWORD: ${DB_PASS:-trackpassword}
-      TZ: Asia/Jakarta
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u\"$MYSQL_USER\" -p\"$MYSQL_PASSWORD\" || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   app:
-    image: registry.digitalocean.com/infinit-track/infinit-track-backend:${BACKEND_IMAGE_TAG:-latest}
+    image: ${BACKEND_IMAGE:-infinit-track-backend}:${BACKEND_IMAGE_TAG:-latest}
+    build:
+      context: .
+      target: production
     container_name: infinit-track-app
     restart: unless-stopped
+    env_file:
+      - ${BACKEND_ENV_FILE:-./deploy/env/backend.production.env}
     ports:
-      - "${PORT:-3000}:3000"
-    depends_on:
-      db:
-        condition: service_healthy
+      - "127.0.0.1:${HOST_PORT:-3005}:3005"
     environment:
-      NODE_ENV: development
-      PORT: 3000
-      BACKEND_IMAGE_TAG: ${BACKEND_IMAGE_TAG:-latest}
-      DB_HOST: ${DB_HOST:-db}
-      DB_USER: ${DB_USER:-trackuser}
-      DB_PASS: ${DB_PASS:-trackpassword}
-      DB_NAME: ${DB_NAME:-v1_infinite_track}
-      DB_SSL: ${DB_SSL:-false}
-      DB_SSL_REJECT_UNAUTHORIZED: ${DB_SSL_REJECT_UNAUTHORIZED:-true}
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-14400}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
-      JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-2592000}
-      JWT_REFRESH_INACTIVITY_WINDOW_SECONDS: ${JWT_REFRESH_INACTIVITY_WINDOW_SECONDS:-172800}
+      NODE_ENV: production
+      PORT: 3005
       TZ: Asia/Jakarta
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
-      GEOAPIFY_API_KEY: ${GEOAPIFY_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3005/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
-  mysql_data:
   app_logs:
