@@ -81,6 +81,7 @@ PUBLIC_HEALTH_OK
 
 - Droplet-side Docker bridge DNS could not reliably resolve external or private hostnames.
 - As a deployment workaround, the running container uses `network_mode: host` on the droplet.
+- The repository Nginx template is intentionally HTTP-only for first bootstrap; Certbot augments the active host config with the final HTTPS server block and redirect.
 - The active container inspect result reported:
 
 ```text

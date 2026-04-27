@@ -8,6 +8,10 @@ services:
     container_name: infinit-track-app
     restart: unless-stopped
     network_mode: host
+    # Intentionally defaults to the real droplet env path.
+    # Operators should copy deploy/env/backend.production.example to
+    # deploy/env/backend.production.env before first startup; missing env file
+    # should fail fast instead of booting with placeholder values.
     env_file:
       - ${BACKEND_ENV_FILE:-./deploy/env/backend.production.env}
     environment:
