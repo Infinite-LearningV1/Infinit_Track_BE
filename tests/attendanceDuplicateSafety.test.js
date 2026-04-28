@@ -241,6 +241,115 @@ describe('checkIn duplicate-safe behavior', () => {
     expect(rollback).toHaveBeenCalled();
   });
 
+  it.each([
+    ['WFO', 1],
+    ['WFH', 2]
+  ])('includes work_hour default when creating %s check-in attendance', async (_label, categoryId) => {
+    const rollback = jest.fn();
+    const commit = jest.fn();
+
+    const mockedAttendance = {
+      findOne: jest.fn().mockResolvedValueOnce(null),
+      create: jest.fn().mockResolvedValueOnce({
+        toJSON: () => ({ id_attendance: 10 })
+      })
+    };
+
+    jest.unstable_mockModule('../src/config/database.js', () => ({
+      default: { transaction: jest.fn().mockResolvedValue({ rollback, commit }) }
+    }));
+
+    jest.unstable_mockModule('../src/models/index.js', () => ({
+      Attendance: mockedAttendance,
+      Booking: { findOne: jest.fn() },
+      Location: {
+        findOne: jest.fn().mockResolvedValue({
+          location_id: 1,
+          latitude: -6.2,
+          longitude: 106.8,
+          radius: 100
+        })
+      },
+      Settings: {
+        findAll: jest.fn().mockResolvedValue([
+          { setting_key: 'checkin.start_time', setting_value: '00:00:00' },
+          { setting_key: 'checkin.end_time', setting_value: '23:59:59' },
+          { setting_key: 'checkin.late_time', setting_value: '23:59:59' },
+          { setting_key: 'workday.holiday_checkin_enabled', setting_value: 'true' },
+          { setting_key: 'workday.weekend_checkin_enabled', setting_value: 'true' },
+          { setting_key: 'workday.holiday_region', setting_value: 'ID' }
+        ])
+      },
+      AttendanceCategory: {},
+      AttendanceStatus: {},
+      BookingStatus: {},
+      User: {},
+      Role: {},
+      LocationEvent: {},
+      Photo: {}
+    }));
+
+    jest.unstable_mockModule('../src/utils/geofence.js', () => ({
+      calculateDistance: jest.fn(() => 0),
+      getJakartaTime: jest.fn(() => new Date('2026-04-14T09:00:00+07:00')),
+      getJakartaDateString: jest.fn(() => '2026-04-14'),
+      getCurrentTimeForDB: jest.fn(() => new Date('2026-04-14T09:00:00+07:00')),
+      toJakartaTime: jest.fn((d) => d)
+    }));
+
+    jest.unstable_mockModule('../src/utils/workHourFormatter.js', () => ({
+      formatWorkHour: jest.fn(),
+      calculateWorkHour: jest.fn(),
+      formatTimeOnly: jest.fn()
+    }));
+
+    jest.unstable_mockModule('../src/utils/searchHelper.js', () => ({
+      applySearch: jest.fn()
+    }));
+
+    jest.unstable_mockModule('../src/jobs/autoCheckout.job.js', () => ({
+      triggerAutoCheckout: jest.fn(),
+      runSmartAutoCheckoutForDate: jest.fn()
+    }));
+
+    jest.unstable_mockModule('../src/utils/logger.js', () => ({
+      default: { info: jest.fn(), error: jest.fn(), debug: jest.fn() }
+    }));
+
+    jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
+      default: {}
+    }));
+
+    jest.unstable_mockModule('../src/analytics/fahp.extent.js', () => ({
+      extentWeightsTFN: jest.fn(() => [0.4, 0.2, 0.2, 0.2])
+    }));
+
+    jest.unstable_mockModule('../src/analytics/fahp.js', () => ({
+      defuzzifyMatrixTFN: jest.fn(() => []),
+      computeCR: jest.fn(() => ({ CR: 0.05 }))
+    }));
+
+    jest.unstable_mockModule('../src/analytics/config.fahp.js', () => ({
+      SMART_AC_PAIRWISE_TFN: []
+    }));
+
+    const { checkIn } = await import('../src/controllers/attendance.controller.js');
+
+    const req = buildReq();
+    req.body.category_id = categoryId;
+    const res = buildRes();
+    const next = jest.fn();
+
+    await checkIn(req, res, next);
+
+    expect(mockedAttendance.create).toHaveBeenCalledWith(
+      expect.objectContaining({ work_hour: 0 }),
+      expect.objectContaining({ transaction: expect.any(Object) })
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(commit).toHaveBeenCalled();
+  });
+
   it('passes rollback failure to next when pre-check duplicate rollback rejects', async () => {
     const rollbackError = new Error('rollback failed');
     const rollback = jest.fn().mockRejectedValueOnce(rollbackError);

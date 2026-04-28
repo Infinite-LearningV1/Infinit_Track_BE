@@ -661,6 +661,7 @@ export const checkIn = async (req, res, next) => {
       time_in: wibTimeForDB, // SAVE WIB TIME
       attendance_date: todayDate,
       notes: notes,
+      work_hour: 0,
       created_at: wibTimeForDB, // SAVE WIB TIME
       updated_at: wibTimeForDB // SAVE WIB TIME
     };
@@ -911,7 +912,18 @@ export const getAttendanceStatus = async (req, res, next) => {
     }); // Tentukan active_mode dan active_location
     let active_mode, active_location;
 
-    if (todayBooking) {
+    if (currentAttendance?.location?.attendance_category) {
+      active_mode = currentAttendance.location.attendance_category.category_name;
+      active_location = {
+        location_id: currentAttendance.location.location_id,
+        latitude: parseFloat(currentAttendance.location.latitude),
+        longitude: parseFloat(currentAttendance.location.longitude),
+        radius: currentAttendance.location.radius,
+        description: currentAttendance.location.description,
+        address: currentAttendance.location.address,
+        category: currentAttendance.location.attendance_category.category_name
+      };
+    } else if (todayBooking) {
       active_mode = 'Work From Anywhere';
       active_location = {
         location_id: todayBooking.location.location_id,
