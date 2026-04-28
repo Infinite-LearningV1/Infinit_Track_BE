@@ -1,0 +1,67 @@
+{
+  "info": {
+    "name": "Infinite Track - Client Critical Smoke Gate (Staging)",
+    "description": "Client-critical staging smoke gate skeleton for Infinite Track. Task 2 scaffold only: environment, folder structure, and collection-level booking date setup. Scenario requests are intentionally deferred to later tasks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Setup",
+      "item": []
+    },
+    {
+      "name": "01 Auth",
+      "item": []
+    },
+    {
+      "name": "02 Attendance - WFO",
+      "item": []
+    },
+    {
+      "name": "03 Attendance - WFH",
+      "item": []
+    },
+    {
+      "name": "04 WFA - Existing Booking",
+      "item": []
+    },
+    {
+      "name": "05 WFA - New Booking",
+      "item": []
+    },
+    {
+      "name": "06 Negative Cases",
+      "item": []
+    },
+    {
+      "name": "07 Cleanup",
+      "item": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const fmt = (d) => d.toISOString().slice(0, 10);",
+          "const now = new Date();",
+          "const existing = new Date(now);",
+          "existing.setDate(existing.getDate() + 1);",
+          "const created = new Date(now);",
+          "created.setDate(created.getDate() + 2);",
+          "pm.environment.set('existingBookingDate', fmt(existing));",
+          "pm.environment.set('newBookingDate', fmt(created));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.infinite-track.tech",
+      "type": "string",
+      "description": "Live staging base URL for the client-critical smoke gate."
+    }
+  ]
+}
