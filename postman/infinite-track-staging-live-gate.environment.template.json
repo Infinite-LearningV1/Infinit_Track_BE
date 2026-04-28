@@ -104,6 +104,24 @@
       "enabled": true
     },
     {
+      "key": "internshipWfhLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "internshipWfhLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "internshipWfhRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
       "key": "wfoLatitude",
       "value": "",
       "type": "default",

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Infinite Track - Client Critical Smoke Gate (Staging)",
-    "description": "Client-critical staging smoke gate for Infinite Track. Task 3 adds auth scenarios with strict assertions verified against the live runtime contract. Attendance and booking requests are intentionally deferred to later tasks.",
+    "description": "Client-critical staging smoke gate for Infinite Track. Auth scenarios are strict and verified against the live runtime contract. Task 4 adds WFO/WFH attendance scenarios and attendance negative cases; WFA booking flows remain intentionally deferred to later tasks.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -18,7 +18,6 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
@@ -45,7 +44,8 @@
                   "  pm.expect(body.data.location.radius).to.be.a('number');",
                   "});",
                   "pm.environment.set('adminToken', body.data.token);"
-                ]
+                ],
+                "type": "text/javascript"
               }
             }
           ],
@@ -66,7 +66,17 @@
                 }
               }
             },
-            "url": "{{baseUrl}}/api/auth/login"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "response": []
         },
@@ -74,7 +84,6 @@
           "name": "Login - Employee",
           "event": [
             {
-              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
@@ -107,15 +116,16 @@
                   "pm.environment.set('employeeWfhLongitude', String(body.data.location.longitude));",
                   "pm.environment.set('employeeWfhRadius', String(body.data.location.radius));"
                 ]
-              }
+              },
+              "listen": "test"
             }
           ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "key": "Content-Type"
               }
             ],
             "body": {
@@ -127,7 +137,17 @@
                 }
               }
             },
-            "url": "{{baseUrl}}/api/auth/login"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "response": []
         },
@@ -135,7 +155,6 @@
           "name": "Login - Internship",
           "event": [
             {
-              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
@@ -163,17 +182,21 @@
                   "  pm.expect(body.data.location.longitude).to.be.a('number');",
                   "  pm.expect(body.data.location.radius).to.be.a('number');",
                   "});",
-                  "pm.environment.set('internshipToken', body.data.token);"
+                  "pm.environment.set('internshipToken', body.data.token);",
+                  "pm.environment.set('internshipWfhLatitude', String(body.data.location.latitude));",
+                  "pm.environment.set('internshipWfhLongitude', String(body.data.location.longitude));",
+                  "pm.environment.set('internshipWfhRadius', String(body.data.location.radius));"
                 ]
-              }
+              },
+              "listen": "test"
             }
           ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "key": "Content-Type"
               }
             ],
             "body": {
@@ -185,7 +208,17 @@
                 }
               }
             },
-            "url": "{{baseUrl}}/api/auth/login"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "response": []
         },
@@ -230,8 +263,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "key": "Content-Type"
               }
             ],
             "body": {
@@ -243,7 +276,17 @@
                 }
               }
             },
-            "url": "{{baseUrl}}/api/auth/login"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "response": []
         },
@@ -251,9 +294,7 @@
           "name": "Get Me - Employee",
           "event": [
             {
-              "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
@@ -279,8 +320,10 @@
                   "  pm.expect(body.data.location.longitude).to.be.a('number');",
                   "  pm.expect(body.data.location.radius).to.be.a('number');",
                   "});"
-                ]
-              }
+                ],
+                "type": "text/javascript"
+              },
+              "listen": "test"
             }
           ],
           "request": {
@@ -291,7 +334,17 @@
                 "value": "Bearer {{employeeToken}}"
               }
             ],
-            "url": "{{baseUrl}}/api/auth/me"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
           },
           "response": []
         },
@@ -299,9 +352,7 @@
           "name": "Get Me - Management",
           "event": [
             {
-              "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
@@ -327,8 +378,10 @@
                   "  pm.expect(body.data.location.longitude).to.be.a('number');",
                   "  pm.expect(body.data.location.radius).to.be.a('number');",
                   "});"
-                ]
-              }
+                ],
+                "type": "text/javascript"
+              },
+              "listen": "test"
             }
           ],
           "request": {
@@ -339,7 +392,17 @@
                 "value": "Bearer {{managementToken}}"
               }
             ],
-            "url": "{{baseUrl}}/api/auth/me"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
           },
           "response": []
         },
@@ -347,7 +410,6 @@
           "name": "Logout - Employee",
           "event": [
             {
-              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
@@ -358,18 +420,29 @@
                   "  pm.expect(body.message).to.eql('Logout successful');",
                   "});"
                 ]
-              }
+              },
+              "listen": "test"
             }
           ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{employeeToken}}"
+                "value": "Bearer {{employeeToken}}",
+                "key": "Authorization"
               }
             ],
-            "url": "{{baseUrl}}/api/auth/logout"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
           },
           "response": []
         },
@@ -399,7 +472,17 @@
                 "value": "Bearer {{managementToken}}"
               }
             ],
-            "url": "{{baseUrl}}/api/auth/logout"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
           },
           "response": []
         },
@@ -407,7 +490,6 @@
           "name": "Login - Wrong Password",
           "event": [
             {
-              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
@@ -420,27 +502,38 @@
                   "  pm.expect(body.message).to.eql('Password salah');",
                   "});"
                 ]
-              }
+              },
+              "listen": "test"
             }
           ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "key": "Content-Type"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{employeeEmail}}\",\n  \"password\": \"{{wrongPassword}}\"\n}",
+              "raw": "{\n  \"email\": \"{{employeeEmail}}\",\n  \"password\": \"Kabobona13\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/api/auth/login"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "response": []
         },
@@ -450,7 +543,6 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 400', () => pm.response.to.have.status(400));",
                   "const body = pm.response.json();",
@@ -460,7 +552,8 @@
                   "  pm.expect(body.code).to.eql('E_LOGIN');",
                   "  pm.expect(body.message).to.eql('Email tidak terdaftar');",
                   "});"
-                ]
+                ],
+                "type": "text/javascript"
               }
             }
           ],
@@ -468,8 +561,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "key": "Content-Type"
               }
             ],
             "body": {
@@ -481,7 +574,17 @@
                 }
               }
             },
-            "url": "{{baseUrl}}/api/auth/login"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "response": []
         },
@@ -506,7 +609,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/auth/me"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
           },
           "response": []
         },
@@ -514,7 +627,6 @@
           "name": "Logout - No Auth",
           "event": [
             {
-              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
@@ -525,13 +637,24 @@
                   "  pm.expect(body.message).to.eql('No token provided');",
                   "});"
                 ]
-              }
+              },
+              "listen": "test"
             }
           ],
           "request": {
             "method": "POST",
             "header": [],
-            "url": "{{baseUrl}}/api/auth/logout"
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
           },
           "response": []
         }
@@ -539,11 +662,506 @@
     },
     {
       "name": "02 Attendance - WFO",
-      "item": []
+      "item": [
+        {
+          "name": "Status Today - Employee (WFO seed)",
+          "event": [
+            {
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status-today WFO seed contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.can_check_in).to.be.a('boolean');",
+                  "  pm.expect(body.data).to.have.property('can_check_out');",
+                  "  pm.expect(body.data).to.have.property('checked_in_at');",
+                  "  pm.expect(body.data).to.have.property('checked_out_at');",
+                  "  pm.expect(body.data.active_mode).to.be.a('string');",
+                  "  pm.expect(body.data.active_location).to.be.an('object');",
+                  "  pm.expect(body.data.active_location.location_id).to.be.a('number');",
+                  "  pm.expect(body.data.active_location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.active_location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.today_date).to.be.a('string');",
+                  "  pm.expect(body.data.is_holiday).to.be.a('boolean');",
+                  "  pm.expect(body.data.holiday_checkin_enabled).to.be.a('boolean');",
+                  "  pm.expect(body.data.current_time).to.be.a('string');",
+                  "  pm.expect(body.data.checkin_window).to.be.an('object');",
+                  "  pm.expect(body.data.checkout_auto_time).to.be.a('string');",
+                  "});",
+                  "pm.environment.set('wfoLatitude', String(body.data.active_location.latitude));",
+                  "pm.environment.set('wfoLongitude', String(body.data.active_location.longitude));",
+                  "pm.environment.set('wfoLocationId', String(body.data.active_location.location_id || ''));"
+                ]
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{employeeToken}}",
+                "key": "Authorization"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/status-today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "status-today"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - Employee WFO",
+          "event": [
+            {
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFO check-in contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.match(/^Check-in berhasil dengan status:/);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id_attendance).to.be.a('number');",
+                  "  pm.expect(body.data.category_id).to.eql(1);",
+                  "  pm.expect(body.data.location_id).to.be.a('number');",
+                  "  pm.expect(body.data.status_classification).to.be.an('object');",
+                  "  pm.expect(body.data.status_classification.status_id).to.be.a('number');",
+                  "  pm.expect(body.data.status_classification.status_label).to.be.a('string');",
+                  "});",
+                  "pm.environment.set('wfoAttendanceId', String(body.data.id_attendance));"
+                ]
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "value": "Bearer {{employeeToken}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "application/json",
+                "key": "Content-Type"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 1,\n  \"latitude\": {{wfoLatitude}},\n  \"longitude\": {{wfoLongitude}},\n  \"notes\": \"Client-critical smoke gate WFO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Status Today - Employee after WFO check-in",
+          "event": [
+            {
+              "script": {
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status-today after WFO check-in is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.can_check_in).to.eql(false);",
+                  "  pm.expect(body.data.can_check_out).to.eql(true);",
+                  "  pm.expect(body.data.checked_in_at).to.be.a('string');",
+                  "  pm.expect(body.data.checked_out_at).to.eql(null);",
+                  "  pm.expect(body.data.active_mode).to.be.a('string');",
+                  "  pm.expect(body.data.today_date).to.be.a('string');",
+                  "  pm.expect(body.data.current_time).to.be.a('string');",
+                  "  pm.expect(body.data.checkin_window).to.be.an('object');",
+                  "  pm.expect(body.data.checkout_auto_time).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{employeeToken}}",
+                "key": "Authorization"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/status-today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "status-today"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "History - Employee after WFO check-in",
+          "event": [
+            {
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('history after WFO check-in includes attendance record', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Riwayat absensi berhasil diambil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.attendances).to.be.an('array');",
+                  "  const expectedId = Number(pm.environment.get('wfoAttendanceId'));",
+                  "  const match = body.data.attendances.find((item) => item.id_attendance === expectedId);",
+                  "  pm.expect(match, 'matching WFO attendance record').to.be.an('object');",
+                  "  pm.expect(match.category_id).to.eql(1);",
+                  "  pm.expect(match.time_in).to.be.a('string');",
+                  "});"
+                ]
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{employeeToken}}",
+                "key": "Authorization"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "history"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check Out - Employee WFO",
+          "event": [
+            {
+              "script": {
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFO check-out contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Check-out berhasil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id_attendance).to.eql(Number(pm.environment.get('wfoAttendanceId')));",
+                  "  pm.expect(body.data.time_in).to.be.a('string');",
+                  "  pm.expect(body.data.time_out).to.be.a('string');",
+                  "  pm.expect(body.data.work_hour).to.be.a('string');",
+                  "  pm.expect(body.data.category_id).to.eql(1);",
+                  "  pm.expect(body.data).to.have.property('booking_id');",
+                  "  pm.expect(body.data).to.have.property('notes');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{wfoLatitude}},\n  \"longitude\": {{wfoLongitude}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/checkout/{{wfoAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "checkout",
+                "{{wfoAttendanceId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     },
     {
       "name": "03 Attendance - WFH",
-      "item": []
+      "item": [
+        {
+          "name": "Check In - Internship WFH",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFH check-in contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.match(/^Check-in berhasil dengan status:/);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id_attendance).to.be.a('number');",
+                  "  pm.expect(body.data.category_id).to.eql(2);",
+                  "  pm.expect(body.data.location_id).to.be.a('number');",
+                  "  pm.expect(body.data.status_classification).to.be.an('object');",
+                  "  pm.expect(body.data.status_classification.status_id).to.be.a('number');",
+                  "  pm.expect(body.data.status_classification.status_label).to.be.a('string');",
+                  "});",
+                  "pm.environment.set('wfhAttendanceId', String(body.data.id_attendance));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "value": "Bearer {{internshipToken}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "application/json",
+                "key": "Content-Type"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 2,\n  \"latitude\": {{internshipWfhLatitude}},\n  \"longitude\": {{internshipWfhLongitude}},\n  \"notes\": \"Client-critical smoke gate WFH - Internship\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Status Today - Internship after WFH check-in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status-today after WFH check-in is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.can_check_in).to.eql(false);",
+                  "  pm.expect(body.data.can_check_out).to.eql(true);",
+                  "  pm.expect(body.data.checked_in_at).to.be.a('string');",
+                  "  pm.expect(body.data.checked_out_at).to.eql(null);",
+                  "  pm.expect(body.data.today_date).to.be.a('string');",
+                  "  pm.expect(body.data.current_time).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{internshipToken}}",
+                "key": "Authorization"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/status-today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "status-today"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "History - Internship after WFH check-in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('history after WFH check-in includes attendance record', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Riwayat absensi berhasil diambil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.attendances).to.be.an('array');",
+                  "  const expectedId = Number(pm.environment.get('wfhAttendanceId'));",
+                  "  const match = body.data.attendances.find((item) => item.id_attendance === expectedId);",
+                  "  pm.expect(match, 'matching WFH attendance record').to.be.an('object');",
+                  "  pm.expect(match.category_id).to.eql(2);",
+                  "  pm.expect(match.time_in).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "value": "Bearer {{internshipToken}}",
+                "key": "Authorization"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "history"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check Out - Internship WFH",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFH check-out contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Check-out berhasil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id_attendance).to.eql(Number(pm.environment.get('wfhAttendanceId')));",
+                  "  pm.expect(body.data.time_in).to.be.a('string');",
+                  "  pm.expect(body.data.time_out).to.be.a('string');",
+                  "  pm.expect(body.data.work_hour).to.be.a('string');",
+                  "  pm.expect(body.data.category_id).to.eql(2);",
+                  "  pm.expect(body.data).to.have.property('booking_id');",
+                  "  pm.expect(body.data).to.have.property('notes');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "value": "Bearer {{internshipToken}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "application/json",
+                "key": "Content-Type"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{internshipWfhLatitude}},\n  \"longitude\": {{internshipWfhLongitude}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/checkout/{{wfhAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "checkout",
+                "{{wfhAttendanceId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     },
     {
       "name": "04 WFA - Existing Booking",
@@ -555,7 +1173,273 @@
     },
     {
       "name": "06 Negative Cases",
-      "item": []
+      "item": [
+        {
+          "name": "Check In - Missing category_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('missing category_id validation contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.code).to.eql('E_VALIDATION');",
+                  "  pm.expect(body.message).to.eql('Category ID wajib diisi');",
+                  "  pm.expect(body.errors).to.be.an('array').and.not.empty;",
+                  "  pm.expect(body.errors[0].path).to.eql('category_id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{wfoLatitude}},\n  \"longitude\": {{wfoLongitude}},\n  \"notes\": \"Client-critical smoke gate missing category negative\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - Duplicate while already checked in",
+          "event": [
+            {
+              "script": {
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "const body = pm.response.json();",
+                  "pm.test('duplicate check-in contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.message).to.eql('Anda sudah melakukan check-in hari ini.');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 1,\n  \"latitude\": {{wfoLatitude}},\n  \"longitude\": {{wfoLongitude}},\n  \"notes\": \"Client-critical smoke gate duplicate check-in negative\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check Out - Invalid ID",
+          "event": [
+            {
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('invalid checkout id contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.message).to.eql('Data attendance tidak ditemukan');",
+                  "});"
+                ]
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "value": "Bearer {{employeeToken}}",
+                "key": "Authorization"
+              },
+              {
+                "value": "application/json",
+                "key": "Content-Type"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{wfoLatitude}},\n  \"longitude\": {{wfoLongitude}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/checkout/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "checkout",
+                "999999999"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - WFA without booking_id (Management clean identity)",
+          "event": [
+            {
+              "script": {
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA without booking_id contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.message).to.eql('Booking ID wajib untuk WFA.');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              },
+              "listen": "test"
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": {{employeeWfhLatitude}},\n  \"longitude\": {{employeeWfhLongitude}},\n  \"notes\": \"Client-critical smoke gate WFA without booking negative\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - No Auth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test('unauthenticated attendance mutation contract matches auth runtime', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['message']);",
+                  "  pm.expect(body.message).to.eql('No token provided');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 1,\n  \"latitude\": {{wfoLatitude}},\n  \"longitude\": {{wfoLongitude}},\n  \"notes\": \"Client-critical smoke gate attendance no auth negative\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     },
     {
       "name": "07 Cleanup",
@@ -584,7 +1468,6 @@
     {
       "key": "baseUrl",
       "value": "https://api.infinite-track.tech",
-      "type": "string",
       "description": "Live staging base URL for the client-critical smoke gate."
     }
   ]
