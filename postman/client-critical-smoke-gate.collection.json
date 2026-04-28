@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Infinite Track - Client Critical Smoke Gate (Staging)",
-    "description": "Client-critical staging smoke gate skeleton for Infinite Track. Task 2 scaffold only: environment, folder structure, and collection-level booking date setup. Scenario requests are intentionally deferred to later tasks.",
+    "description": "Client-critical staging smoke gate for Infinite Track. Task 3 adds auth scenarios with strict assertions verified against the live runtime contract. Attendance and booking requests are intentionally deferred to later tasks.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -11,7 +11,531 @@
     },
     {
       "name": "01 Auth",
-      "item": []
+      "item": [
+        {
+          "name": "Login - Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('login contract is strict for Admin', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body).to.not.have.property('code');",
+                  "  pm.expect(body.message).to.eql('Login berhasil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id).to.be.a('number');",
+                  "  pm.expect(body.data.full_name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('adminEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Admin');",
+                  "  pm.expect(body.data.position_name).to.be.a('string');",
+                  "  pm.expect(body.data.program_name).to.be.a('string');",
+                  "  pm.expect(body.data.division_name).to.be.a('string');",
+                  "  pm.expect(body.data.nip_nim).to.be.a('string');",
+                  "  pm.expect(body.data.phone).to.be.a('string');",
+                  "  pm.expect(body.data).to.have.property('photo');",
+                  "  pm.expect(body.data).to.have.property('photo_updated_at');",
+                  "  pm.expect(body.data.token).to.be.a('string').and.to.have.length.greaterThan(20);",
+                  "  pm.expect(body.data.location).to.be.an('object');",
+                  "  pm.expect(body.data.location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.radius).to.be.a('number');",
+                  "});",
+                  "pm.environment.set('adminToken', body.data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Employee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('login contract is strict for Employee', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body).to.not.have.property('code');",
+                  "  pm.expect(body.message).to.eql('Login berhasil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id).to.be.a('number');",
+                  "  pm.expect(body.data.full_name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('employeeEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Employee');",
+                  "  pm.expect(body.data.position_name).to.be.a('string');",
+                  "  pm.expect(body.data.program_name).to.be.a('string');",
+                  "  pm.expect(body.data.division_name).to.be.a('string');",
+                  "  pm.expect(body.data.nip_nim).to.be.a('string');",
+                  "  pm.expect(body.data.phone).to.be.a('string');",
+                  "  pm.expect(body.data).to.have.property('photo');",
+                  "  pm.expect(body.data).to.have.property('photo_updated_at');",
+                  "  pm.expect(body.data.token).to.be.a('string').and.to.have.length.greaterThan(20);",
+                  "  pm.expect(body.data.location).to.be.an('object');",
+                  "  pm.expect(body.data.location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.radius).to.be.a('number');",
+                  "});",
+                  "pm.environment.set('employeeToken', body.data.token);",
+                  "pm.environment.set('employeeWfhLatitude', String(body.data.location.latitude));",
+                  "pm.environment.set('employeeWfhLongitude', String(body.data.location.longitude));",
+                  "pm.environment.set('employeeWfhRadius', String(body.data.location.radius));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employeeEmail}}\",\n  \"password\": \"{{employeePassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Internship",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('login contract is strict for Internship', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body).to.not.have.property('code');",
+                  "  pm.expect(body.message).to.eql('Login berhasil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id).to.be.a('number');",
+                  "  pm.expect(body.data.full_name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('internshipEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Internship');",
+                  "  pm.expect(body.data.position_name).to.be.a('string');",
+                  "  pm.expect(body.data.program_name).to.be.a('string');",
+                  "  pm.expect(body.data.division_name).to.be.a('string');",
+                  "  pm.expect(body.data.nip_nim).to.be.a('string');",
+                  "  pm.expect(body.data.phone).to.be.a('string');",
+                  "  pm.expect(body.data).to.have.property('photo');",
+                  "  pm.expect(body.data).to.have.property('photo_updated_at');",
+                  "  pm.expect(body.data.token).to.be.a('string').and.to.have.length.greaterThan(20);",
+                  "  pm.expect(body.data.location).to.be.an('object');",
+                  "  pm.expect(body.data.location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.radius).to.be.a('number');",
+                  "});",
+                  "pm.environment.set('internshipToken', body.data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{internshipEmail}}\",\n  \"password\": \"{{internshipPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Management",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('login contract is strict for Management', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body).to.not.have.property('code');",
+                  "  pm.expect(body.message).to.eql('Login berhasil');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id).to.be.a('number');",
+                  "  pm.expect(body.data.full_name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('managementEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Management');",
+                  "  pm.expect(body.data.position_name).to.be.a('string');",
+                  "  pm.expect(body.data.program_name).to.be.a('string');",
+                  "  pm.expect(body.data.division_name).to.be.a('string');",
+                  "  pm.expect(body.data.nip_nim).to.be.a('string');",
+                  "  pm.expect(body.data.phone).to.be.a('string');",
+                  "  pm.expect(body.data).to.have.property('photo');",
+                  "  pm.expect(body.data).to.have.property('photo_updated_at');",
+                  "  pm.expect(body.data.token).to.be.a('string').and.to.have.length.greaterThan(20);",
+                  "  pm.expect(body.data.location).to.be.an('object');",
+                  "  pm.expect(body.data.location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.radius).to.be.a('number');",
+                  "});",
+                  "pm.environment.set('managementToken', body.data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managementEmail}}\",\n  \"password\": \"{{managementPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me - Employee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('get me contract is strict for Employee', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body).to.not.have.property('code');",
+                  "  pm.expect(body.message).to.eql('User profile fetched successfully');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id).to.be.a('number');",
+                  "  pm.expect(body.data.full_name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('employeeEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Employee');",
+                  "  pm.expect(body.data.position_name).to.be.a('string');",
+                  "  pm.expect(body.data.program_name).to.be.a('string');",
+                  "  pm.expect(body.data.division_name).to.be.a('string');",
+                  "  pm.expect(body.data.nip_nim).to.be.a('string');",
+                  "  pm.expect(body.data.phone).to.be.a('string');",
+                  "  pm.expect(body.data).to.have.property('photo');",
+                  "  pm.expect(body.data).to.have.property('photo_updated_at');",
+                  "  pm.expect(body.data).to.not.have.property('token');",
+                  "  pm.expect(body.data.location).to.be.an('object');",
+                  "  pm.expect(body.data.location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.radius).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/me"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me - Management",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('get me contract is strict for Management', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body).to.not.have.property('code');",
+                  "  pm.expect(body.message).to.eql('User profile fetched successfully');",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.id).to.be.a('number');",
+                  "  pm.expect(body.data.full_name).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('managementEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Management');",
+                  "  pm.expect(body.data.position_name).to.be.a('string');",
+                  "  pm.expect(body.data.program_name).to.be.a('string');",
+                  "  pm.expect(body.data.division_name).to.be.a('string');",
+                  "  pm.expect(body.data.nip_nim).to.be.a('string');",
+                  "  pm.expect(body.data.phone).to.be.a('string');",
+                  "  pm.expect(body.data).to.have.property('photo');",
+                  "  pm.expect(body.data).to.have.property('photo_updated_at');",
+                  "  pm.expect(body.data).to.not.have.property('token');",
+                  "  pm.expect(body.data.location).to.be.an('object');",
+                  "  pm.expect(body.data.location.latitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.longitude).to.be.a('number');",
+                  "  pm.expect(body.data.location.radius).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/me"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - Employee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('logout success contract is strict for Employee', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['message']);",
+                  "  pm.expect(body.message).to.eql('Logout successful');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - Management",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('logout success contract is strict for Management', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['message']);",
+                  "  pm.expect(body.message).to.eql('Logout successful');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Wrong Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('wrong password contract is strict', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['code', 'message', 'success']);",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.code).to.eql('E_LOGIN');",
+                  "  pm.expect(body.message).to.eql('Password salah');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employeeEmail}}\",\n  \"password\": \"{{wrongPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Unknown Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('unknown email contract is strict', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['code', 'message', 'success']);",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.code).to.eql('E_LOGIN');",
+                  "  pm.expect(body.message).to.eql('Email tidak terdaftar');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"unknown-smoke-gate@example.invalid\",\n  \"password\": \"{{employeePassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me - No Auth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test('get me without auth contract is narrow and verified', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['message']);",
+                  "  pm.expect(body.message).to.eql('No token provided');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - No Auth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test('logout without auth contract is narrow and verified', () => {",
+                  "  pm.expect(Object.keys(body).sort()).to.eql(['message']);",
+                  "  pm.expect(body.message).to.eql('No token provided');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "response": []
+        }
+      ]
     },
     {
       "name": "02 Attendance - WFO",

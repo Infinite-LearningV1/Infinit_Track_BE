@@ -32,6 +32,12 @@
       "enabled": true
     },
     {
+      "key": "wrongPassword",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
       "key": "internshipEmail",
       "value": "",
       "type": "default",
