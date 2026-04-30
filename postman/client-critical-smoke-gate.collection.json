@@ -1,13 +1,237 @@
 {
   "info": {
     "name": "Infinite Track - Client Critical Smoke Gate (Staging)",
-    "description": "Client-critical staging smoke gate for Infinite Track. Auth scenarios are strict and verified against the live runtime contract. Task 4 adds WFO/WFH attendance scenarios and attendance negative cases; WFA booking flows remain intentionally deferred to later tasks.",
+    "description": "Client-critical staging smoke gate for Infinite Track. Covers strict auth, deterministic WFO/WFH attendance, DB-bridged same-day WFA booking fixtures, WFA existing/new booking check-in and checkout paths, stable negative cases, and best-effort cleanup against the live staging runtime. WFA same-day fixture setup is intentionally external to the API because booking creation correctly rejects same-day bookings.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
       "name": "00 Setup",
-      "item": []
+      "item": [
+        {
+          "name": "Login - Employee (setup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('login contract is strict for Employee', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Login berhasil');",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('employeeEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Employee');",
+                  "  pm.expect(body.data.token).to.be.a('string').and.to.have.length.greaterThan(20);",
+                  "});",
+                  "pm.environment.set('employeeToken', body.data.token);",
+                  "pm.environment.set('employeeWfhLatitude', String(body.data.location.latitude));",
+                  "pm.environment.set('employeeWfhLongitude', String(body.data.location.longitude));",
+                  "pm.environment.set('employeeWfhRadius', String(body.data.location.radius));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{employeeEmail}}\",\n  \"password\": \"{{employeePassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Booking - Existing Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('booking create contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Booking WFA berhasil diajukan dan menunggu persetujuan.');",
+                  "  pm.expect(body.data.booking_id).to.be.a('number');",
+                  "  pm.expect(body.data.schedule_date).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  pm.expect(body.data.location_id).to.be.a('number');",
+                  "  pm.expect(body.data.status).to.eql('pending');",
+                  "  pm.expect(body.data.suitability_score).to.be.a('number');",
+                  "  pm.expect(body.data.suitability_label).to.be.a('string');",
+                  "});",
+                  "pm.environment.set('existingBookingId', String(body.data.booking_id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule_date\": \"{{existingBookingDate}}\",\n  \"latitude\": {{employeeWfhLatitude}},\n  \"longitude\": {{employeeWfhLongitude}},\n  \"radius\": 100,\n  \"description\": \"Existing booking seed for smoke gate\",\n  \"notes\": \"Existing approved booking scenario\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Management (approval)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('login contract is strict for Management', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Login berhasil');",
+                  "  pm.expect(body.data.email).to.eql(pm.variables.get('managementEmail'));",
+                  "  pm.expect(body.data.role_name).to.eql('Management');",
+                  "  pm.expect(body.data.token).to.be.a('string').and.to.have.length.greaterThan(20);",
+                  "});",
+                  "pm.environment.set('managementToken', body.data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managementEmail}}\",\n  \"password\": \"{{managementPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Booking - Existing Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('existing seed booking approval contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Booking berhasil di-approved.');",
+                  "  pm.expect(body.data.booking_id).to.eql(Number(pm.environment.get('existingBookingId')));",
+                  "  pm.expect(body.data.status).to.eql('approved');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{existingBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{existingBookingId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
     },
     {
       "name": "01 Auth",
@@ -1165,11 +1389,488 @@
     },
     {
       "name": "04 WFA - Existing Booking",
-      "item": []
+      "item": [
+        {
+          "name": "Status Today - Management before WFA Existing Booking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/status-today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "status-today"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status-today contract is available before WFA existing check', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check In - WFA Existing Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"notes\": \"Client-critical smoke gate WFA existing booking\",\n  \"booking_id\": \"{{existingBookingId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA existing booking check-in contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.match(/^Check-in berhasil dengan status:/);",
+                  "  pm.expect(body.data.category_id).to.eql(3);",
+                  "  pm.expect(body.data.booking_id).to.eql(Number(pm.environment.get('existingBookingId')));",
+                  "  pm.environment.set('existingAttendanceId', String(body.data.id_attendance));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - Management after WFA Existing Booking check-in",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "history"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('attendance history is available after WFA existing check', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.attendances).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check Out - WFA Existing Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/checkout/{{existingAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "checkout",
+                "{{existingAttendanceId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA existing booking checkout contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Check-out berhasil.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Attendance - WFA Existing Fixture Reset",
+          "description": "Removes the existing-booking attendance so the same Management identity can exercise the new-booking WFA happy path in one smoke session.",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/{{existingAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "{{existingAttendanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('existing WFA attendance reset is accepted', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) pm.environment.set('existingAttendanceId', '');"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Requires a same-day approved WFA booking fixture for the Management identity. Seed the fixture directly in staging DB, set existingBookingId, managementWfaLatitude, managementWfaLongitude, and run during the live check-in window."
     },
     {
       "name": "05 WFA - New Booking",
-      "item": []
+      "item": [
+        {
+          "name": "Create Booking - New",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule_date\": \"{{newBookingDate}}\",\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"radius\": \"{{managementWfaRadius}}\",\n  \"description\": \"New booking for smoke gate\",\n  \"notes\": \"Client-critical smoke gate new approved booking scenario\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('booking create contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Booking WFA berhasil diajukan dan menunggu persetujuan.');",
+                  "  pm.expect(body.data.booking_id).to.be.a('number');",
+                  "  pm.environment.set('newBookingId', String(body.data.booking_id));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve Booking - New",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{newBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{newBookingId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('new booking approval contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Booking berhasil di-approved.');",
+                  "  pm.expect(body.data.booking_id).to.eql(Number(pm.environment.get('newBookingId')));",
+                  "  pm.expect(body.data.status).to.eql('approved');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check In - WFA New Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"notes\": \"Client-critical smoke gate WFA new booking\",\n  \"booking_id\": \"{{newBookingId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA new booking check-in contract is strict after DB bridge', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.match(/^Check-in berhasil dengan status:/);",
+                  "  pm.expect(body.data.category_id).to.eql(3);",
+                  "  pm.expect(body.data.booking_id).to.eql(Number(pm.environment.get('newBookingId')));",
+                  "  pm.environment.set('newAttendanceId', String(body.data.id_attendance));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check Out - WFA New Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/checkout/{{newAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "checkout",
+                "{{newAttendanceId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA new booking checkout contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Check-out berhasil.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Attendance - WFA New Fixture Cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/{{newAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "{{newAttendanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('new WFA attendance cleanup is accepted', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) pm.environment.set('newAttendanceId', '');"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Creates and approves a future-dated booking through the API. Before WFA check-in, bridge only that smoke booking schedule_date to jakartaTodayDate in staging DB and keep existing API same-day rejection unchanged."
     },
     {
       "name": "06 Negative Cases",
@@ -1339,22 +2040,6 @@
         },
         {
           "name": "Check In - WFA without booking_id (Management clean identity)",
-          "event": [
-            {
-              "script": {
-                "exec": [
-                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
-                  "const body = pm.response.json();",
-                  "pm.test('WFA without booking_id contract is strict', () => {",
-                  "  pm.expect(body.success).to.eql(false);",
-                  "  pm.expect(body.message).to.eql('Booking ID wajib untuk WFA.');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              },
-              "listen": "test"
-            }
-          ],
           "request": {
             "method": "POST",
             "header": [
@@ -1367,15 +2052,6 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": {{employeeWfhLatitude}},\n  \"longitude\": {{employeeWfhLongitude}},\n  \"notes\": \"Client-critical smoke gate WFA without booking negative\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "url": {
               "raw": "{{baseUrl}}/api/attendance/check-in",
               "host": [
@@ -1386,9 +2062,33 @@
                 "attendance",
                 "check-in"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"notes\": \"Client-critical smoke gate WFA without booking negative\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
-          "response": []
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA without booking_id contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.message).to.eql('Booking ID wajib untuk WFA.');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Check In - No Auth",
@@ -1438,12 +2138,834 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Create Booking - Invalid Payload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('invalid booking payload contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(['Validasi booking gagal.', 'Latitude tidak valid', 'Longitude tidak valid', 'Tanggal booking wajib diisi']).to.include(body.message);",
+                  "  if (body.errors) { pm.expect(body.errors).to.be.an('array'); }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule_date\": \"not-a-date\",\n  \"latitude\": \"invalid\",\n  \"longitude\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Booking - Same-Day Rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule_date\": \"{{jakartaTodayDate}}\",\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"radius\": \"{{managementWfaRadius}}\",\n  \"description\": \"Same-day booking rejection negative\",\n  \"notes\": \"Client-critical smoke gate same-day create rejection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('same-day booking creation remains rejected by API contract', () => {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.message).to.eql('Validasi booking gagal.');",
+                  "  pm.expect(body.errors).to.be.an('array');",
+                  "  pm.expect(body.errors.map((e) => e.code)).to.include('SAME_DAY_NOT_ALLOWED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve Booking - Invalid ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('invalid booking approval id contract is strict', () => { pm.expect(body.success).to.eql(false); pm.expect(body.message).to.eql('Booking tidak ditemukan.'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "999999999"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - WFA Invalid Booking ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA invalid booking id contract is strict', () => { pm.expect(body.success).to.eql(false); pm.expect(body.message).to.eql('Booking tidak ditemukan.'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": {{managementWfaLatitude}},\n  \"longitude\": {{managementWfaLongitude}},\n  \"notes\": \"Client-critical smoke gate invalid WFA booking id\",\n  \"booking_id\": 999999999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Booking - Unapproved WFA Negative Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('booking create contract is strict', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.message).to.eql('Booking WFA berhasil diajukan dan menunggu persetujuan.');",
+                  "  pm.expect(body.data.booking_id).to.be.a('number');",
+                  "  pm.expect(body.data.schedule_date).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  pm.expect(body.data.location_id).to.be.a('number');",
+                  "  pm.expect(body.data.status).to.eql('pending');",
+                  "  pm.expect(body.data.suitability_score).to.be.a('number');",
+                  "  pm.expect(body.data.suitability_label).to.be.a('string');",
+                  "});",
+                  "pm.environment.set('unapprovedBookingId', String(body.data.booking_id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule_date\": \"{{newBookingDate}}\",\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"radius\": \"{{managementWfaRadius}}\",\n  \"description\": \"Unapproved WFA negative seed\",\n  \"notes\": \"Pending booking used for unapproved WFA negative scenario\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - WFA Unapproved Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA unapproved booking contract is strict', () => { pm.expect(body.success).to.eql(false); pm.expect(body.message).to.eql('Booking belum disetujui.'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": {{managementWfaLatitude}},\n  \"longitude\": {{managementWfaLongitude}},\n  \"notes\": \"Client-critical smoke gate WFA unapproved booking negative\",\n  \"booking_id\": {{unapprovedBookingId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check In - WFA Wrong User Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('WFA wrong user booking contract is strict', () => { pm.expect(body.success).to.eql(false); pm.expect(body.message).to.eql('Booking tidak valid untuk user ini.'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/check-in",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category_id\": 3,\n  \"latitude\": \"{{managementWfaLatitude}}\",\n  \"longitude\": \"{{managementWfaLongitude}}\",\n  \"notes\": \"Client-critical smoke gate WFA wrong user booking negative\",\n  \"booking_id\": \"{{existingBookingId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
         }
       ]
     },
     {
       "name": "07 Cleanup",
-      "item": []
+      "item": [
+        {
+          "name": "Delete Attendance - WFA Existing Fixture Cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/{{existingAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "{{existingAttendanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('existing WFA attendance delete is best-effort', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200 || pm.response.code === 404) pm.environment.set('existingAttendanceId', '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Attendance - WFA New Fixture Cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/{{newAttendanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "{{newAttendanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('new WFA attendance delete is best-effort', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200 || pm.response.code === 404) pm.environment.set('newAttendanceId', '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Booking - New",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('new booking delete is best-effort', () => pm.expect([200, 404, 409, 500]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) { pm.environment.set('newBookingId', ''); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{newBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{newBookingId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Booking - Existing Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('existing seed booking delete is best-effort', () => pm.expect([200, 404, 409, 500]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) { pm.environment.set('existingBookingId', ''); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{existingBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{existingBookingId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Booking - Unapproved Negative Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('unapproved negative seed booking delete is best-effort', () => pm.expect([200, 404, 409, 500]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) { pm.environment.set('unapprovedBookingId', ''); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{unapprovedBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{unapprovedBookingId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Booking History - Management residue check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('booking history residue check is available', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.bookings).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "history"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Attendance History - Management residue check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('attendance history residue check is available', () => {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "  pm.expect(body.data).to.be.an('object');",
+                  "  pm.expect(body.data.attendances).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "history"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - Employee Cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('employee cleanup logout is accepted', () => pm.expect([200, 401]).to.include(pm.response.code));",
+                  "pm.environment.set('employeeToken', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - Management Cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('management cleanup logout is accepted', () => pm.expect([200, 401]).to.include(pm.response.code));",
+                  "pm.environment.set('managementToken', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managementToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - Admin Cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('admin cleanup logout is accepted', () => pm.expect([200, 401]).to.include(pm.response.code));",
+                  "pm.environment.set('adminToken', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout - Internship Cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('internship cleanup logout is accepted', () => pm.expect([200, 401]).to.include(pm.response.code));",
+                  "pm.environment.set('internshipToken', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{internshipToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "event": [
@@ -1452,14 +2974,24 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "const fmt = (d) => d.toISOString().slice(0, 10);",
-          "const now = new Date();",
-          "const existing = new Date(now);",
-          "existing.setDate(existing.getDate() + 1);",
-          "const created = new Date(now);",
-          "created.setDate(created.getDate() + 2);",
-          "pm.environment.set('existingBookingDate', fmt(existing));",
-          "pm.environment.set('newBookingDate', fmt(created));"
+          "const jakartaParts = new Intl.DateTimeFormat('en-US', {",
+          "  timeZone: 'Asia/Jakarta',",
+          "  year: 'numeric',",
+          "  month: '2-digit',",
+          "  day: '2-digit'",
+          "}).formatToParts(new Date()).reduce((acc, part) => {",
+          "  acc[part.type] = part.value;",
+          "  return acc;",
+          "}, {});",
+          "const jakartaToday = `${jakartaParts.year}-${jakartaParts.month}-${jakartaParts.day}`;",
+          "const addDays = (isoDate, days) => {",
+          "  const [year, month, day] = isoDate.split('-').map(Number);",
+          "  const date = new Date(Date.UTC(year, month - 1, day + days));",
+          "  return date.toISOString().slice(0, 10);",
+          "};",
+          "pm.environment.set('jakartaTodayDate', jakartaToday);",
+          "pm.environment.set('existingBookingDate', addDays(jakartaToday, 1));",
+          "pm.environment.set('newBookingDate', addDays(jakartaToday, 2));"
         ]
       }
     }

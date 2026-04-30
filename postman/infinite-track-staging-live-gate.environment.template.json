@@ -192,6 +192,54 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "unapprovedBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "jakartaTodayDate",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementWfaLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementWfaLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementWfaRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminWfaLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminWfaLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminWfaRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ]
 }
