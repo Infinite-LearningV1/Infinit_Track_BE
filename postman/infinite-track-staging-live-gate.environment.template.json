@@ -158,6 +158,12 @@
       "enabled": true
     },
     {
+      "key": "existingManagementBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
       "key": "newBookingId",
       "value": "",
       "type": "default",

@@ -38,6 +38,7 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+postman/.tmp-*.json
 docs/
 !docs/openapi.yaml
 .blackboxrules

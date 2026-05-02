@@ -862,7 +862,8 @@ export const getAttendanceStatus = async (req, res, next) => {
 
     // Cek hari libur menggunakan date-holidays
     const hd = new Holidays(holidayRegion);
-    const isHoliday = hd.isHoliday(effectiveNow);
+    const holidayInfo = hd.isHoliday(effectiveNow);
+    const isHoliday = Boolean(holidayInfo);
     const isWeekend = effectiveNow.getDay() === 0 || effectiveNow.getDay() === 6; // Sunday = 0, Saturday = 6
     const isHolidayOrWeekend = isHoliday || isWeekend;
 
