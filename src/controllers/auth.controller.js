@@ -127,14 +127,24 @@ export const login = async (req, res) => {
         const decoded = jwt.verify(req.cookies.token, config.jwt.secret);
         const timeToExpiry = decoded.exp - Math.floor(Date.now() / 1000);
 
-        // If less than 1 hour remaining, refresh token
-        if (timeToExpiry < 3600) {
+        const tokenBelongsToUser = decoded.id === user.id_users;
+
+        // If less than 1 hour remaining or token belongs to another user, refresh token
+        if (timeToExpiry < 3600 || !tokenBelongsToUser) {
           shouldRefresh = true;
         } else {
           token = req.cookies.token;
         }
       } catch (error) {
-        shouldRefresh = true;
+        if (
+          error instanceof jwt.TokenExpiredError ||
+          error instanceof jwt.JsonWebTokenError ||
+          error instanceof jwt.NotBeforeError
+        ) {
+          shouldRefresh = true;
+        } else {
+          throw error;
+        }
       }
     } else {
       shouldRefresh = true;

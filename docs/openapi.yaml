@@ -23,7 +23,7 @@ info:
 
     ## Base URL
     - Development: `http://localhost:3005`
-    - Production: `https://your-domain.com`
+    - Production: `https://api.infinite-track.tech`
 
   version: 1.0.0
   contact:
@@ -36,8 +36,8 @@ info:
 servers:
   - url: http://localhost:3005
     description: Development server
-  - url: https://your-domain.com
-    description: Production server
+  - url: https://api.infinite-track.tech
+    description: Staging production-like server
 
 security:
   - bearerAuth: []
@@ -544,25 +544,32 @@ paths:
             schema:
               type: object
               required:
+                - category_id
                 - latitude
                 - longitude
               properties:
+                category_id:
+                  type: integer
+                  enum: [1, 2, 3]
+                  example: 1
+                  description: 1=WFO, 2=WFH, 3=WFA
                 latitude:
                   type: number
                   format: float
                   example: -6.200000
-                  description: Latitude coordinate
                 longitude:
                   type: number
                   format: float
                   example: 106.816666
-                  description: Longitude coordinate
-                face_photo:
+                notes:
                   type: string
-                  format: binary
-                  description: Base64 encoded face photo for verification
+                  example: Client-critical smoke gate WFO check-in
+                booking_id:
+                  type: integer
+                  example: 123
+                  description: Required when category_id is 3 (WFA)
       responses:
-        '200':
+        '201':
           description: Check-in successful
           content:
             application/json:
@@ -572,11 +579,15 @@ paths:
                   success:
                     type: boolean
                     example: true
+                  data:
+                    type: object
                   message:
                     type: string
-                    example: 'Check-in successful'
-                  data:
-                    $ref: '#/components/schemas/Attendance'
+                    example: 'Check-in berhasil dengan status: ON TIME'
+              example:
+                success: true
+                data: {}
+                message: 'Check-in berhasil dengan status: ON TIME'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -703,14 +714,35 @@ paths:
                   data:
                     type: object
                     properties:
-                      has_checked_in:
+                      can_check_in:
                         type: boolean
-                        example: true
-                      has_checked_out:
+                      can_check_out:
                         type: boolean
-                        example: false
-                      attendance:
-                        $ref: '#/components/schemas/Attendance'
+                        nullable: true
+                        description: Nullable when no attendance exists for today.
+                      checked_in_at:
+                        type: string
+                        nullable: true
+                      checked_out_at:
+                        type: string
+                        nullable: true
+                      active_mode:
+                        type: string
+                      active_location:
+                        type: object
+                        nullable: true
+                      today_date:
+                        type: string
+                      is_holiday:
+                        type: boolean
+                      holiday_checkin_enabled:
+                        type: boolean
+                      current_time:
+                        type: string
+                      checkin_window:
+                        type: object
+                      checkout_auto_time:
+                        type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1192,19 +1224,14 @@ paths:
             schema:
               type: object
               required:
-                - date
-                - location_name
+                - schedule_date
                 - latitude
                 - longitude
-                - reason
               properties:
-                date:
+                schedule_date:
                   type: string
                   format: date
-                  example: '2025-07-10'
-                location_name:
-                  type: string
-                  example: 'Coffee Shop Downtown'
+                  example: '2026-04-29'
                 latitude:
                   type: number
                   format: float
@@ -1213,12 +1240,15 @@ paths:
                   type: number
                   format: float
                   example: 106.816666
-                reason:
+                radius:
+                  type: number
+                  example: 100
+                description:
                   type: string
-                  example: 'Working on client presentation'
+                  example: 'WFA smoke gate location'
                 notes:
                   type: string
-                  example: 'Will be available 9 AM - 5 PM'
+                  example: 'Client-critical smoke gate booking'
       responses:
         '201':
           description: Booking created successfully
@@ -1232,9 +1262,25 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: 'WFA booking created successfully'
+                    example: 'Booking WFA berhasil diajukan dan menunggu persetujuan.'
                   data:
-                    $ref: '#/components/schemas/Booking'
+                    type: object
+                    properties:
+                      booking_id:
+                        type: integer
+                      schedule_date:
+                        type: string
+                      location_id:
+                        type: integer
+                      status:
+                        type: string
+                        example: pending
+                      suitability_score:
+                        type: number
+                        nullable: true
+                      suitability_label:
+                        type: string
+                        nullable: true
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
