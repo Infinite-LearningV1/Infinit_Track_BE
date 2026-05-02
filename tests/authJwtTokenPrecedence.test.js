@@ -3,10 +3,27 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 
-import config from '../src/config/index.js';
-import { verifyToken } from '../src/middlewares/authJwt.js';
-import { User } from '../src/models/index.js';
-import logger from '../src/utils/logger.js';
+const TEST_JWT_SECRET = 'test-secret';
+
+jest.unstable_mockModule('../src/config/index.js', () => ({
+  default: {
+    db: {
+      database: 'test_db',
+      username: 'test_user',
+      password: 'test_password',
+      host: 'localhost',
+      port: 3306
+    },
+    jwt: {
+      secret: TEST_JWT_SECRET,
+      ttl: 7200
+    }
+  }
+}));
+
+const { verifyToken } = await import('../src/middlewares/authJwt.js');
+const { User } = await import('../src/models/index.js');
+const { default: logger } = await import('../src/utils/logger.js');
 
 const app = express();
 app.use((req, _res, next) => {
@@ -30,12 +47,12 @@ describe('authJwt token precedence', () => {
   });
 
   const employeeCookieToken = () =>
-    jwt.sign({ id: 1, email: 'employee@example.com', role_name: 'Employee' }, config.jwt.secret, {
+    jwt.sign({ id: 1, email: 'employee@example.com', role_name: 'Employee' }, TEST_JWT_SECRET, {
       expiresIn: '1h'
     });
 
   const managementBearerToken = () =>
-    jwt.sign({ id: 2, email: 'management@example.com', role_name: 'Management' }, config.jwt.secret, {
+    jwt.sign({ id: 2, email: 'management@example.com', role_name: 'Management' }, TEST_JWT_SECRET, {
       expiresIn: '1h'
     });
 
@@ -85,7 +102,7 @@ describe('authJwt token precedence', () => {
   it('rejects a valid token without role_name when role hydration fails', async () => {
     const loggerError = jest.spyOn(logger, 'error').mockImplementation(() => {});
     jest.spyOn(User, 'findByPk').mockRejectedValueOnce(new Error('database unavailable'));
-    const tokenWithoutRoleName = jwt.sign({ id: 3, email: 'legacy@example.com' }, config.jwt.secret, {
+    const tokenWithoutRoleName = jwt.sign({ id: 3, email: 'legacy@example.com' }, TEST_JWT_SECRET, {
       expiresIn: '1h'
     });
 
@@ -104,7 +121,7 @@ describe('authJwt token precedence', () => {
   it('rejects a valid token without role_name when no role can be hydrated', async () => {
     const loggerError = jest.spyOn(logger, 'error').mockImplementation(() => {});
     jest.spyOn(User, 'findByPk').mockResolvedValueOnce({ role: null });
-    const tokenWithoutRoleName = jwt.sign({ id: 5, email: 'norole@example.com' }, config.jwt.secret, {
+    const tokenWithoutRoleName = jwt.sign({ id: 5, email: 'norole@example.com' }, TEST_JWT_SECRET, {
       expiresIn: '1h'
     });
 
@@ -148,7 +165,7 @@ describe('authJwt token precedence', () => {
     const unexpectedError = new Error('cookie writer unavailable');
     const expiringToken = jwt.sign(
       { id: 4, email: 'expiring@example.com', role_name: 'Management' },
-      config.jwt.secret,
+      TEST_JWT_SECRET,
       { expiresIn: '1s' }
     );
     const req = {
