@@ -66,7 +66,10 @@ export const verifyToken = async (req, res, next) => {
         }
 
         decoded.role_name = userWithRole.role.role_name;
-        console.log('🔧 Fixed missing role_name in token:', decoded.role_name);
+        logger.info('Hydrated missing role_name in authenticated token', {
+          userId: decoded.id,
+          roleName: decoded.role_name
+        });
       } catch (dbError) {
         logger.error('Unable to hydrate authenticated user role', {
           userId: decoded.id,
