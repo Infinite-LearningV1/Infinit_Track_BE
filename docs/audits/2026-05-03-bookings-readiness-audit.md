@@ -28,9 +28,9 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `POST /api/bookings` | Yes — `verifyToken`, authenticated users | Yes — `/api/bookings` `post` | Yes — repository evidence captured | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness | Safe live mutation path still required |
 | `PATCH /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `patch` | Yes — repository evidence captured | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness | Safe live mutation path still required |
-| `GET /api/bookings` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings` documents `get` | Yes — repository evidence captured | Yes — focused contract tests present | Yes — read-only candidate, not yet performed | Pending live verification | Read-only live check still pending |
+| `GET /api/bookings` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Partial — OpenAPI documents `date_from`, `date_to`, and `user_id` filters not implemented by `getAllBookings` | Partial — repository evidence captured, but query-filter contract gap remains | Yes — focused contract tests present | Yes — read-only candidate, not yet performed | Pending contract gap + live verification | OpenAPI/runtime filter mismatch and read-only live check still pending |
 | `GET /api/bookings/history` | Yes — `verifyToken`, scoped to `req.user.id` | Yes — `/api/bookings/history` documents `get` with pagination/status/sort metadata | Yes — repository evidence captured | Yes — focused contract tests present | Yes — read-only candidate, not yet performed | Pending live verification | Read-only live check still pending |
-| `DELETE /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `delete` | Yes — repository evidence captured | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness | Safe live mutation path still required |
+| `DELETE /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `delete` | Partial — repository evidence captured, but shared-location deletion risk remains needs-verification | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness + logic gap | Safe live mutation path and shared-location deletion evidence still required |
 
 ## Findings by endpoint
 
@@ -125,9 +125,10 @@
 - TBD; Task 4 records repository evidence only and does not perform live read-only verification.
 
 #### Status
-- Repository and live read-only verification candidate.
+- Repository evidence present, but OpenAPI/runtime filter alignment is partial because documented `date_from`, `date_to`, and `user_id` filters are not implemented by `getAllBookings`; live read-only verification is still pending.
 
 #### Blocking notes
+- Contract gap: OpenAPI documents `date_from`, `date_to`, and `user_id` query filters, but repository evidence shows `getAllBookings` only reads `status`, `page`, and `limit`.
 - Read-only live verification remains pending for final readiness evidence.
 
 ### `GET /api/bookings/history`
@@ -180,6 +181,7 @@
 #### Controller evidence
 - `deleteBooking` returns `404` when the requested booking record/ID does not exist.
 - `deleteBooking` deletes the booking record and then deletes the related location record inside the same transaction.
+- Needs verification: `createBooking` can reuse an existing `location_id`, so deleting the related location record may remove a location still shared by another booking.
 
 #### Automated verification evidence
 - `tests/bookingsReadinessContract.test.js` verifies authenticated non-admin users are blocked from `DELETE /api/bookings/{id}` with `403`.
@@ -190,9 +192,10 @@
 - TBD; Task 4 records repository evidence only and does not perform live mutation verification.
 
 #### Status
-- Repository evidence present; live mutation verification still required for readiness.
+- Repository evidence present, but delete readiness remains partial because shared-location deletion safety is not proven; live mutation verification still required for readiness.
 
 #### Blocking notes
+- Logic gap / needs verification: `createBooking` can reuse `location_id`, while `deleteBooking` destroys the related `Location` record; repository evidence does not prove the location is exclusively owned by the deleted booking.
 - Mutation readiness remains unproven until a safe live `DELETE /api/bookings/{id}` verification path exists.
 
 ## Automated verification evidence
@@ -202,13 +205,15 @@
 ## Initial endpoint status posture
 - `POST /api/bookings`: repository evidence present, live mutation verification still required for readiness.
 - `PATCH /api/bookings/{id}`: repository evidence present, live mutation verification still required for readiness.
-- `GET /api/bookings`: repository and live read-only verification candidate.
+- `GET /api/bookings`: repository evidence present, but OpenAPI/runtime filter alignment is partial; live read-only verification still required.
 - `GET /api/bookings/history`: repository and live read-only verification candidate.
-- `DELETE /api/bookings/{id}`: repository evidence present, live mutation verification still required for readiness.
+- `DELETE /api/bookings/{id}`: repository evidence present, but shared-location deletion safety remains needs-verification and live mutation verification still required.
 
 ## Blocking gap list
 ### Contract gaps
+- `GET /api/bookings` is not fully OpenAPI-aligned: OpenAPI documents `date_from`, `date_to`, and `user_id` filters, while repository evidence shows `getAllBookings` only implements `status`, `page`, and `limit`.
 ### Logic gaps
+- `createBooking` can reuse an existing `location_id`, but `deleteBooking` destroys the related `Location` record after deleting the booking. Repository evidence does not prove that a deleted booking's location is never shared by another booking, so this remains a logic gap / needs-verification item.
 ### Automated verification gaps
 ### Live verification gaps
 
