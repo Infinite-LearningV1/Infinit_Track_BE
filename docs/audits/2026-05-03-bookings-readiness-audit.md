@@ -1,9 +1,9 @@
 # Bookings Readiness Audit — 2026-05-03
 
-## Draft status (scaffold)
-- This document is currently a **draft scaffold** for Task 1 structure and quality alignment.
-- `TBD` placeholders in the matrix and endpoint sections indicate **evidence not yet captured**, not a final readiness result.
-- Final readiness decisions (`READY` or `NOT READY`) remain pending until later evidence capture is completed.
+## Interim status (Task 4 repository evidence captured)
+- This document now captures **Task 4 repository evidence** for bookings readiness across runtime routes, OpenAPI inventory, validators, controllers, and automated contract coverage.
+- Live verification remains pending; repository evidence alone is not a final readiness result.
+- Final readiness decision (`READY` or `NOT READY`) remains pending until Task 5 live verification and Task 6 final assessment are completed.
 
 ## Scope audited
 - `POST /api/bookings`
@@ -26,11 +26,11 @@
 
 | Endpoint | Auth/RBAC aligned | OpenAPI aligned | Business rules aligned | Automated coverage sufficient | Live-verifiable under current constraints | Endpoint status | Blocking notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `POST /api/bookings` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `PATCH /api/bookings/{id}` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `GET /api/bookings` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `GET /api/bookings/history` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `DELETE /api/bookings/{id}` | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `POST /api/bookings` | Yes — `verifyToken`, authenticated users | Yes — `/api/bookings` `post` | Yes — repository evidence captured | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness | Safe live mutation path still required |
+| `PATCH /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `patch` | Yes — repository evidence captured | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness | Safe live mutation path still required |
+| `GET /api/bookings` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings` documents `get` | Yes — repository evidence captured | Yes — focused contract tests present | Yes — read-only candidate, not yet performed | Pending live verification | Read-only live check still pending |
+| `GET /api/bookings/history` | Yes — `verifyToken`, scoped to `req.user.id` | Yes — `/api/bookings/history` documents `get` with pagination/status/sort metadata | Yes — repository evidence captured | Yes — focused contract tests present | Yes — read-only candidate, not yet performed | Pending live verification | Read-only live check still pending |
+| `DELETE /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `delete` | Yes — repository evidence captured | Yes — focused contract tests present | No — mutation live verification pending | Pending readiness | Safe live mutation path still required |
 
 ## Findings by endpoint
 
@@ -68,16 +68,18 @@
 
 ### `PATCH /api/bookings/{id}`
 #### Runtime evidence
-- Endpoint is protected by `verifyToken` and admin/management-only `roleGuard`.
+- `router.use(verifyToken)` in `src/routes/booking.routes.js` protects all booking routes, including `PATCH /api/bookings/{id}`.
+- The `PATCH /:id` route additionally mounts `roleGuard(['Admin', 'Management'])`, so only Admin/Management users can approve or reject bookings.
 
 #### OpenAPI evidence
-- `/api/bookings/{id}` documents the `patch` operation.
+- `docs/openapi.yaml` defines `/api/bookings/{id}` and documents both operations on that path: `patch` and `delete`.
+- The `patch` operation is documented as “Update booking status (Admin/Management only)” and includes `401`, `403`, and `404` responses.
 
 #### Validator evidence
 - `updateStatusValidation` only allows `approved` and `rejected` input values.
 
 #### Controller evidence
-- `updateBookingStatus` rejects missing booking IDs with `404` and past-dated bookings with `400`.
+- `updateBookingStatus` returns `404` when the requested booking record/ID does not exist and `400` for past-dated bookings.
 - `updateBookingStatus` records `approved_by`, `processed_at`, and maps `approved`/`rejected` to persisted status IDs.
 
 #### Automated verification evidence
@@ -97,16 +99,22 @@
 
 ### `GET /api/bookings`
 #### Runtime evidence
-- `GET /api/bookings` is admin/management only.
+- `router.use(verifyToken)` in `src/routes/booking.routes.js` protects `GET /api/bookings`.
+- The `GET /` route additionally mounts `roleGuard(['Admin', 'Management'])`, so `GET /api/bookings` is Admin/Management only.
 
 #### OpenAPI evidence
-- Endpoint is documented in `docs/openapi.yaml`.
+- `docs/openapi.yaml` documents `/api/bookings` `get` as “Get all bookings (Admin/Management only)”.
+- The documented query parameters include pagination (`page`, `limit`), status filtering, date filters, and `user_id`; responses include `401` and `403`.
 
 #### Validator evidence
 - No route-level request validator is mounted for `GET /api/bookings`.
 
 #### Controller evidence
-- `getAllBookings` supports status filtering and paginated flattened responses.
+- `getAllBookings` reads `status`, `page`, and `limit` query parameters.
+- `getAllBookings` maps `approved`/`rejected`/`pending` status strings to persisted status IDs for filtering.
+- `getAllBookings` queries bookings with user, position, role, location, and booking status relations.
+- `getAllBookings` sorts pending first, then approved, then rejected, with newest records first inside each status group.
+- `getAllBookings` returns flattened booking rows plus pagination metadata.
 
 #### Automated verification evidence
 - `tests/bookingsReadinessContract.test.js` verifies authenticated non-admin users are blocked from `GET /api/bookings` with `403`.
@@ -124,17 +132,24 @@
 
 ### `GET /api/bookings/history`
 #### Runtime evidence
-- `GET /api/bookings/history` is available to any authenticated user and scopes results to `req.user.id`.
+- `router.use(verifyToken)` in `src/routes/booking.routes.js` protects `GET /api/bookings/history`.
+- The `GET /history` route has no Admin/Management `roleGuard`, so any authenticated user can reach it.
+- `getBookingHistory` scopes its query with `whereClause = { user_id: req.user.id }`, so results are authenticated-user scoped.
 
 #### OpenAPI evidence
-- Endpoint is documented in `docs/openapi.yaml`.
-- `GET /api/bookings/history` documents pagination, status filtering, and sorting metadata.
+- `docs/openapi.yaml` documents `/api/bookings/history` `get`.
+- `GET /api/bookings/history` documents pagination parameters (`page`, `limit`), status filtering, sorting parameters (`sort_by`, `sort_order`), and response metadata for `pagination` plus `filters.status`, `filters.sort_by`, and `filters.sort_order`.
 
 #### Validator evidence
 - No route-level request validator is mounted for `GET /api/bookings/history`.
 
 #### Controller evidence
-- `getBookingHistory` validates `page`, `limit`, `status`, `sort_by`, and `sort_order`.
+- `getBookingHistory` validates pagination (`page >= 1`, `limit` between 1 and 100).
+- `getBookingHistory` validates `status` against `approved`, `rejected`, and `pending` before mapping to persisted status IDs.
+- `getBookingHistory` validates `sort_by` against `created_at`, `schedule_date`, `processed_at`, and `status`.
+- `getBookingHistory` validates `sort_order` against `ASC` and `DESC`.
+- `getBookingHistory` supports custom status ordering and otherwise sorts by the requested valid field.
+- `getBookingHistory` returns transformed booking rows, pagination metadata, and filter/sort metadata.
 
 #### Automated verification evidence
 - `tests/bookingsReadinessContract.test.js` verifies authenticated users can reach `GET /api/bookings/history`.
@@ -152,16 +167,18 @@
 
 ### `DELETE /api/bookings/{id}`
 #### Runtime evidence
-- Endpoint is protected by `verifyToken` and admin/management-only `roleGuard`.
+- `router.use(verifyToken)` in `src/routes/booking.routes.js` protects all booking routes, including `DELETE /api/bookings/{id}`.
+- The `DELETE /:id` route additionally mounts `roleGuard(['Admin', 'Management'])`, so only Admin/Management users can delete bookings.
 
 #### OpenAPI evidence
-- `/api/bookings/{id}` documents the `delete` operation.
+- `docs/openapi.yaml` defines `/api/bookings/{id}` and documents both operations on that path: `patch` and `delete`.
+- The `delete` operation is documented as “Delete booking (Admin/Management only)” and includes `401`, `403`, and `404` responses.
 
 #### Validator evidence
 - No route-level request-body validator is mounted for `DELETE /api/bookings/{id}`.
 
 #### Controller evidence
-- `deleteBooking` rejects missing booking IDs with `404`.
+- `deleteBooking` returns `404` when the requested booking record/ID does not exist.
 - `deleteBooking` deletes the booking record and then deletes the related location record inside the same transaction.
 
 #### Automated verification evidence
@@ -196,9 +213,12 @@
 ### Live verification gaps
 
 ## Final readiness decision
-- Decision: `TBD`
+- Decision: `PENDING`
 - Reasoning:
-  - TBD
+  - Task 4 repository evidence is captured for runtime routes, OpenAPI documentation, validators, controllers, and automated contract tests.
+  - Task 5 live verification has not started in this document, so mutation readiness and read-only live behavior remain unproven.
+  - Task 6 must issue the final `READY` or `NOT READY` result after live evidence is available.
 
 ## Fix queue
-1. TBD
+1. Complete Task 5 live verification for read-only endpoints and safe mutation verification paths.
+2. Complete Task 6 final readiness assessment with explicit `READY` or `NOT READY` decision.
