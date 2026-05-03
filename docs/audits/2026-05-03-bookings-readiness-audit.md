@@ -1,5 +1,10 @@
 # Bookings Readiness Audit — 2026-05-03
 
+## Draft status (scaffold)
+- This document is currently a **draft scaffold** for Task 1 structure and quality alignment.
+- `TBD` placeholders in the matrix and endpoint sections indicate **evidence not yet captured**, not a final readiness result.
+- Final readiness decisions (`READY` or `NOT READY`) remain pending until later evidence capture is completed.
+
 ## Scope audited
 - `POST /api/bookings`
 - `PATCH /api/bookings/{id}`
@@ -11,6 +16,11 @@
 - Final outcome must be either `READY` or `NOT READY`.
 - Mutation endpoints must have sufficient live verification evidence to count toward `READY`.
 - Read-only endpoint health does not override missing live evidence for mutation flows.
+
+## Current constraints (for live-verifiable assessment)
+- This audit currently assumes **read-only live verification on staging**.
+- Under this constraint, live checks can validate read endpoints and non-mutating access patterns.
+- Mutation flows (`POST`/`PATCH`/`DELETE`) require **separate live mutation evidence** to count as ready.
 
 ## Verification matrix
 
