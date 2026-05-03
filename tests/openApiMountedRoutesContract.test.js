@@ -13,6 +13,16 @@ describe('OpenAPI mounted route inventory contract', () => {
     );
   });
 
+  test('documents mounted production-facing bookings endpoints', () => {
+    expect(Object.keys(openapi.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/bookings',
+        '/api/bookings/history',
+        '/api/bookings/{id}'
+      ])
+    );
+  });
+
   test('documents mounted production-facing discipline endpoints', () => {
     expect(Object.keys(openapi.paths)).toEqual(
       expect.arrayContaining([
