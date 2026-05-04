@@ -126,6 +126,15 @@ describe('client-critical OpenAPI contract', () => {
     expect(bookingSchema.properties).not.toHaveProperty('reason');
   });
 
+  test('documents booking admin list query filters exposed to clients', () => {
+    const bookingListParameters = openapi.paths['/api/bookings'].get.parameters;
+    const parameterNames = bookingListParameters.map((parameter) => parameter.name);
+
+    expect(parameterNames).toEqual(
+      expect.arrayContaining(['page', 'limit', 'status', 'date_from', 'date_to', 'user_id'])
+    );
+  });
+
   test('documents booking creation success response shape from the runtime controller', () => {
     const bookingSuccessSchema = schemaAt(openapi.paths['/api/bookings'].post, '201');
     const dataSchema = bookingSuccessSchema.properties.data;
