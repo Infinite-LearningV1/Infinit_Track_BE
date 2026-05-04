@@ -13,7 +13,7 @@ const EMPTY_DISTRIBUTION = {
   'Sangat Rendah': 0
 };
 
-const getAnalysisWindow = (period) => {
+export const getAnalysisWindow = (period) => {
   const now = new Date();
   const wibNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
 
@@ -86,7 +86,7 @@ const buildDisciplineMetrics = (attendances, startAt, endAt) => {
   };
 };
 
-const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
+export const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
   const users = await User.findAll({});
   const weightsObj = fuzzyEngine.getDisciplineAhpWeights();
   const criteria = ['alpha_rate', 'lateness_severity', 'lateness_frequency', 'work_focus'];
@@ -146,7 +146,7 @@ const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
   };
 };
 
-const buildWfaAnalysis = async () => {
+export const buildWfaAnalysis = async () => {
   const places = await Location.findAll({});
   const weightsObj = fuzzyEngine.getWfaAhpWeights();
   const criteria = ['location_type', 'distance_factor', 'amenity_score'];
@@ -264,7 +264,7 @@ const computeSmartAcScore = (metrics, weights) => {
   };
 };
 
-const buildSmartAcAnalysis = async ({ startAt, endAt }) => {
+export const buildSmartAcAnalysis = async ({ startAt, endAt }) => {
   const users = await User.findAll({});
   const values = getSmartAcWeights();
   const criteria = ['history', 'checkin_pattern', 'context', 'transition'];
