@@ -432,6 +432,13 @@ export const getAllBookings = async (req, res, next) => {
 
     const pageNum = parseInt(pageValue, 10);
     const limitNum = parseInt(limitValue, 10);
+    if (limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter pagination tidak valid. Limit maksimum adalah 100.'
+      });
+    }
+
     const offset = (pageNum - 1) * limitNum;
 
     // Buat objek whereClause untuk Sequelize
@@ -464,6 +471,7 @@ export const getAllBookings = async (req, res, next) => {
 
     const dateFromValue = String(date_from);
     const dateToValue = String(date_to);
+    const strictDatePattern = /^\d{4}-\d{2}-\d{2}$/;
     const hasDateFromFilter = hasQueryParam('date_from');
     const hasDateToFilter = hasQueryParam('date_to');
     const scheduleDateFilter = {};
@@ -471,6 +479,13 @@ export const getAllBookings = async (req, res, next) => {
     let parsedDateTo = null;
 
     if (hasDateFromFilter) {
+      if (!strictDatePattern.test(dateFromValue)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter date_from tidak valid. Gunakan format YYYY-MM-DD.'
+        });
+      }
+
       parsedDateFrom = parseISO(dateFromValue);
       if (!isValid(parsedDateFrom)) {
         return res.status(400).json({
@@ -482,6 +497,13 @@ export const getAllBookings = async (req, res, next) => {
     }
 
     if (hasDateToFilter) {
+      if (!strictDatePattern.test(dateToValue)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter date_to tidak valid. Gunakan format YYYY-MM-DD.'
+        });
+      }
+
       parsedDateTo = parseISO(dateToValue);
       if (!isValid(parsedDateTo)) {
         return res.status(400).json({

@@ -198,8 +198,21 @@ describe('booking controller readiness regressions', () => {
     );
   });
 
+  it('rejects pagination limits above the admin safety cap', async () => {
+    await expectListValidationError({ limit: '101' }, 'Limit maksimum adalah 100');
+  });
+
   it('rejects invalid user_id filters before querying bookings', async () => {
     await expectListValidationError({ user_id: '0' }, 'Parameter user_id tidak valid');
+  });
+
+  it('rejects datetime date filters that do not match the published date format', async () => {
+    await expectListValidationError(
+      {
+        date_from: '2026-05-01T12:00:00Z'
+      },
+      'Gunakan format YYYY-MM-DD'
+    );
   });
 
   it('rejects date ranges where date_from is later than date_to', async () => {
