@@ -2108,6 +2108,119 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/settings/operational:
+    get:
+      tags:
+        - Settings
+      summary: Get operational settings (Admin/Management only)
+      description: |
+        Retrieve the current operational attendance settings as the backend-authoritative typed object.
+
+        Only the approved operational settings are exposed by this endpoint. It does not expose arbitrary settings rows,
+        secrets, or analysis configuration such as `AHP_CR_THRESHOLD`.
+
+        This endpoint is strict about storage integrity. If any approved operational setting row is missing or contains an
+        invalid persisted value, the request fails instead of silently substituting defaults.
+      responses:
+        '200':
+          description: Operational settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationalSettings'
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Invalid token'
+                required:
+                  - message
+                additionalProperties: false
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/OperationalSettingsIntegrityError'
+    patch:
+      tags:
+        - Settings
+      summary: Partially update operational settings (Admin/Management only)
+      description: |
+        Partially update the approved operational attendance settings.
+
+        Request input accepts `defaultShiftEnd` in `HH:mm` or `HH:mm:ss` format, and successful responses always normalize
+        `defaultShiftEnd` to `HH:mm:ss`.
+
+        The PATCH write path mutates only explicitly provided fields. The success response is returned only when the
+        full post-update operational settings state is valid; otherwise the request fails instead of masking unrelated
+        storage corruption with defaults.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationalSettingsPatchRequest'
+            examples:
+              updateIdleAndShiftEnd:
+                summary: Update idle timeout and fallback shift end
+                value:
+                  autoCheckoutIdleMin: 12
+                  defaultShiftEnd: '18:00'
+      responses:
+        '200':
+          description: Operational settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationalSettings'
+        '400':
+          description: Validation error for rejected operational settings payloads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: 'E_VALIDATION'
+                  message:
+                    type: string
+                    example: 'Unknown operational setting field: ahpCrThreshold'
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                required:
+                  - success
+                  - code
+                  - message
+                  - errors
+                additionalProperties: false
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Invalid token'
+                required:
+                  - message
+                additionalProperties: false
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/OperationalSettingsIntegrityError'
+
   # Reference Data Endpoints
   /api/roles:
     get:
@@ -2258,6 +2371,78 @@ components:
           type: string
           format: date-time
           example: '2025-07-01T10:00:00.000Z'
+
+    OperationalSettings:
+      type: object
+      description: |
+        Backend-authoritative operational attendance settings.
+
+        This schema intentionally exposes only the approved operational settings. It does not include arbitrary
+        settings-table rows or analysis configuration such as `AHP_CR_THRESHOLD`.
+      properties:
+        geofenceRadiusDefaultM:
+          type: integer
+          minimum: 1
+          example: 100
+          description: Default geofence radius in meters for attendance enforcement.
+        autoCheckoutIdleMin:
+          type: integer
+          minimum: 1
+          example: 10
+          description: Idle threshold in minutes before auto checkout is considered.
+        autoCheckoutTBufferMin:
+          type: integer
+          minimum: 1
+          example: 30
+          description: Time buffer in minutes used by auto-checkout evaluation logic.
+        lateCheckoutToleranceMin:
+          type: integer
+          minimum: 1
+          example: 15
+          description: Late-checkout tolerance in minutes before fallback handling applies.
+        defaultShiftEnd:
+          type: string
+          pattern: '^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$'
+          example: '17:00:00'
+          description: Default fallback shift end time normalized to HH:mm:ss.
+      required:
+        - geofenceRadiusDefaultM
+        - autoCheckoutIdleMin
+        - autoCheckoutTBufferMin
+        - lateCheckoutToleranceMin
+        - defaultShiftEnd
+      additionalProperties: false
+
+    OperationalSettingsPatchRequest:
+      type: object
+      description: |
+        Partial update payload for operational attendance settings.
+
+        Only the approved operational settings may be sent. `defaultShiftEnd` accepts `HH:mm` or `HH:mm:ss` on input
+        and is normalized to `HH:mm:ss` in the success response.
+      properties:
+        geofenceRadiusDefaultM:
+          type: integer
+          minimum: 1
+          example: 150
+        autoCheckoutIdleMin:
+          type: integer
+          minimum: 1
+          example: 12
+        autoCheckoutTBufferMin:
+          type: integer
+          minimum: 1
+          example: 45
+        lateCheckoutToleranceMin:
+          type: integer
+          minimum: 1
+          example: 20
+        defaultShiftEnd:
+          type: string
+          pattern: '^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$'
+          example: '18:00'
+      minProperties: 1
+      additionalProperties: false
 
     Role:
       type: object
@@ -2837,9 +3022,17 @@ components:
               success:
                 type: boolean
                 example: false
+              code:
+                type: string
+                example: 'E_FORBIDDEN'
               message:
                 type: string
-                example: 'Access forbidden - insufficient permissions'
+                example: 'Forbidden: Insufficient role'
+            required:
+              - success
+              - code
+              - message
+            additionalProperties: false
 
     NotFound:
       description: Resource not found
@@ -2885,6 +3078,50 @@ components:
               error:
                 type: string
                 example: 'Database connection failed'
+
+    OperationalSettingsIntegrityError:
+      description: Operational settings storage is incomplete or contains invalid persisted values
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              code:
+                type: string
+                example: 'E_OPERATIONAL_SETTINGS_INVALID'
+              message:
+                type: string
+                example: 'Operational settings are incomplete or invalid: geofenceRadiusDefaultM (missing)'
+              details:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field:
+                      type: string
+                      example: 'geofenceRadiusDefaultM'
+                    issue:
+                      type: string
+                      enum:
+                        - missing
+                        - invalid
+                    value:
+                      oneOf:
+                        - type: string
+                        - type: number
+                        - type: integer
+                  required:
+                    - field
+                    - issue
+            required:
+              - success
+              - code
+              - message
+              - details
+            additionalProperties: false
 
     ValidationError:
       description: Validation error with detailed field errors
@@ -3113,6 +3350,8 @@ tags:
     description: Summary reports and analytics for management
   - name: Discipline Management
     description: Employee discipline index calculation and management
+  - name: Settings
+    description: Operational settings management endpoints for Admin and Management
   - name: Reference Data
     description: Master data for roles, positions, divisions, etc.
   - name: Development & Testing
