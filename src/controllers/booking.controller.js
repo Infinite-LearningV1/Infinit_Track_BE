@@ -412,19 +412,120 @@ export const updateBookingStatus = async (req, res, next) => {
 export const getAllBookings = async (req, res, next) => {
   try {
     // Dapatkan Parameter Query
-    const { status, page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+    const { status, page = 1, limit = 10, user_id, date_from, date_to } = req.query;
+    const positiveIntegerPattern = /^[1-9]\d*$/;
+    const statusMap = {
+      approved: 1,
+      rejected: 2,
+      pending: 3
+    };
+    const hasQueryParam = (key) => Object.prototype.hasOwnProperty.call(req.query, key);
+
+    const pageValue = String(page);
+    const limitValue = String(limit);
+    if (!positiveIntegerPattern.test(pageValue) || !positiveIntegerPattern.test(limitValue)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter pagination tidak valid. Page dan limit harus bilangan bulat positif.'
+      });
+    }
+
+    const pageNum = parseInt(pageValue, 10);
+    const limitNum = parseInt(limitValue, 10);
+    if (limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter pagination tidak valid. Limit maksimum adalah 100.'
+      });
+    }
+
+    const offset = (pageNum - 1) * limitNum;
 
     // Buat objek whereClause untuk Sequelize
     const whereClause = {};
-    if (status) {
-      const statusMap = {
-        approved: 1,
-        rejected: 2,
-        pending: 3
-      };
-      whereClause.status = statusMap[status];
-    } // Lakukan Query ke Database dengan include yang lengkap
+
+    if (hasQueryParam('status')) {
+      const statusValue = String(status);
+      const mappedStatus = statusMap[statusValue];
+      if (!mappedStatus) {
+        return res.status(400).json({
+          success: false,
+          message: 'Status filter tidak valid. Pilihan: approved, rejected, pending.'
+        });
+      }
+
+      whereClause.status = mappedStatus;
+    }
+
+    if (hasQueryParam('user_id')) {
+      const userIdValue = String(user_id);
+      if (!positiveIntegerPattern.test(userIdValue)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter user_id tidak valid. user_id harus bilangan bulat positif.'
+        });
+      }
+
+      whereClause.user_id = parseInt(userIdValue, 10);
+    }
+
+    const dateFromValue = String(date_from);
+    const dateToValue = String(date_to);
+    const strictDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const hasDateFromFilter = hasQueryParam('date_from');
+    const hasDateToFilter = hasQueryParam('date_to');
+    const scheduleDateFilter = {};
+    let parsedDateFrom = null;
+    let parsedDateTo = null;
+
+    if (hasDateFromFilter) {
+      if (!strictDatePattern.test(dateFromValue)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter date_from tidak valid. Gunakan format YYYY-MM-DD.'
+        });
+      }
+
+      parsedDateFrom = parseISO(dateFromValue);
+      if (!isValid(parsedDateFrom)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter date_from tidak valid. Gunakan tanggal yang valid.'
+        });
+      }
+      scheduleDateFilter[Op.gte] = dateFromValue;
+    }
+
+    if (hasDateToFilter) {
+      if (!strictDatePattern.test(dateToValue)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter date_to tidak valid. Gunakan format YYYY-MM-DD.'
+        });
+      }
+
+      parsedDateTo = parseISO(dateToValue);
+      if (!isValid(parsedDateTo)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parameter date_to tidak valid. Gunakan tanggal yang valid.'
+        });
+      }
+      scheduleDateFilter[Op.lte] = dateToValue;
+    }
+
+    if (parsedDateFrom && parsedDateTo && parsedDateFrom > parsedDateTo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter date_from tidak boleh lebih lambat dari date_to.'
+      });
+    }
+
+    if (hasDateFromFilter || hasDateToFilter) {
+      whereClause.schedule_date = scheduleDateFilter;
+    }
+
+    // Lakukan Query ke Database dengan include yang lengkap
     const bookings = await Booking.findAndCountAll({
       where: whereClause,
       include: [
@@ -462,8 +563,8 @@ export const getAllBookings = async (req, res, next) => {
         // Urutan sekunder: data terbaru di atas dalam setiap grup status
         ['created_at', 'DESC']
       ],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: limitNum,
+      offset,
       distinct: true // Important for correct count with includes
     }); // Transform data dengan struktur location yang grouped
     const transformedBookings = bookings.rows.map((booking) => ({
@@ -497,10 +598,10 @@ export const getAllBookings = async (req, res, next) => {
       data: {
         bookings: transformedBookings,
         pagination: {
-          current_page: parseInt(page),
-          total_pages: Math.ceil(bookings.count / limit),
+          current_page: pageNum,
+          total_pages: Math.ceil(bookings.count / limitNum),
           total_items: bookings.count,
-          items_per_page: parseInt(limit)
+          items_per_page: limitNum
         }
       },
       message: 'Daftar booking berhasil diambil'
@@ -612,24 +713,13 @@ export const deleteBooking = async (req, res, next) => {
       });
     }
 
-    // Langkah 4: Simpan location_id Terkait
-    const locationIdToDelete = bookingRecord.location_id;
-
-    // Langkah 5: Hapus Record Booking
+    // Langkah 4: Hapus Record Booking
     await bookingRecord.destroy({ transaction: t });
 
-    // Langkah 6: Hapus Record Lokasi Terkait
-    if (locationIdToDelete) {
-      await Location.destroy({
-        where: { location_id: locationIdToDelete },
-        transaction: t
-      });
-    }
-
-    // Langkah 7: Commit Transaksi
+    // Langkah 5: Commit Transaksi
     await t.commit();
 
-    // Langkah 8: Kirim Respons Sukses
+    // Langkah 6: Kirim Respons Sukses
     res.status(200).json({
       success: true,
       message: 'Data booking berhasil dihapus.'
