@@ -150,8 +150,8 @@ curl http://localhost:3005/health
 # API documentation
 open http://localhost:3005/docs
 
-# Test timezone configuration
-curl http://localhost:3005/api/attendance/test-timezone
+# Published OpenAPI contract
+curl http://localhost:3005/docs/openapi.yaml
 ```
 
 ## 5. Dokumentasi API (Endpoint Utama)
@@ -181,27 +181,24 @@ Dokumentasi API interaktif yang lengkap tersedia melalui **Swagger UI** saat ser
 | **🧠 WFA Intelligence**      |
 | `GET`                        | `/api/wfa/recommendations`        | Rekomendasi lokasi WFA dengan Fuzzy AHP               | Pengguna         |
 | `GET`                        | `/api/wfa/ahp-config`             | Konfigurasi algoritma AHP                             | Admin            |
-| `POST`                       | `/api/wfa/test-ahp`               | Test AHP algorithm (debugging)                        | Admin            |
 | **📊 Analytics & Reports**   |
 | `GET`                        | `/api/summary`                    | **[ENHANCED]** Laporan komprehensif + Indeks Disiplin | Admin/Management |
 | `GET`                        | `/api/discipline/user/:id`        | Indeks kedisiplinan individual                        | Admin/Management |
 | `GET`                        | `/api/discipline/all`             | Overview disiplin semua karyawan                      | Admin            |
-| **🤖 Job Management**        |
-| `GET`                        | `/api/jobs/status`                | Status semua automated jobs                           | Admin            |
-| `POST`                       | `/api/jobs/trigger/general-alpha` | **[NEW]** Trigger manual alpha job                    | Admin            |
-| `POST`                       | `/api/jobs/trigger/wfa-bookings`  | **[NEW]** Trigger manual WFA resolution               | Admin            |
-| `POST`                       | `/api/jobs/trigger/auto-checkout` | **[NEW]** Trigger manual auto-checkout                | Admin            |
-| `POST`                       | `/api/jobs/trigger/all`           | **[NEW]** Trigger semua jobs sekaligus                | Admin            |
+| `GET`                        | `/api/analysis/fuzzy-ahp`         | Analisis bobot fuzzy AHP                              | Admin/Management |
+| **⚙️ Operational Settings**  |
+| `GET`                        | `/api/settings/operational`       | Membaca konfigurasi operasional aplikasi              | Admin/Management |
+| `PATCH`                      | `/api/settings/operational`       | Mengubah konfigurasi operasional aplikasi             | Admin/Management |
 | **👥 User Management**       |
 | `GET`                        | `/api/users`                      | Mengelola semua pengguna (CRUD)                       | Admin            |
 | `POST`                       | `/api/users`                      | Buat user baru                                        | Admin            |
 | `PATCH`                      | `/api/users/:id`                  | Update data user                                      | Admin            |
 | `DELETE`                     | `/api/users/:id`                  | Hapus user                                            | Admin            |
 | **📋 Reference Data**        |
-| `GET`                        | `/api/roles`                      | Daftar semua roles                                    | Authenticated    |
-| `GET`                        | `/api/positions`                  | Daftar semua positions                                | Authenticated    |
-| `GET`                        | `/api/divisions`                  | Daftar semua divisions                                | Authenticated    |
-| `GET`                        | `/api/locations`                  | Daftar office locations                               | Authenticated    |
+| `GET`                        | `/api/roles`                      | Daftar semua roles                                    | Admin/Management |
+| `GET`                        | `/api/programs`                   | Daftar semua program                                  | Admin/Management |
+| `GET`                        | `/api/positions`                  | Daftar semua positions                                | Admin/Management |
+| `GET`                        | `/api/divisions`                  | Daftar semua divisions                                | Admin/Management |
 
 ### **🎯 5.2 Featured Endpoints**
 
@@ -672,7 +669,7 @@ npm run migrate:undo         # Rollback last migration (dev only)
 
 # Production Monitoring
 curl https://api.yourdomain.com/health                  # Health check
-curl https://api.yourdomain.com/api/jobs/status         # Check cron jobs
+curl https://api.yourdomain.com/docs/openapi.yaml      # Published API contract
 ```
 
 ### **🎯 8.9 Development Workflow Best Practices**
@@ -771,9 +768,9 @@ npm run health:check
 
 ```bash
 # Health check endpoints
-GET /health                    # Basic server health
-GET /api/attendance/test-timezone  # Timezone configuration
-GET /api/jobs/status          # Automated jobs status
+GET /health              # Basic server health
+GET /docs                # Interactive API documentation
+GET /docs/openapi.yaml   # Published OpenAPI contract
 ```
 
 ### **📝 10.2 Logging System**
@@ -809,21 +806,21 @@ npm run db:reset
 #### Timezone Issues
 
 ```bash
-# Verify timezone configuration
-curl http://localhost:3005/api/attendance/test-timezone
+# Verify service contract is being served
+curl http://localhost:3005/health
+curl http://localhost:3005/docs/openapi.yaml
 
 # Check database timezone settings
 npm run db:timezone:check
 ```
 
-#### Job Processing Issues
+#### Operational Readiness Issues
 
 ```bash
-# Check cron job status
-GET /api/jobs/status
-
-# Manual trigger for debugging
-POST /api/jobs/trigger/all
+# Verify published contract and public operational surfaces
+GET /docs/openapi.yaml
+GET /api/settings/operational
+GET /api/attendance/today-locations
 ```
 
 ## 11. Contributing & Development Guidelines
