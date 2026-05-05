@@ -35,21 +35,17 @@ api_request() {
     local method=$1
     local endpoint=$2
     local data=$3
-    local auth_header=""
-    
-    if [ ! -z "$ADMIN_TOKEN" ]; then
-        auth_header="-H 'Authorization: Bearer $ADMIN_TOKEN'"
+    local curl_args=(-s -X "$method" "$API_BASE$endpoint")
+
+    if [ -n "$ADMIN_TOKEN" ]; then
+        curl_args+=(-H "Authorization: Bearer $ADMIN_TOKEN")
     fi
-    
-    if [ ! -z "$data" ]; then
-        eval curl -s -X $method "$API_BASE$endpoint" \
-            -H "Content-Type: application/json" \
-            $auth_header \
-            -d "'$data'"
-    else
-        eval curl -s -X $method "$API_BASE$endpoint" \
-            $auth_header
+
+    if [ -n "$data" ]; then
+        curl_args+=(-H "Content-Type: application/json" -d "$data")
     fi
+
+    curl "${curl_args[@]}"
 }
 
 # Test health endpoint
@@ -80,7 +76,7 @@ test_basic_endpoints() {
     fi
     
     # Test authentication endpoint
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$API_BASE/auth/signin")
+    response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_BASE/auth/login" -H "Content-Type: application/json" -d "{}")
     if [ "$response" = "400" ] || [ "$response" = "422" ]; then
         print_success "Auth endpoint accessible (expected validation error)"
     else
@@ -88,55 +84,34 @@ test_basic_endpoints() {
     fi
 }
 
-# Test manual job triggers (requires admin token)
-test_job_triggers() {
+# Test read-only admin operational endpoints (requires admin token)
+test_admin_operational_endpoints() {
     if [ -z "$ADMIN_TOKEN" ]; then
-        print_warning "Skipping job trigger tests (no admin token provided)"
+        print_warning "Skipping admin operational endpoint tests (no admin token provided)"
         return 0
     fi
-    
-    print_info "Testing manual job triggers..."
-    
-    # Test job status endpoint
-    local response=$(api_request "GET" "/jobs/status")
-    if echo "$response" | grep -q "status"; then
-        print_success "Job status endpoint working"
-    else
-        print_warning "Job status endpoint may have issues"
-    fi
-    
-    # Test general alpha trigger
-    print_info "Testing general alpha trigger..."
-    response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_BASE/jobs/trigger/general-alpha" \
-        -H "Authorization: Bearer $ADMIN_TOKEN")
-    
-    if [ "$response" = "200" ]; then
-        print_success "General alpha trigger working"
-    else
-        print_warning "General alpha trigger returned HTTP $response"
-    fi
-    
-    # Test WFA resolver trigger
-    print_info "Testing WFA resolver trigger..."
-    response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_BASE/jobs/trigger/resolve-wfa" \
-        -H "Authorization: Bearer $ADMIN_TOKEN")
-    
-    if [ "$response" = "200" ]; then
-        print_success "WFA resolver trigger working"
-    else
-        print_warning "WFA resolver trigger returned HTTP $response"
-    fi
-    
-    # Test auto checkout trigger
-    print_info "Testing auto checkout trigger..."
-    response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_BASE/jobs/trigger/auto-checkout" \
-        -H "Authorization: Bearer $ADMIN_TOKEN")
-    
-    if [ "$response" = "200" ]; then
-        print_success "Auto checkout trigger working"
-    else
-        print_warning "Auto checkout trigger returned HTTP $response"
-    fi
+
+    print_info "Testing read-only admin operational endpoints..."
+
+    ADMIN_ENDPOINTS=(
+        "/settings/operational"
+        "/attendance/auto-checkout-settings"
+        "/attendance/smart-config"
+        "/attendance/enhanced-auto-checkout-settings"
+        "/attendance/today-locations"
+    )
+
+    for endpoint in "${ADMIN_ENDPOINTS[@]}"; do
+        local response=$(curl -s -o /dev/null -w "%{http_code}" "$API_BASE$endpoint" -H "Authorization: Bearer $ADMIN_TOKEN")
+
+        if [ "$response" = "200" ]; then
+            print_success "Admin endpoint $endpoint working"
+        elif [ "$response" = "401" ] || [ "$response" = "403" ]; then
+            print_warning "Admin endpoint $endpoint rejected credentials (HTTP $response)"
+        else
+            print_warning "Admin endpoint $endpoint returned HTTP $response"
+        fi
+    done
 }
 
 # Test database connectivity
@@ -266,7 +241,7 @@ run_tests() {
     test_ssl
     
     # Admin functionality tests
-    test_job_triggers
+    test_admin_operational_endpoints
     
     echo ""
     echo "🎯 Test Summary"

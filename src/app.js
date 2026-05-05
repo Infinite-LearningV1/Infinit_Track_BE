@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import YAML from 'yamljs';
@@ -49,7 +50,12 @@ app.use(cookieParser());
 app.use('/uploads', express.static('uploads'));
 
 // Swagger documentation
-const swaggerDoc = YAML.load('./docs/openapi.yaml');
+const openApiPath = path.resolve(process.cwd(), 'docs/openapi.yaml');
+const swaggerDoc = YAML.load(openApiPath);
+app.get('/docs/openapi.yaml', (_req, res) => {
+  res.type('application/yaml');
+  res.sendFile(openApiPath);
+});
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 
 app.use(routes);
