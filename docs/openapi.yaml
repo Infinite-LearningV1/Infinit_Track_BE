@@ -2226,8 +2226,8 @@ paths:
     get:
       tags:
         - Reference Data
-      summary: Get all roles
-      description: Retrieve all available user roles
+      summary: Get all roles (Admin/Management only)
+      description: Retrieve all available user roles for Admin and Management users
       responses:
         '200':
           description: Roles retrieved successfully
@@ -2242,16 +2242,21 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Role'
+                      $ref: '#/components/schemas/ReferenceRole'
+                  message:
+                    type: string
+                    example: Roles retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/programs:
     get:
       tags:
         - Reference Data
-      summary: Get all programs
-      description: Retrieve all available programs
+      summary: Get all programs (Admin/Management only)
+      description: Retrieve all available programs for Admin and Management users
       responses:
         '200':
           description: Programs retrieved successfully
@@ -2279,13 +2284,23 @@ paths:
                     example: Programs retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/positions:
     get:
       tags:
         - Reference Data
-      summary: Get all positions
-      description: Retrieve all available job positions
+      summary: Get all positions (Admin/Management only)
+      description: Retrieve all available job positions for Admin and Management users
+      parameters:
+        - in: query
+          name: program_id
+          schema:
+            type: integer
+          required: false
+          description: Filter positions by program ID
+          example: 1
       responses:
         '200':
           description: Positions retrieved successfully
@@ -2300,16 +2315,21 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Position'
+                      $ref: '#/components/schemas/ReferencePosition'
+                  message:
+                    type: string
+                    example: Positions retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/divisions:
     get:
       tags:
         - Reference Data
-      summary: Get all divisions
-      description: Retrieve all available company divisions
+      summary: Get all divisions (Admin/Management only)
+      description: Retrieve all available company divisions for Admin and Management users
       responses:
         '200':
           description: Divisions retrieved successfully
@@ -2324,9 +2344,14 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Division'
+                      $ref: '#/components/schemas/ReferenceDivision'
+                  message:
+                    type: string
+                    example: Divisions retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
 components:
   securitySchemes:
@@ -2482,6 +2507,46 @@ components:
         description:
           type: string
           example: 'Software development division'
+
+    ReferenceRole:
+      type: object
+      properties:
+        id_roles:
+          type: integer
+          example: 1
+        role_name:
+          type: string
+          example: 'Admin'
+
+    ReferencePosition:
+      type: object
+      properties:
+        id_positions:
+          type: integer
+          example: 1
+        position_name:
+          type: string
+          example: 'Software Engineer'
+        id_programs:
+          type: integer
+          example: 1
+        program:
+          type: object
+          nullable: true
+          properties:
+            program_name:
+              type: string
+              example: 'Kampus Merdeka'
+
+    ReferenceDivision:
+      type: object
+      properties:
+        id_divisions:
+          type: integer
+          example: 1
+        division_name:
+          type: string
+          example: 'Engineering'
 
     Attendance:
       type: object
@@ -2773,36 +2838,6 @@ components:
           nullable: true
           example: 5
           description: ID of admin/management who processed the booking
-
-    JobStatus:
-      type: object
-      properties:
-        name:
-          type: string
-          example: 'General Alpha Generation'
-        cron_schedule:
-          type: string
-          example: '45 23 * * *'
-        description:
-          type: string
-          example: 'Generates alpha attendance records for users without attendance'
-        last_execution:
-          type: string
-          format: date-time
-          nullable: true
-          example: '2025-07-04T23:45:00.000Z'
-        next_execution:
-          type: string
-          format: date-time
-          example: '2025-07-05T23:45:00.000Z'
-        status:
-          type: string
-          enum: [scheduled, running, completed, failed]
-          example: 'scheduled'
-        execution_count:
-          type: integer
-          example: 5
-          description: 'Number of times this job has been executed'
 
     WFARecommendation:
       type: object
@@ -3334,18 +3369,16 @@ tags:
     description: System health and status endpoints
   - name: Authentication
     description: User authentication and authorization
+  - name: Analysis
+    description: Dashboard-ready Fuzzy AHP analysis endpoints for management surfaces
   - name: Attendance
     description: Employee attendance tracking and management
-  - name: Advanced Attendance
-    description: Advanced attendance features like auto-checkout and smart predictions
   - name: User Management
     description: User account management (Admin/Management only)
   - name: WFA Bookings
     description: Work From Anywhere booking management
   - name: WFA System
     description: WFA recommendation engine using Fuzzy AHP
-  - name: Job Management
-    description: Cron job management and manual triggers (Admin only)
   - name: Reports & Analytics
     description: Summary reports and analytics for management
   - name: Discipline Management
@@ -3354,16 +3387,6 @@ tags:
     description: Operational settings management endpoints for Admin and Management
   - name: Reference Data
     description: Master data for roles, positions, divisions, etc.
-  - name: Development & Testing
-    description: Development and testing endpoints
-  - name: Reports & Analytics
-    description: Summary and report generation endpoints
-  - name: Discipline Management
-    description: Discipline index and management endpoints
-  - name: Advanced Attendance
-    description: Advanced attendance features like manual checkout and smart prediction
-  - name: Development & Testing
-    description: Development and testing utilities
 externalDocs:
   description: Find out more about Infinite Track Backend
   url: https://github.com/your-org/infinite-track-backend

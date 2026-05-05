@@ -115,16 +115,19 @@ print_info "Testing core API endpoints..."
 print_info "Testing authentication endpoints..."
 
 # Test login endpoint (should return validation error without data)
-LOGIN_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_BASE/api/auth/login" \
-    -H "Content-Type: application/json" || echo "failed")
+LOGIN_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_BASE/api/auth/login" -H "Content-Type: application/json" || echo "failed")
 
-if [ "$LOGIN_RESPONSE" = "400" ] || [ "$LOGIN_RESPONSE" = "422" ]; then
-    print_success "Login endpoint accessible (validation error expected)"
-elif [ "$LOGIN_RESPONSE" = "200" ]; then
-    print_warning "Login endpoint returned 200 (unexpected without credentials)"
-else
-    print_error "Login endpoint failed (HTTP $LOGIN_RESPONSE)"
-fi
+case "$LOGIN_RESPONSE" in
+    400|422)
+        print_success "Login endpoint accessible (validation error expected)"
+        ;;
+    200)
+        print_warning "Login endpoint returned 200 (unexpected without credentials)"
+        ;;
+    *)
+        print_error "Login endpoint failed (HTTP $LOGIN_RESPONSE)"
+        ;;
+esac
 
 # Test protected endpoints (should return 401 without auth)
 print_info "Testing protected endpoints..."
@@ -160,7 +163,7 @@ if [ -f "docs/openapi.yaml" ]; then
         "/api/attendance/checkout"
         "/api/bookings"
         "/api/wfa/recommendations"
-        "/api/jobs/trigger/general-alpha"
+        "/api/settings/operational"
         "/health"
     )
     
@@ -186,7 +189,7 @@ if [ -f "docs/openapi.yaml" ]; then
         "Attendance"
         "Booking"
         "WFARecommendation"
-        "JobStatus"
+        "OperationalSettings"
     )
     
     MISSING_COMPONENTS=()
@@ -263,7 +266,7 @@ echo "   - GET /api/roles (should return available roles)"
 echo ""
 echo "4. 🧪 Test Advanced Features:"
 echo "   - GET /api/wfa/recommendations (with lat/lng parameters)"
-echo "   - POST /api/jobs/trigger/general-alpha (Admin only)"
+echo "   - GET /api/settings/operational (Admin/Management only)"
 echo "   - GET /api/discipline/config (Admin/Management only)"
 echo ""
 

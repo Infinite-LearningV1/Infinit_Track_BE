@@ -2,11 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'yamljs';
 
-const schemaAt = (operation, statusCode = '200') =>
-  operation.responses[statusCode].content['application/json'].schema;
+function schemaAt(operation, statusCode = '200') {
+  return operation.responses[statusCode].content['application/json'].schema;
+}
 
-const jsonRequestSchema = (operation) =>
-  operation.requestBody.content['application/json'].schema;
+function jsonRequestSchema(operation) {
+  return operation.requestBody.content['application/json'].schema;
+}
+
+function componentSchema(openapi, name) {
+  return openapi.components.schemas[name];
+}
 
 describe('client-critical OpenAPI contract', () => {
   const openapi = yaml.parse(
@@ -164,5 +170,81 @@ describe('client-critical OpenAPI contract', () => {
         nullable: true
       }
     });
+  });
+
+  test('defines the Analysis tag used by published analysis endpoints', () => {
+    expect(openapi.tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Analysis'
+        })
+      ])
+    );
+  });
+
+  test('documents reference data endpoints as Admin/Management-only surfaces', () => {
+    const referenceDataPaths = [
+      '/api/roles',
+      '/api/programs',
+      '/api/positions',
+      '/api/divisions'
+    ];
+
+    for (const referenceDataPath of referenceDataPaths) {
+      const operation = openapi.paths[referenceDataPath].get;
+
+      expect(operation.summary).toContain('(Admin/Management only)');
+      expect(operation.responses).toHaveProperty('401');
+      expect(operation.responses).toHaveProperty('403');
+    }
+  });
+
+  test('documents reference data response items and filters from the live controllers', () => {
+    const rolesItemSchema = schemaAt(openapi.paths['/api/roles'].get).properties.data.items;
+    const programsItemSchema = schemaAt(openapi.paths['/api/programs'].get).properties.data.items;
+    const positionsOperation = openapi.paths['/api/positions'].get;
+    const positionsItemSchema = schemaAt(positionsOperation).properties.data.items;
+    const divisionsItemSchema = schemaAt(openapi.paths['/api/divisions'].get).properties.data.items;
+    const roleProperties = componentSchema(openapi, 'ReferenceRole').properties;
+    const positionProperties = componentSchema(openapi, 'ReferencePosition').properties;
+    const divisionProperties = componentSchema(openapi, 'ReferenceDivision').properties;
+
+    expect(rolesItemSchema).toEqual({ $ref: '#/components/schemas/ReferenceRole' });
+    expect(roleProperties).toMatchObject({
+      id_roles: { type: 'integer' },
+      role_name: { type: 'string' }
+    });
+    expect(roleProperties).not.toHaveProperty('id');
+    expect(roleProperties).not.toHaveProperty('name');
+
+    expect(programsItemSchema.properties).toMatchObject({
+      id_programs: { type: 'integer' },
+      program_name: { type: 'string' }
+    });
+
+    expect(positionsOperation.parameters.map((parameter) => parameter.name)).toContain('program_id');
+    expect(positionsItemSchema).toEqual({ $ref: '#/components/schemas/ReferencePosition' });
+    expect(positionProperties).toMatchObject({
+      id_positions: { type: 'integer' },
+      position_name: { type: 'string' },
+      id_programs: { type: 'integer' },
+      program: {
+        type: 'object',
+        nullable: true
+      }
+    });
+    expect(positionProperties.program.properties).toMatchObject({
+      program_name: { type: 'string' }
+    });
+    expect(positionProperties).not.toHaveProperty('id');
+    expect(positionProperties).not.toHaveProperty('name');
+
+    expect(divisionsItemSchema).toEqual({ $ref: '#/components/schemas/ReferenceDivision' });
+    expect(divisionProperties).toMatchObject({
+      id_divisions: { type: 'integer' },
+      division_name: { type: 'string' }
+    });
+    expect(divisionProperties).not.toHaveProperty('id');
+    expect(divisionProperties).not.toHaveProperty('name');
   });
 });
