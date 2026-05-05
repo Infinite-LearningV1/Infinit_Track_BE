@@ -3369,6 +3369,8 @@ tags:
     description: System health and status endpoints
   - name: Authentication
     description: User authentication and authorization
+  - name: Analysis
+    description: Dashboard-ready Fuzzy AHP analysis endpoints for management surfaces
   - name: Attendance
     description: Employee attendance tracking and management
   - name: User Management

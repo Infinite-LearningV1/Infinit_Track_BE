@@ -172,6 +172,16 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
+  test('defines the Analysis tag used by published analysis endpoints', () => {
+    expect(openapi.tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Analysis'
+        })
+      ])
+    );
+  });
+
   test('documents reference data endpoints as Admin/Management-only surfaces', () => {
     const referenceDataPaths = [
       '/api/roles',
