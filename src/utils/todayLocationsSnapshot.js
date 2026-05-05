@@ -84,6 +84,8 @@ export const buildTodayLocationsSnapshot = async ({ date = getJakartaDateString(
   return {
     date,
     timezone: 'Asia/Jakarta',
+    snapshot_type: 'attendance_checkin_snapshot',
+    is_live_tracking: false,
     total_users: locations.length,
     locations
   };

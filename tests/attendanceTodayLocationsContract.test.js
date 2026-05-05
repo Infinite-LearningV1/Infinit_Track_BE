@@ -120,6 +120,8 @@ describe('attendance today locations handler', () => {
         data: expect.objectContaining({
           date: '2026-04-22',
           timezone: 'Asia/Jakarta',
+          snapshot_type: 'attendance_checkin_snapshot',
+          is_live_tracking: false,
           total_users: 1,
           locations: [
             expect.objectContaining({
@@ -153,6 +155,8 @@ describe('attendance today locations handler', () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
+          snapshot_type: 'attendance_checkin_snapshot',
+          is_live_tracking: false,
           total_users: 0,
           locations: []
         })
@@ -207,6 +211,8 @@ describe('attendance today locations handler', () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
+          snapshot_type: 'attendance_checkin_snapshot',
+          is_live_tracking: false,
           total_users: 1,
           locations: [
             expect.objectContaining({

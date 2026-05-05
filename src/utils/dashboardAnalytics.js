@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 
-import { Attendance, AttendanceCategory, AttendanceStatus } from '../models/index.js';
+import { Attendance, AttendanceCategory, AttendanceStatus, LocationEvent } from '../models/index.js';
 import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
@@ -11,6 +11,8 @@ import { parseIsoDateUtcStrict } from './isoDate.js';
 import { buildTodayLocationsSnapshot } from './todayLocationsSnapshot.js';
 
 const STATUS_ALPHA = new Set(['alpa', 'alpha']);
+const STATUS_LATE = new Set(['terlambat', 'late']);
+const STATUS_EARLY = new Set(['early', 'lebih awal']);
 const CATEGORY_MAP = {
   wfo: 'wfo',
   'work from office': 'wfo',
@@ -36,13 +38,15 @@ const buildSectionWindows = (effectiveWindow) => ({
   historical_trend: buildExecutedWindow(effectiveWindow),
   mode_mix: buildExecutedWindow(effectiveWindow),
   fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow),
+  geofence_evidence_context: buildExecutedWindow(effectiveWindow),
   today_locations: {
     mode: 'jakarta_today'
   }
 });
 
-const buildEmptySnapshotCard = (effectiveWindow) => ({
-  generated_at: null,
+const buildEmptySnapshotCard = (effectiveWindow, generatedAt) => ({
+  status: 'no_data',
+  generated_at: generatedAt,
   window: buildExecutedWindow(effectiveWindow),
   weights: {},
   consistency: null,
@@ -68,12 +72,47 @@ const addUtcDays = (date, days) => {
   return next;
 };
 
+const buildJakartaDayStartUtc = (dateStr) => new Date(`${dateStr}T00:00:00+07:00`);
+
+const roundToTwo = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const percentageOf = (count, total) => (total > 0 ? roundToTwo((count / total) * 100) : 0);
+
 const normalizeCategoryName = (categoryName) => {
   if (!categoryName) return null;
   return CATEGORY_MAP[String(categoryName).trim().toLowerCase()] ?? null;
 };
 
-const isAlphaStatusName = (statusName) => STATUS_ALPHA.has(String(statusName || '').trim().toLowerCase());
+const normalizeStatusName = (statusName) => String(statusName || '').trim().toLowerCase();
+
+const getAttendanceStatusFlags = (statusName) => {
+  const normalizedStatusName = normalizeStatusName(statusName);
+  const isAlpha = STATUS_ALPHA.has(normalizedStatusName);
+
+  return {
+    isAlpha,
+    isLate: !isAlpha && STATUS_LATE.has(normalizedStatusName),
+    isEarly: !isAlpha && STATUS_EARLY.has(normalizedStatusName)
+  };
+};
+
+const incrementAttendanceCounters = (counters, { isAlpha, isLate, isEarly }) => {
+  if (isAlpha) {
+    counters.alpha += 1;
+    return;
+  }
+
+  counters.present += 1;
+
+  if (isLate) {
+    counters.late += 1;
+    return;
+  }
+
+  if (!isEarly) {
+    counters.on_time += 1;
+  }
+};
 
 const buildEffectiveWindow = ({ period, from, to }) => {
   const todayDate = getJakartaDateString();
@@ -136,19 +175,20 @@ const buildDistributionFromRanking = (ranking) => {
   }, {});
 };
 
-const buildSnapshotCard = ({ analysis, effectiveWindow, allowedIds = null }) => {
+const buildSnapshotCard = ({ analysis, effectiveWindow, generatedAt, allowedIds = null }) => {
   const ranking = Array.isArray(analysis?.ranking) ? analysis.ranking : [];
   const filteredRanking =
     allowedIds == null ? ranking : ranking.filter((item) => allowedIds.has(String(item.id)));
 
   if (filteredRanking.length === 0) {
-    return buildEmptySnapshotCard(effectiveWindow);
+    return buildEmptySnapshotCard(effectiveWindow, generatedAt);
   }
 
   const topRank = filteredRanking[0];
 
   return {
-    generated_at: null,
+    status: 'ready',
+    generated_at: generatedAt,
     window: buildExecutedWindow(effectiveWindow),
     weights: buildWeightsObject(analysis?.weights),
     consistency: analysis?.consistency || null,
@@ -162,11 +202,45 @@ const buildSnapshotCard = ({ analysis, effectiveWindow, allowedIds = null }) => 
   };
 };
 
+const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
+  const uniqueUsers = new Set();
+  let enterEvents = 0;
+  let exitEvents = 0;
+
+  for (const event of locationEvents) {
+    if (event.user_id != null) {
+      uniqueUsers.add(String(event.user_id));
+    }
+
+    if (event.event_type === 'ENTER') {
+      enterEvents += 1;
+    }
+
+    if (event.event_type === 'EXIT') {
+      exitEvents += 1;
+    }
+  }
+
+  return {
+    status: locationEvents.length > 0 ? 'available' : 'no_events',
+    authority: 'context_only',
+    final_attendance_authority: 'attendance_records',
+    window: buildExecutedWindow(effectiveWindow),
+    raw_counts: {
+      total_events: locationEvents.length,
+      enter_events: enterEvents,
+      exit_events: exitEvents,
+      unique_users: uniqueUsers.size
+    }
+  };
+};
+
 const buildInsights = ({ executiveKpis, modeMix, todayLocations }) => {
   const items = [];
+  const rawCounts = executiveKpis.raw_counts;
 
-  if (executiveKpis.total_attendance_records > 0) {
-    const alphaRate = (executiveKpis.total_alpha / executiveKpis.total_attendance_records) * 100;
+  if (rawCounts.total_attendance_records > 0) {
+    const alphaRate = (rawCounts.total_alpha / rawCounts.total_attendance_records) * 100;
     if (alphaRate >= 20) {
       items.push({
         type: 'alpha_spike',
@@ -187,11 +261,11 @@ const buildInsights = ({ executiveKpis, modeMix, todayLocations }) => {
     });
   }
 
-  if (executiveKpis.discipline_average != null && executiveKpis.discipline_average < 60) {
+  if (executiveKpis.avg_discipline != null && executiveKpis.avg_discipline < 60) {
     items.push({
       type: 'discipline_drop',
       title: 'Discipline average needs attention',
-      message: `Average discipline score is ${executiveKpis.discipline_average.toFixed(2)} for the selected window.`,
+      message: `Average discipline score is ${executiveKpis.avg_discipline.toFixed(2)} for the selected window.`,
       severity: 'medium'
     });
   }
@@ -201,7 +275,7 @@ const buildInsights = ({ executiveKpis, modeMix, todayLocations }) => {
   }
 
   const wfhOrWfaUsers = todayLocations.locations.filter((item) => item.status === 'WFH' || item.status === 'WFA').length;
-  if (todayLocations.total_users > 0 && wfhOrWfaUsers === todayLocations.total_users) {
+  if (wfhOrWfaUsers === todayLocations.total_users) {
     items.push({
       type: 'location_coverage_low',
       title: 'No office-based check-ins today',
@@ -217,8 +291,11 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
   const requestedWindow = buildRequestedWindow({ period, from, to });
   const effectiveWindow = buildEffectiveWindow({ period, from, to });
   const historicalDates = enumerateDateRange(effectiveWindow.startDate, effectiveWindow.endDate);
+  const generatedAt = new Date().toISOString();
+  const geofenceStartInclusive = buildJakartaDayStartUtc(effectiveWindow.startDateStr);
+  const geofenceEndExclusive = buildJakartaDayStartUtc(formatDateOnly(addUtcDays(effectiveWindow.endDate, 1)));
 
-  const [attendanceRows, disciplineAnalysis, wfaAnalysis, smartAcAnalysis, todayLocations] =
+  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis, todayLocations] =
     await Promise.all([
       Attendance.findAll({
         where: {
@@ -244,6 +321,16 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
           ['id_attendance', 'ASC']
         ]
       }),
+      LocationEvent.findAll({
+        where: {
+          event_timestamp: {
+            [Op.gte]: geofenceStartInclusive,
+            [Op.lt]: geofenceEndExclusive
+          }
+        },
+        attributes: ['user_id', 'event_type'],
+        order: [['event_timestamp', 'ASC']]
+      }),
       buildDisciplineAnalysis({
         startAt: effectiveWindow.startDate,
         endAt: effectiveWindow.endDate
@@ -262,6 +349,8 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
   const historicalMap = historicalDates.reduce((acc, date) => {
     acc.set(date, {
       date,
+      on_time: 0,
+      late: 0,
       present: 0,
       alpha: 0,
       wfo: 0,
@@ -277,33 +366,28 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
     wfa: 0
   };
 
-  let totalPresent = 0;
-  let totalAlpha = 0;
+  const attendanceTotals = {
+    present: 0,
+    alpha: 0,
+    late: 0,
+    on_time: 0
+  };
   const analyzedUserIds = new Set();
 
   for (const attendance of attendanceRows) {
     const point = historicalMap.get(attendance.attendance_date);
-    const statusName = attendance.status?.attendance_status_name;
+    const statusFlags = getAttendanceStatusFlags(attendance.status?.attendance_status_name);
     const normalizedCategory = normalizeCategoryName(attendance.attendance_category?.category_name);
-    const isAlpha = isAlphaStatusName(statusName);
 
     if (point) {
-      if (isAlpha) {
-        point.alpha += 1;
-      } else {
-        point.present += 1;
-      }
+      incrementAttendanceCounters(point, statusFlags);
 
       if (normalizedCategory) {
         point[normalizedCategory] += 1;
       }
     }
 
-    if (isAlpha) {
-      totalAlpha += 1;
-    } else {
-      totalPresent += 1;
-    }
+    incrementAttendanceCounters(attendanceTotals, statusFlags);
 
     if (normalizedCategory) {
       modeTotals[normalizedCategory] += 1;
@@ -325,47 +409,60 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
 
   const totalModeRecords = modeTotals.wfo + modeTotals.wfh + modeTotals.wfa;
   const percentages = {
-    wfo: totalModeRecords > 0 ? (modeTotals.wfo / totalModeRecords) * 100 : 0,
-    wfh: totalModeRecords > 0 ? (modeTotals.wfh / totalModeRecords) * 100 : 0,
-    wfa: totalModeRecords > 0 ? (modeTotals.wfa / totalModeRecords) * 100 : 0
+    wfo: percentageOf(modeTotals.wfo, totalModeRecords),
+    wfh: percentageOf(modeTotals.wfh, totalModeRecords),
+    wfa: percentageOf(modeTotals.wfa, totalModeRecords)
   };
 
-  const executiveKpis = {
+  const rawCounts = {
     total_attendance_records: attendanceRows.length,
-    total_present: totalPresent,
-    total_alpha: totalAlpha,
+    total_present: attendanceTotals.present,
+    total_alpha: attendanceTotals.alpha,
+    total_late: attendanceTotals.late,
+    total_on_time: attendanceTotals.on_time,
     total_wfo: modeTotals.wfo,
     total_wfh: modeTotals.wfh,
     total_wfa: modeTotals.wfa,
-    discipline_average:
-      disciplineAverage == null ? null : Math.round((disciplineAverage + Number.EPSILON) * 100) / 100,
     discipline_users_analyzed: analyzedDisciplineRanking.length
+  };
+
+  const executiveKpis = {
+    attendance_rate: percentageOf(rawCounts.total_present, rawCounts.total_attendance_records),
+    late_alpha_risk: percentageOf(rawCounts.total_late + rawCounts.total_alpha, rawCounts.total_attendance_records),
+    avg_discipline: disciplineAverage == null ? null : roundToTwo(disciplineAverage),
+    needs_attention:
+      Number(rawCounts.total_late + rawCounts.total_alpha > 0) +
+      Number(disciplineAverage != null && disciplineAverage < 60),
+    raw_counts: rawCounts
   };
 
   const fuzzySnapshot = {
     discipline: buildSnapshotCard({
       analysis: disciplineAnalysis,
       effectiveWindow,
+      generatedAt,
       allowedIds: analyzedUserIds
     }),
     wfa: buildSnapshotCard({
       analysis: wfaAnalysis,
-      effectiveWindow
+      effectiveWindow,
+      generatedAt
     }),
     smart_ac: buildSnapshotCard({
       analysis: smartAcAnalysis,
       effectiveWindow,
+      generatedAt,
       allowedIds: analyzedUserIds
     })
   };
 
   return {
     meta: {
-      generated_at: null,
+      generated_at: generatedAt,
       timezone: 'Asia/Jakarta',
       requested_window: requestedWindow,
       section_windows: buildSectionWindows(effectiveWindow),
-      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'User']
+      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
     },
     executive_kpis: executiveKpis,
     historical_trend: {
@@ -376,6 +473,10 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       percentages
     },
     today_locations: todayLocations,
+    geofence_evidence_context: buildGeofenceEvidenceContext({
+      effectiveWindow,
+      locationEvents
+    }),
     fuzzy_ahp_snapshot: fuzzySnapshot,
     insights: buildInsights({
       executiveKpis,

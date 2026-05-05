@@ -417,6 +417,12 @@ paths:
                       timezone:
                         type: string
                         example: 'Asia/Jakarta'
+                      snapshot_type:
+                        type: string
+                        example: 'attendance_checkin_snapshot'
+                      is_live_tracking:
+                        type: boolean
+                        example: false
                       total_users:
                         type: integer
                         example: 1
@@ -454,6 +460,8 @@ paths:
                   data:
                     date: '2026-04-22'
                     timezone: 'Asia/Jakarta'
+                    snapshot_type: 'attendance_checkin_snapshot'
+                    is_live_tracking: false
                     total_users: 1
                     locations:
                       - user_id: 7
@@ -1601,306 +1609,6 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/wfa/test-ahp:
-    post:
-      tags:
-        - WFA System
-      summary: Test Fuzzy AHP algorithm (Admin only)
-      description: Test the Fuzzy AHP algorithm with custom values
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                test_locations:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                        example: 'Test Cafe'
-                      wifi_quality:
-                        type: number
-                        format: float
-                        example: 4.5
-                      noise_level:
-                        type: number
-                        format: float
-                        example: 3.0
-                      amenities:
-                        type: integer
-                        example: 8
-                      distance:
-                        type: number
-                        format: float
-                        example: 500.0
-                custom_weights:
-                  type: object
-                  properties:
-                    wifi_quality:
-                      type: number
-                      format: float
-                      example: 0.4
-                    noise_level:
-                      type: number
-                      format: float
-                      example: 0.3
-                    amenities:
-                      type: number
-                      format: float
-                      example: 0.2
-                    distance:
-                      type: number
-                      format: float
-                      example: 0.1
-      responses:
-        '200':
-          description: AHP test completed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      test_results:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            location:
-                              type: string
-                              example: 'Test Cafe'
-                            score:
-                              type: number
-                              format: float
-                              example: 0.87
-                            ranking:
-                              type: integer
-                              example: 1
-                      algorithm_details:
-                        type: object
-                        description: Detailed algorithm computation results
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  # Job Management Endpoints
-  /api/jobs/status:
-    get:
-      tags:
-        - Job Management
-      summary: Get jobs status (Admin only)
-      description: Get status and information about all cron jobs
-      responses:
-        '200':
-          description: Jobs status retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      jobs:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/JobStatus'
-                      server_info:
-                        type: object
-                        properties:
-                          uptime:
-                            type: string
-                            example: '2 hours, 15 minutes'
-                          timezone:
-                            type: string
-                            example: 'Asia/Jakarta'
-                          current_time:
-                            type: string
-                            example: '2025-07-05 15:30:00 WIB'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/jobs/trigger/general-alpha:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger General Alpha job (Admin only)
-      description: Manually trigger the general alpha generation job
-      responses:
-        '200':
-          description: General Alpha job triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'General Alpha job triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        example: 'general-alpha-20250705-153000'
-                      execution_time:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      records_processed:
-                        type: integer
-                        example: 25
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/jobs/trigger/wfa-bookings:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger WFA bookings job (Admin only)
-      description: Manually trigger the WFA bookings resolution job
-      responses:
-        '200':
-          description: WFA bookings job triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'WFA bookings job triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        example: 'wfa-bookings-20250705-153000'
-                      execution_time:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      bookings_processed:
-                        type: integer
-                        example: 5
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/jobs/trigger/auto-checkout:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger auto checkout job (Admin only)
-      description: Manually trigger the smart auto checkout job
-      responses:
-        '200':
-          description: Auto checkout job triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Auto checkout job triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        example: 'auto-checkout-20250705-153000'
-                      execution_time:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      users_processed:
-                        type: integer
-                        example: 12
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/jobs/trigger/all:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger all jobs (Admin only)
-      description: Manually trigger all available jobs in sequence
-      responses:
-        '200':
-          description: All jobs triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'All jobs triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      jobs_executed:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            job_name:
-                              type: string
-                              example: 'general-alpha'
-                            status:
-                              type: string
-                              example: 'completed'
-                            execution_time:
-                              type: string
-                              example: '2025-07-05 15:30:00 WIB'
-                            records_processed:
-                              type: integer
-                              example: 25
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   # Summary & Reports Endpoints
   /api/summary/dashboard-analytics:
     get:
@@ -1952,8 +1660,7 @@ paths:
                           generated_at:
                             type: string
                             format: date-time
-                            nullable: true
-                            example: null
+                            example: '2026-05-03T02:30:00.000Z'
                           timezone:
                             type: string
                             example: Asia/Jakarta
@@ -1976,7 +1683,7 @@ paths:
                                 example: '2026-04-30'
                           section_windows:
                             type: object
-                            description: Window efektif yang benar-benar dipakai untuk agregasi historis dan snapshot fuzzy AHP.
+                            description: Window efektif yang benar-benar dipakai untuk agregasi historis, geofence context, dan snapshot fuzzy AHP.
                             properties:
                               executive_kpis:
                                 type: object
@@ -2030,6 +1737,19 @@ paths:
                                     format: date
                                     nullable: true
                                     example: '2026-04-30'
+                              geofence_evidence_context:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
                               today_locations:
                                 type: object
                                 properties:
@@ -2040,36 +1760,56 @@ paths:
                             type: array
                             items:
                               type: string
-                            example: [Attendance, AttendanceCategory, AttendanceStatus, Location, User]
+                            example: [Attendance, AttendanceCategory, AttendanceStatus, Location, LocationEvent, User]
                       executive_kpis:
                         type: object
                         properties:
-                          total_attendance_records:
-                            type: integer
-                            example: 3
-                          total_present:
-                            type: integer
-                            example: 2
-                          total_alpha:
-                            type: integer
-                            example: 1
-                          total_wfo:
-                            type: integer
-                            example: 1
-                          total_wfh:
-                            type: integer
-                            example: 1
-                          total_wfa:
-                            type: integer
-                            example: 1
-                          discipline_average:
+                          attendance_rate:
+                            type: number
+                            format: float
+                            example: 66.67
+                          late_alpha_risk:
+                            type: number
+                            format: float
+                            example: 66.67
+                          avg_discipline:
                             type: number
                             format: float
                             nullable: true
                             example: 82
-                          discipline_users_analyzed:
+                          needs_attention:
                             type: integer
-                            example: 2
+                            example: 1
+                          raw_counts:
+                            type: object
+                            properties:
+                              total_attendance_records:
+                                type: integer
+                                example: 3
+                              total_present:
+                                type: integer
+                                example: 2
+                              total_alpha:
+                                type: integer
+                                example: 1
+                              total_late:
+                                type: integer
+                                example: 1
+                              total_on_time:
+                                type: integer
+                                example: 1
+                              total_wfo:
+                                type: integer
+                                example: 1
+                              total_wfh:
+                                type: integer
+                                example: 1
+                              total_wfa:
+                                type: integer
+                                example: 1
+                              discipline_users_analyzed:
+                                type: integer
+                                example: 2
                       historical_trend:
                         type: object
                         properties:
@@ -2082,6 +1822,12 @@ paths:
                                   type: string
                                   format: date
                                   example: '2026-04-01'
+                                on_time:
+                                  type: integer
+                                  example: 1
+                                late:
+                                  type: integer
+                                  example: 0
                                 present:
                                   type: integer
                                   example: 1
@@ -2118,15 +1864,15 @@ paths:
                               wfo:
                                 type: number
                                 format: float
-                                example: 33.3333333333
+                                example: 33.33
                               wfh:
                                 type: number
                                 format: float
-                                example: 33.3333333333
+                                example: 33.33
                               wfa:
                                 type: number
                                 format: float
-                                example: 33.3333333333
+                                example: 33.33
                       today_locations:
                         type: object
                         properties:
@@ -2137,6 +1883,12 @@ paths:
                           timezone:
                             type: string
                             example: Asia/Jakarta
+                          snapshot_type:
+                            type: string
+                            example: attendance_checkin_snapshot
+                          is_live_tracking:
+                            type: boolean
+                            example: false
                           total_users:
                             type: integer
                             example: 2
@@ -2169,17 +1921,61 @@ paths:
                                   type: number
                                   format: float
                                   example: 119.8707
+                      geofence_evidence_context:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [available, no_events]
+                            example: available
+                          authority:
+                            type: string
+                            example: context_only
+                          final_attendance_authority:
+                            type: string
+                            example: attendance_records
+                          window:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          raw_counts:
+                            type: object
+                            properties:
+                              total_events:
+                                type: integer
+                                example: 3
+                              enter_events:
+                                type: integer
+                                example: 1
+                              exit_events:
+                                type: integer
+                                example: 2
+                              unique_users:
+                                type: integer
+                                example: 2
                       fuzzy_ahp_snapshot:
                         type: object
                         properties:
                           discipline:
                             type: object
                             properties:
+                              status:
+                                type: string
+                                enum: [ready, no_data]
+                                example: ready
                               generated_at:
                                 type: string
                                 format: date-time
-                                nullable: true
-                                example: null
+                                example: '2026-05-03T02:30:00.000Z'
                               window:
                                 type: object
                                 properties:
@@ -2243,11 +2039,14 @@ paths:
                           wfa:
                             type: object
                             properties:
+                              status:
+                                type: string
+                                enum: [ready, no_data]
+                                example: ready
                               generated_at:
                                 type: string
                                 format: date-time
-                                nullable: true
-                                example: null
+                                example: '2026-05-03T02:30:00.000Z'
                               window:
                                 type: object
                                 properties:
@@ -2311,11 +2110,14 @@ paths:
                           smart_ac:
                             type: object
                             properties:
+                              status:
+                                type: string
+                                enum: [ready, no_data]
+                                example: ready
                               generated_at:
                                 type: string
                                 format: date-time
-                                nullable: true
-                                example: null
+                                example: '2026-05-03T02:30:00.000Z'
                               window:
                                 type: object
                                 properties:

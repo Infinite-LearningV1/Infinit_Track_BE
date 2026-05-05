@@ -41,7 +41,7 @@ const buildRes = () => ({
 
 const responseShell = {
   meta: {
-    generated_at: null,
+    generated_at: '2026-05-03T02:30:00.000Z',
     timezone: 'Asia/Jakarta',
     requested_window: {
       period: 'custom',
@@ -53,19 +53,27 @@ const responseShell = {
       historical_trend: { from: '2026-04-01', to: '2026-04-15' },
       mode_mix: { from: '2026-04-01', to: '2026-04-15' },
       fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-15' },
+      geofence_evidence_context: { from: '2026-04-01', to: '2026-04-15' },
       today_locations: { mode: 'jakarta_today' }
     },
-    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'User']
+    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
   },
   executive_kpis: {
-    total_attendance_records: 0,
-    total_present: 0,
-    total_alpha: 0,
-    total_wfo: 0,
-    total_wfh: 0,
-    total_wfa: 0,
-    discipline_average: null,
-    discipline_users_analyzed: 0
+    attendance_rate: 0,
+    late_alpha_risk: 0,
+    avg_discipline: null,
+    needs_attention: 0,
+    raw_counts: {
+      total_attendance_records: 0,
+      total_present: 0,
+      total_alpha: 0,
+      total_late: 0,
+      total_on_time: 0,
+      total_wfo: 0,
+      total_wfh: 0,
+      total_wfa: 0,
+      discipline_users_analyzed: 0
+    }
   },
   historical_trend: {
     points: []
@@ -85,12 +93,27 @@ const responseShell = {
   today_locations: {
     date: '2026-05-03',
     timezone: 'Asia/Jakarta',
+    snapshot_type: 'attendance_checkin_snapshot',
+    is_live_tracking: false,
     total_users: 0,
     locations: []
   },
+  geofence_evidence_context: {
+    status: 'no_events',
+    authority: 'context_only',
+    final_attendance_authority: 'attendance_records',
+    window: { from: '2026-04-01', to: '2026-04-15' },
+    raw_counts: {
+      total_events: 0,
+      enter_events: 0,
+      exit_events: 0,
+      unique_users: 0
+    }
+  },
   fuzzy_ahp_snapshot: {
     discipline: {
-      generated_at: null,
+      status: 'no_data',
+      generated_at: '2026-05-03T02:30:00.000Z',
       window: { from: '2026-04-01', to: '2026-04-15' },
       weights: {},
       consistency: null,
@@ -98,7 +121,8 @@ const responseShell = {
       distribution: {}
     },
     wfa: {
-      generated_at: null,
+      status: 'no_data',
+      generated_at: '2026-05-03T02:30:00.000Z',
       window: { from: '2026-04-01', to: '2026-04-15' },
       weights: {},
       consistency: null,
@@ -106,7 +130,8 @@ const responseShell = {
       distribution: {}
     },
     smart_ac: {
-      generated_at: null,
+      status: 'no_data',
+      generated_at: '2026-05-03T02:30:00.000Z',
       window: { from: '2026-04-01', to: '2026-04-15' },
       weights: {},
       consistency: null,
@@ -158,7 +183,7 @@ describe('summary dashboard analytics controller contract', () => {
     mockBuildDashboardAnalytics.mockResolvedValueOnce({
       ...responseShell,
       meta: {
-        generated_at: null,
+        generated_at: '2026-05-03T02:30:00.000Z',
         timezone: 'Asia/Jakarta',
         requested_window: { period: '30d', from: null, to: null },
         section_windows: {
@@ -166,9 +191,10 @@ describe('summary dashboard analytics controller contract', () => {
           historical_trend: { from: '2026-04-04', to: '2026-05-03' },
           mode_mix: { from: '2026-04-04', to: '2026-05-03' },
           fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' },
+          geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' },
           today_locations: { mode: 'jakarta_today' }
         },
-        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'User']
+        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
       }
     });
 

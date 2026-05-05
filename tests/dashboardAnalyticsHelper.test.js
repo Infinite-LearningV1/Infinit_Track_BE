@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 
 const mockGetJakartaDateString = jest.fn(() => '2026-05-03');
 const mockAttendanceFindAll = jest.fn();
+const mockLocationEventFindAll = jest.fn();
 const mockBuildDisciplineAnalysis = jest.fn();
 const mockBuildWfaAnalysis = jest.fn();
 const mockBuildSmartAcAnalysis = jest.fn();
@@ -15,7 +16,8 @@ jest.unstable_mockModule('../src/utils/geofence.js', () => ({
 jest.unstable_mockModule('../src/models/index.js', () => ({
   Attendance: { findAll: mockAttendanceFindAll },
   AttendanceCategory: {},
-  AttendanceStatus: {}
+  AttendanceStatus: {},
+  LocationEvent: { findAll: mockLocationEventFindAll }
 }));
 
 jest.unstable_mockModule('../src/controllers/analysis.controller.js', () => ({
@@ -35,12 +37,12 @@ describe('dashboard analytics helper contract', () => {
     jest.clearAllMocks();
   });
 
-  it('aggregates attendance metrics, compact snapshots, and keeps today locations on Jakarta today', async () => {
+  it('aggregates attendance metrics, geofence evidence, compact snapshots, and honest today-location metadata', async () => {
     mockAttendanceFindAll.mockResolvedValueOnce([
       {
         attendance_date: '2026-04-01',
         user_id: 7,
-        status: { attendance_status_name: 'Present' },
+        status: { attendance_status_name: 'Tepat Waktu' },
         attendance_category: { category_name: 'Work From Office' }
       },
       {
@@ -51,10 +53,16 @@ describe('dashboard analytics helper contract', () => {
       },
       {
         attendance_date: '2026-04-03',
-        user_id: 7,
-        status: { attendance_status_name: 'Present' },
+        user_id: 8,
+        status: { attendance_status_name: 'Terlambat' },
         attendance_category: { category_name: 'Work From Anywhere' }
       }
+    ]);
+
+    mockLocationEventFindAll.mockResolvedValueOnce([
+      { user_id: 7, event_type: 'ENTER' },
+      { user_id: 8, event_type: 'EXIT' },
+      { user_id: 8, event_type: 'EXIT' }
     ]);
 
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
@@ -98,6 +106,8 @@ describe('dashboard analytics helper contract', () => {
     mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
       date: '2026-05-03',
       timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
       total_users: 2,
       locations: [
         {
@@ -142,6 +152,12 @@ describe('dashboard analytics helper contract', () => {
         ]
       })
     );
+    expect(mockLocationEventFindAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: ['user_id', 'event_type'],
+        order: [['event_timestamp', 'ASC']]
+      })
+    );
 
     const disciplineWindow = mockBuildDisciplineAnalysis.mock.calls[0][0];
     const wfaWindow = mockBuildWfaAnalysis.mock.calls[0][0];
@@ -156,7 +172,7 @@ describe('dashboard analytics helper contract', () => {
     expect(mockBuildTodayLocationsSnapshot).toHaveBeenCalledWith();
 
     expect(result.meta).toEqual({
-      generated_at: null,
+      generated_at: expect.any(String),
       timezone: 'Asia/Jakarta',
       requested_window: {
         period: 'custom',
@@ -168,38 +184,48 @@ describe('dashboard analytics helper contract', () => {
         historical_trend: { from: '2026-04-01', to: '2026-04-03' },
         mode_mix: { from: '2026-04-01', to: '2026-04-03' },
         fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' },
+        geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' },
         today_locations: { mode: 'jakarta_today' }
       },
-      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'User']
+      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
     });
 
     expect(result.executive_kpis).toEqual({
-      total_attendance_records: 3,
-      total_present: 2,
-      total_alpha: 1,
-      total_wfo: 1,
-      total_wfh: 1,
-      total_wfa: 1,
-      discipline_average: 82,
-      discipline_users_analyzed: 2
+      attendance_rate: 66.67,
+      late_alpha_risk: 66.67,
+      avg_discipline: 82,
+      needs_attention: 1,
+      raw_counts: {
+        total_attendance_records: 3,
+        total_present: 2,
+        total_alpha: 1,
+        total_late: 1,
+        total_on_time: 1,
+        total_wfo: 1,
+        total_wfh: 1,
+        total_wfa: 1,
+        discipline_users_analyzed: 2
+      }
     });
 
     expect(result.historical_trend).toEqual({
       points: [
-        { date: '2026-04-01', present: 1, alpha: 0, wfo: 1, wfh: 0, wfa: 0 },
-        { date: '2026-04-02', present: 0, alpha: 1, wfo: 0, wfh: 1, wfa: 0 },
-        { date: '2026-04-03', present: 1, alpha: 0, wfo: 0, wfh: 0, wfa: 1 }
+        { date: '2026-04-01', on_time: 1, late: 0, alpha: 0, present: 1, wfo: 1, wfh: 0, wfa: 0 },
+        { date: '2026-04-02', on_time: 0, late: 0, alpha: 1, present: 0, wfo: 0, wfh: 1, wfa: 0 },
+        { date: '2026-04-03', on_time: 0, late: 1, alpha: 0, present: 1, wfo: 0, wfh: 0, wfa: 1 }
       ]
     });
 
-    expect(result.mode_mix.totals).toEqual({ wfo: 1, wfh: 1, wfa: 1 });
-    expect(result.mode_mix.percentages.wfo).toBeCloseTo(33.3333333333);
-    expect(result.mode_mix.percentages.wfh).toBeCloseTo(33.3333333333);
-    expect(result.mode_mix.percentages.wfa).toBeCloseTo(33.3333333333);
+    expect(result.mode_mix).toEqual({
+      totals: { wfo: 1, wfh: 1, wfa: 1 },
+      percentages: { wfo: 33.33, wfh: 33.33, wfa: 33.33 }
+    });
 
     expect(result.today_locations).toEqual({
       date: '2026-05-03',
       timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
       total_users: 2,
       locations: [
         {
@@ -223,9 +249,23 @@ describe('dashboard analytics helper contract', () => {
       ]
     });
 
+    expect(result.geofence_evidence_context).toEqual({
+      status: 'available',
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: { from: '2026-04-01', to: '2026-04-03' },
+      raw_counts: {
+        total_events: 3,
+        enter_events: 1,
+        exit_events: 2,
+        unique_users: 2
+      }
+    });
+
     expect(result.fuzzy_ahp_snapshot).toEqual({
       discipline: {
-        generated_at: null,
+        status: 'ready',
+        generated_at: expect.any(String),
         window: { from: '2026-04-01', to: '2026-04-03' },
         weights: {
           alpha_rate: 0.6,
@@ -244,7 +284,8 @@ describe('dashboard analytics helper contract', () => {
         }
       },
       wfa: {
-        generated_at: null,
+        status: 'ready',
+        generated_at: expect.any(String),
         window: { from: '2026-04-01', to: '2026-04-03' },
         weights: {
           location_type: 0.55,
@@ -263,7 +304,8 @@ describe('dashboard analytics helper contract', () => {
         }
       },
       smart_ac: {
-        generated_at: null,
+        status: 'ready',
+        generated_at: expect.any(String),
         window: { from: '2026-04-01', to: '2026-04-03' },
         weights: {
           history: 0.4,
@@ -317,6 +359,7 @@ describe('dashboard analytics helper contract', () => {
       }
     ]);
 
+    mockLocationEventFindAll.mockResolvedValueOnce([]);
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
       ranking: [{ id: 7, name: 'Febri', score: 55, label: 'Sedang' }]
     });
@@ -327,6 +370,8 @@ describe('dashboard analytics helper contract', () => {
     mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
       date: '2026-05-03',
       timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
       total_users: 2,
       locations: [
         {
@@ -357,14 +402,21 @@ describe('dashboard analytics helper contract', () => {
     });
 
     expect(result.executive_kpis).toEqual({
-      total_attendance_records: 3,
-      total_present: 3,
-      total_alpha: 0,
-      total_wfo: 0,
-      total_wfh: 1,
-      total_wfa: 2,
-      discipline_average: 55,
-      discipline_users_analyzed: 1
+      attendance_rate: 100,
+      late_alpha_risk: 0,
+      avg_discipline: 55,
+      needs_attention: 1,
+      raw_counts: {
+        total_attendance_records: 3,
+        total_present: 3,
+        total_alpha: 0,
+        total_late: 0,
+        total_on_time: 3,
+        total_wfo: 0,
+        total_wfh: 1,
+        total_wfa: 2,
+        discipline_users_analyzed: 1
+      }
     });
 
     expect(result.insights).toEqual({
@@ -391,14 +443,17 @@ describe('dashboard analytics helper contract', () => {
     });
   });
 
-  it('reports the default 30-day request separately from the executed historical window', async () => {
+  it('reports the default 30-day request separately from the executed historical and geofence windows', async () => {
     mockAttendanceFindAll.mockResolvedValueOnce([]);
+    mockLocationEventFindAll.mockResolvedValueOnce([]);
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildWfaAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildSmartAcAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
       date: '2026-05-03',
       timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
       total_users: 0,
       locations: []
     });
@@ -415,11 +470,13 @@ describe('dashboard analytics helper contract', () => {
       historical_trend: { from: '2026-04-04', to: '2026-05-03' },
       mode_mix: { from: '2026-04-04', to: '2026-05-03' },
       fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' },
+      geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' },
       today_locations: { mode: 'jakarta_today' }
     });
     expect(result.fuzzy_ahp_snapshot).toEqual({
       discipline: {
-        generated_at: null,
+        status: 'no_data',
+        generated_at: expect.any(String),
         window: { from: '2026-04-04', to: '2026-05-03' },
         weights: {},
         consistency: null,
@@ -427,7 +484,8 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       },
       wfa: {
-        generated_at: null,
+        status: 'no_data',
+        generated_at: expect.any(String),
         window: { from: '2026-04-04', to: '2026-05-03' },
         weights: {},
         consistency: null,
@@ -435,7 +493,8 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       },
       smart_ac: {
-        generated_at: null,
+        status: 'no_data',
+        generated_at: expect.any(String),
         window: { from: '2026-04-04', to: '2026-05-03' },
         weights: {},
         consistency: null,
@@ -443,16 +502,114 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       }
     });
+    expect(result.geofence_evidence_context).toEqual({
+      status: 'no_events',
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: { from: '2026-04-04', to: '2026-05-03' },
+      raw_counts: {
+        total_events: 0,
+        enter_events: 0,
+        exit_events: 0,
+        unique_users: 0
+      }
+    });
   });
 
-  it('returns stable empty-state cards and zero-filled daily points', async () => {
-    mockAttendanceFindAll.mockResolvedValueOnce([]);
+  it('keeps early attendance present without inflating on-time metrics', async () => {
+    mockAttendanceFindAll.mockResolvedValueOnce([
+      {
+        attendance_date: '2026-04-01',
+        user_id: 7,
+        status: { attendance_status_name: 'Early' },
+        attendance_category: { category_name: 'Work From Office' }
+      },
+      {
+        attendance_date: '2026-04-01',
+        user_id: 8,
+        status: { attendance_status_name: 'Lebih Awal' },
+        attendance_category: { category_name: 'Work From Office' }
+      }
+    ]);
+    mockLocationEventFindAll.mockResolvedValueOnce([]);
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildWfaAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildSmartAcAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
       date: '2026-05-03',
       timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
+      total_users: 0,
+      locations: []
+    });
+
+    const result = await buildDashboardAnalytics({
+      period: 'custom',
+      from: '2026-04-01',
+      to: '2026-04-01'
+    });
+
+    expect(result.executive_kpis.raw_counts).toEqual({
+      total_attendance_records: 2,
+      total_present: 2,
+      total_alpha: 0,
+      total_late: 0,
+      total_on_time: 0,
+      total_wfo: 2,
+      total_wfh: 0,
+      total_wfa: 0,
+      discipline_users_analyzed: 0
+    });
+    expect(result.historical_trend).toEqual({
+      points: [{ date: '2026-04-01', on_time: 0, late: 0, alpha: 0, present: 2, wfo: 2, wfh: 0, wfa: 0 }]
+    });
+  });
+
+  it('queries geofence evidence using Jakarta-day boundaries instead of UTC midnight', async () => {
+    mockAttendanceFindAll.mockResolvedValueOnce([]);
+    mockLocationEventFindAll.mockResolvedValueOnce([]);
+    mockBuildDisciplineAnalysis.mockResolvedValueOnce({ ranking: [] });
+    mockBuildWfaAnalysis.mockResolvedValueOnce({ ranking: [] });
+    mockBuildSmartAcAnalysis.mockResolvedValueOnce({ ranking: [] });
+    mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
+      date: '2026-05-03',
+      timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
+      total_users: 0,
+      locations: []
+    });
+
+    await buildDashboardAnalytics({
+      period: 'custom',
+      from: '2026-04-01',
+      to: '2026-04-03'
+    });
+
+    expect(mockLocationEventFindAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          event_timestamp: {
+            [Op.gte]: new Date('2026-03-31T17:00:00.000Z'),
+            [Op.lt]: new Date('2026-04-03T17:00:00.000Z')
+          }
+        }
+      })
+    );
+  });
+
+  it('returns stable empty-state cards, zero-filled points, and contextual empty geofence evidence', async () => {
+    mockAttendanceFindAll.mockResolvedValueOnce([]);
+    mockLocationEventFindAll.mockResolvedValueOnce([]);
+    mockBuildDisciplineAnalysis.mockResolvedValueOnce({ ranking: [] });
+    mockBuildWfaAnalysis.mockResolvedValueOnce({ ranking: [] });
+    mockBuildSmartAcAnalysis.mockResolvedValueOnce({ ranking: [] });
+    mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
+      date: '2026-05-03',
+      timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
       total_users: 0,
       locations: []
     });
@@ -464,21 +621,28 @@ describe('dashboard analytics helper contract', () => {
     });
 
     expect(result.executive_kpis).toEqual({
-      total_attendance_records: 0,
-      total_present: 0,
-      total_alpha: 0,
-      total_wfo: 0,
-      total_wfh: 0,
-      total_wfa: 0,
-      discipline_average: null,
-      discipline_users_analyzed: 0
+      attendance_rate: 0,
+      late_alpha_risk: 0,
+      avg_discipline: null,
+      needs_attention: 0,
+      raw_counts: {
+        total_attendance_records: 0,
+        total_present: 0,
+        total_alpha: 0,
+        total_late: 0,
+        total_on_time: 0,
+        total_wfo: 0,
+        total_wfh: 0,
+        total_wfa: 0,
+        discipline_users_analyzed: 0
+      }
     });
 
     expect(result.historical_trend).toEqual({
       points: [
-        { date: '2026-04-01', present: 0, alpha: 0, wfo: 0, wfh: 0, wfa: 0 },
-        { date: '2026-04-02', present: 0, alpha: 0, wfo: 0, wfh: 0, wfa: 0 },
-        { date: '2026-04-03', present: 0, alpha: 0, wfo: 0, wfh: 0, wfa: 0 }
+        { date: '2026-04-01', on_time: 0, late: 0, alpha: 0, present: 0, wfo: 0, wfh: 0, wfa: 0 },
+        { date: '2026-04-02', on_time: 0, late: 0, alpha: 0, present: 0, wfo: 0, wfh: 0, wfa: 0 },
+        { date: '2026-04-03', on_time: 0, late: 0, alpha: 0, present: 0, wfo: 0, wfh: 0, wfa: 0 }
       ]
     });
 
@@ -490,13 +654,29 @@ describe('dashboard analytics helper contract', () => {
     expect(result.today_locations).toEqual({
       date: '2026-05-03',
       timezone: 'Asia/Jakarta',
+      snapshot_type: 'attendance_checkin_snapshot',
+      is_live_tracking: false,
       total_users: 0,
       locations: []
     });
 
+    expect(result.geofence_evidence_context).toEqual({
+      status: 'no_events',
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: { from: '2026-04-01', to: '2026-04-03' },
+      raw_counts: {
+        total_events: 0,
+        enter_events: 0,
+        exit_events: 0,
+        unique_users: 0
+      }
+    });
+
     expect(result.fuzzy_ahp_snapshot).toEqual({
       discipline: {
-        generated_at: null,
+        status: 'no_data',
+        generated_at: expect.any(String),
         window: { from: '2026-04-01', to: '2026-04-03' },
         weights: {},
         consistency: null,
@@ -504,7 +684,8 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       },
       wfa: {
-        generated_at: null,
+        status: 'no_data',
+        generated_at: expect.any(String),
         window: { from: '2026-04-01', to: '2026-04-03' },
         weights: {},
         consistency: null,
@@ -512,7 +693,8 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       },
       smart_ac: {
-        generated_at: null,
+        status: 'no_data',
+        generated_at: expect.any(String),
         window: { from: '2026-04-01', to: '2026-04-03' },
         weights: {},
         consistency: null,

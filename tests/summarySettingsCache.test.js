@@ -21,6 +21,8 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   User: {},
   Role: {},
   Location: {},
+  Photo: {},
+  LocationEvent: {},
   AttendanceCategory: {},
   AttendanceStatus: {},
   Settings: {

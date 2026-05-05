@@ -22,7 +22,7 @@ describe('client-critical OpenAPI contract', () => {
     );
   });
 
-  test('documents check-in request body fields from the runtime controller', () => {
+  test('documents check-in request body fields in the public OpenAPI contract', () => {
     const checkInSchema = jsonRequestSchema(openapi.paths['/api/attendance/check-in'].post);
 
     expect(checkInSchema.required).toEqual(['category_id', 'latitude', 'longitude']);
@@ -64,7 +64,7 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
-  test('documents status-today response shape returned by the live controller', () => {
+  test('documents status-today response shape in the public OpenAPI contract', () => {
     const statusSchema = schemaAt(openapi.paths['/api/attendance/status-today'].get);
     const dataSchema = statusSchema.properties.data;
 
@@ -100,7 +100,27 @@ describe('client-critical OpenAPI contract', () => {
     expect(dataSchema.properties).not.toHaveProperty('attendance');
   });
 
-  test('documents booking creation request payload from the runtime validator', () => {
+  test('documents attendance today-locations snapshot metadata in the public OpenAPI contract', () => {
+    const todayLocationsSchema = schemaAt(openapi.paths['/api/attendance/today-locations'].get);
+    const dataSchema = todayLocationsSchema.properties.data;
+
+    expect(dataSchema.properties).toMatchObject({
+      date: { type: 'string', format: 'date' },
+      timezone: { type: 'string', example: 'Asia/Jakarta' },
+      snapshot_type: {
+        type: 'string',
+        example: 'attendance_checkin_snapshot'
+      },
+      is_live_tracking: {
+        type: 'boolean',
+        example: false
+      },
+      total_users: { type: 'integer' },
+      locations: { type: 'array' }
+    });
+  });
+
+  test('documents booking creation request payload in the public OpenAPI contract', () => {
     const bookingSchema = jsonRequestSchema(openapi.paths['/api/bookings'].post);
 
     expect(bookingSchema.required).toEqual(['schedule_date', 'latitude', 'longitude']);
@@ -126,7 +146,7 @@ describe('client-critical OpenAPI contract', () => {
     expect(bookingSchema.properties).not.toHaveProperty('reason');
   });
 
-  test('documents booking creation success response shape from the runtime controller', () => {
+  test('documents booking creation success response shape in the public OpenAPI contract', () => {
     const bookingSuccessSchema = schemaAt(openapi.paths['/api/bookings'].post, '201');
     const dataSchema = bookingSuccessSchema.properties.data;
 
@@ -154,6 +174,59 @@ describe('client-critical OpenAPI contract', () => {
         type: 'string',
         nullable: true
       }
+    });
+  });
+
+  test('documents dashboard analytics response shape in the public OpenAPI contract', () => {
+    const dashboardSchema = schemaAt(openapi.paths['/api/summary/dashboard-analytics'].get);
+    const dataSchema = dashboardSchema.properties.data;
+
+    expect(dataSchema.properties.meta.properties).toMatchObject({
+      generated_at: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-05-03T02:30:00.000Z'
+      },
+      requested_window: { type: 'object' },
+      section_windows: { type: 'object' },
+      sources: { type: 'array' }
+    });
+    expect(dataSchema.properties.executive_kpis.properties).toMatchObject({
+      attendance_rate: { type: 'number', format: 'float' },
+      late_alpha_risk: { type: 'number', format: 'float' },
+      avg_discipline: { type: 'number', format: 'float', nullable: true },
+      needs_attention: { type: 'integer' },
+      raw_counts: { type: 'object' }
+    });
+    expect(dataSchema.properties.historical_trend.properties.points.items.properties).toMatchObject({
+      date: { type: 'string', format: 'date' },
+      on_time: { type: 'integer' },
+      late: { type: 'integer' },
+      present: { type: 'integer' },
+      alpha: { type: 'integer' }
+    });
+    expect(dataSchema.properties.today_locations.properties).toMatchObject({
+      snapshot_type: {
+        type: 'string',
+        example: 'attendance_checkin_snapshot'
+      },
+      is_live_tracking: {
+        type: 'boolean',
+        example: false
+      }
+    });
+    expect(dataSchema.properties.geofence_evidence_context.properties.status).toMatchObject({
+      type: 'string',
+      example: 'available'
+    });
+    expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.status).toMatchObject({
+      type: 'string',
+      example: 'ready'
+    });
+    expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.generated_at).toMatchObject({
+      type: 'string',
+      format: 'date-time',
+      example: '2026-05-03T02:30:00.000Z'
     });
   });
 });

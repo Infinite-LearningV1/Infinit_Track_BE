@@ -27,7 +27,7 @@ const mockGetDashboardAnalytics = jest.fn((req, res) => {
     data: {
       period: req.query.period || '30d'
     },
-    message: 'Dashboard analytics endpoint is not implemented yet'
+    message: 'Dashboard analytics retrieved successfully'
   });
 });
 
@@ -92,7 +92,7 @@ describe('summary dashboard analytics route', () => {
     expect(res.body).toEqual({
       success: true,
       data: { period: 'current_month' },
-      message: 'Dashboard analytics endpoint is not implemented yet'
+      message: 'Dashboard analytics retrieved successfully'
     });
   });
 
