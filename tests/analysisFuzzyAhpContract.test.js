@@ -259,6 +259,8 @@ describe('analysis fuzzy ahp contract', () => {
         data: expect.objectContaining({
           type: 'wfa',
           entity_kind: 'place',
+          scope: 'place_catalog_static',
+          window_applied: false,
           ranking: expect.arrayContaining([
             expect.objectContaining({
               rank: 1,

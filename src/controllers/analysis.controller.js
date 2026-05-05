@@ -146,7 +146,7 @@ export const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
   };
 };
 
-export const buildWfaAnalysis = async () => {
+export const buildWfaAnalysis = async ({ startAt: _startAt, endAt: _endAt } = {}) => {
   const places = await Location.findAll({});
   const weightsObj = fuzzyEngine.getWfaAhpWeights();
   const criteria = ['location_type', 'distance_factor', 'amenity_score'];
@@ -191,6 +191,8 @@ export const buildWfaAnalysis = async () => {
 
   return {
     entity_kind: 'place',
+    scope: 'place_catalog_static',
+    window_applied: false,
     consistency: buildConsistency({
       CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
       CI: 0,
