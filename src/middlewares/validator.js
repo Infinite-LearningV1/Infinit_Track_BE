@@ -1,7 +1,8 @@
-import { body, validationResult } from 'express-validator';
+import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { parseIsoDateUtcStrict } from '../utils/isoDate.js';
 import { assertSafeUrl } from '../utils/url.js';
 
 // Remove the file system setup as we're switching to Cloudinary
@@ -518,4 +519,57 @@ export const locationEventValidation = [
 
       return true;
     })
+];
+
+const DASHBOARD_PERIODS = ['30d', 'current_month', 'custom'];
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export const dashboardAnalyticsValidation = [
+  query('period')
+    .optional()
+    .isIn(DASHBOARD_PERIODS)
+    .withMessage('Parameter period harus berupa: 30d, current_month, atau custom'),
+  query('from').optional().custom((value) => {
+    if (!parseIsoDateUtcStrict(value)) {
+      throw new Error('Parameter from harus menggunakan format YYYY-MM-DD');
+    }
+    return true;
+  }),
+  query('to').optional().custom((value) => {
+    if (!parseIsoDateUtcStrict(value)) {
+      throw new Error('Parameter to harus menggunakan format YYYY-MM-DD');
+    }
+    return true;
+  }),
+  query().custom((_, { req }) => {
+    const period = req.query.period || '30d';
+    const { from, to } = req.query;
+
+    if (period !== 'custom') {
+      return true;
+    }
+
+    if (!from || !to) {
+      throw new Error('Parameter from dan to wajib diisi saat period=custom');
+    }
+
+    const fromDate = parseIsoDateUtcStrict(from);
+    const toDate = parseIsoDateUtcStrict(to);
+
+    if (!fromDate || !toDate) {
+      return true;
+    }
+
+    if (fromDate.getTime() > toDate.getTime()) {
+      throw new Error('Parameter from tidak boleh lebih besar dari to');
+    }
+
+    const rangeDays = Math.floor((toDate.getTime() - fromDate.getTime()) / MS_PER_DAY) + 1;
+    if (rangeDays > 31) {
+      throw new Error('Rentang tanggal custom maksimal 31 hari');
+    }
+
+    return true;
+  }),
+  validate
 ];

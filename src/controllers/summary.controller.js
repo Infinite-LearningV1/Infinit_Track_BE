@@ -13,6 +13,7 @@ import {
 import logger from '../utils/logger.js';
 import { formatWorkHour, formatTimeOnly, calculateWorkHour } from '../utils/workHourFormatter.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
+import { buildDashboardAnalytics } from '../utils/dashboardAnalytics.js';
 
 /**
  * Calculate user metrics for discipline index calculation
@@ -618,6 +619,22 @@ export const getSummaryReport = async (req, res, next) => {
   }
 };
 
+export const getDashboardAnalytics = async (req, res, next) => {
+  try {
+    const { period = '30d', from = null, to = null } = req.query;
+    const data = await buildDashboardAnalytics({ period, from, to });
+
+    return res.status(200).json({
+      success: true,
+      data,
+      message: 'Dashboard analytics retrieved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
-  getSummaryReport
+  getSummaryReport,
+  getDashboardAnalytics
 };
