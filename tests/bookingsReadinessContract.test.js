@@ -100,7 +100,8 @@ describe('bookings route contract', () => {
 describe('bookings validator contract', () => {
   test('missing schedule_date returns 400', async () => {
     const app = buildValidatorApp();
-    const { schedule_date, ...payload } = validBookingPayload;
+    const payload = { ...validBookingPayload };
+    delete payload.schedule_date;
 
     await request(app).post('/bookings').send(payload).expect(400);
   });

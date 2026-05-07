@@ -2263,6 +2263,10 @@ paths:
                   success:
                     type: boolean
                     example: true
+                  generated_at:
+                    type: string
+                    format: date-time
+                    example: '2026-05-07T09:15:00.000Z'
                   summary:
                     type: object
                     properties:
@@ -2272,6 +2276,9 @@ paths:
                       total_late:
                         type: integer
                         example: 3
+                      total_early:
+                        type: integer
+                        example: 1
                       total_alpha:
                         type: integer
                         example: 1
@@ -2287,18 +2294,96 @@ paths:
                   report:
                     type: object
                     properties:
+                      user_attendance_summary:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user_id:
+                              type: integer
+                              example: 7
+                            full_name:
+                              type: string
+                              example: Febri
+                            role_name:
+                              type: string
+                              nullable: true
+                              example: User
+                            division:
+                              type: string
+                              nullable: true
+                              example: Engineering
+                            expected_working_days:
+                              type: integer
+                              nullable: true
+                              example: 10
+                            on_time_days:
+                              type: integer
+                              example: 8
+                            late_days:
+                              type: integer
+                              example: 2
+                            early_days:
+                              type: integer
+                              example: 1
+                            alpha_days:
+                              type: integer
+                              example: 0
+                            wfo_days:
+                              type: integer
+                              example: 6
+                            wfh_days:
+                              type: integer
+                              example: 3
+                            wfa_days:
+                              type: integer
+                              example: 1
+                            valid_attendance_days:
+                              type: integer
+                              example: 10
+                            attendance_coverage_label:
+                              type: string
+                              nullable: true
+                              example: 10/10
+                            latest_attendance_status:
+                              type: string
+                              nullable: true
+                              example: Tepat Waktu
+                            latest_attendance_date:
+                              type: string
+                              format: date
+                              nullable: true
+                              example: '2026-05-07'
+                            summary_note:
+                              type: string
+                              example: Complete
                       data:
                         type: array
                         items:
                           type: object
                           properties:
-                            id_attendance:
+                            attendance_id:
                               type: integer
                               example: 101
-                            attendance_date:
+                            user_id:
+                              type: integer
+                              nullable: true
+                              example: 7
+                            full_name:
                               type: string
-                              format: date
-                              example: '2026-05-04'
+                              example: Febri
+                            role:
+                              type: string
+                              nullable: true
+                              example: User
+                            nip_nim:
+                              type: string
+                              nullable: true
+                              example: NIP-007
+                            email:
+                              type: string
+                              nullable: true
+                              example: febri@example.com
                             time_in:
                               type: string
                               nullable: true
@@ -2311,43 +2396,61 @@ paths:
                               type: string
                               nullable: true
                               example: '08:58'
-                            user:
+                            attendance_date:
+                              type: string
+                              format: date
+                              example: '2026-05-04'
+                            location_details:
                               type: object
+                              nullable: true
                               properties:
-                                id_users:
+                                location_id:
                                   type: integer
-                                  example: 7
-                                full_name:
-                                  type: string
-                                  example: Febri
-                            role:
-                              type: object
-                              nullable: true
-                              properties:
-                                role_name:
-                                  type: string
-                                  example: User
-                            location:
-                              type: object
-                              nullable: true
-                              properties:
+                                  nullable: true
+                                  example: 3
                                 description:
                                   type: string
                                   example: Kantor Pusat
-                            attendance_category:
-                              type: object
-                              nullable: true
-                              properties:
-                                category_name:
+                                category:
                                   type: string
                                   example: Work From Office
+                                coordinates:
+                                  type: object
+                                  nullable: true
+                                  properties:
+                                    latitude:
+                                      type: number
+                                      format: float
+                                      example: -6.2
+                                    longitude:
+                                      type: number
+                                      format: float
+                                      example: 106.8
                             status:
+                              type: string
+                              example: Tepat Waktu
+                            information:
+                              type: string
+                              example: 'Work Duration: 8h'
+                            notes:
+                              type: string
+                              example: ''
+                            discipline_score:
+                              type: number
+                              format: float
+                              nullable: true
+                              example: 88
+                            discipline_label:
+                              type: string
+                              nullable: true
+                              example: Tinggi
+                            discipline_breakdown:
                               type: object
                               nullable: true
-                              properties:
-                                attendance_status_name:
-                                  type: string
-                                  example: Ontime
+                              additionalProperties: true
+                              example:
+                                alpha_rate: 0
+                                lateness_frequency: 0.1
                       pagination:
                         type: object
                         properties:

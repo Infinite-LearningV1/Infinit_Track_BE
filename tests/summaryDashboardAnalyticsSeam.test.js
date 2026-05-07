@@ -27,6 +27,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   AttendanceCategory: {},
   AttendanceStatus: {},
   Settings: {},
+  Division: {},
   LocationEvent: { findAll: mockLocationEventFindAll }
 }));
 
