@@ -1207,6 +1207,8 @@ paths:
                           $ref: '#/components/schemas/Booking'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
