@@ -3,6 +3,8 @@ import { jest } from '@jest/globals';
 const mockSettingsFindAll = jest.fn();
 const mockAttendanceFindAll = jest.fn();
 const mockAttendanceFindAndCountAll = jest.fn();
+const mockUserFindAll = jest.fn();
+const mockDatabaseQuery = jest.fn();
 const mockFuzzyCalculate = jest.fn(async () => ({
   score: 88,
   label: 'Sangat Tinggi',
@@ -10,7 +12,7 @@ const mockFuzzyCalculate = jest.fn(async () => ({
 }));
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
-  default: { fn: jest.fn(), col: jest.fn() }
+  default: { fn: jest.fn(), col: jest.fn(), query: mockDatabaseQuery }
 }));
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
@@ -18,13 +20,14 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
     findAll: mockAttendanceFindAll,
     findAndCountAll: mockAttendanceFindAndCountAll
   },
-  User: {},
+  User: { findAll: mockUserFindAll },
   Role: {},
   Location: {},
   Photo: {},
   LocationEvent: {},
   AttendanceCategory: {},
   AttendanceStatus: {},
+  Division: {},
   Settings: {
     findAll: mockSettingsFindAll
   }
@@ -109,6 +112,33 @@ const arrangeAttendanceFindAllForSummary = () => {
         status: { attendance_status_name: 'Terlambat' }
       }
     ]);
+
+  mockDatabaseQuery.mockResolvedValueOnce([
+    {
+      user_id: 7,
+      on_time_days: '1',
+      late_days: '0',
+      early_days: '0',
+      alpha_days: '0',
+      wfo_days: '1',
+      wfh_days: '0',
+      wfa_days: '0',
+      latest_attendance_status: 'Tepat Waktu',
+      latest_attendance_date: '2026-04-23'
+    },
+    {
+      user_id: 8,
+      on_time_days: '0',
+      late_days: '1',
+      early_days: '0',
+      alpha_days: '0',
+      wfo_days: '0',
+      wfh_days: '1',
+      wfa_days: '0',
+      latest_attendance_status: 'Terlambat',
+      latest_attendance_date: '2026-04-23'
+    }
+  ]);
 };
 
 describe('summary settings cache', () => {
@@ -117,6 +147,8 @@ describe('summary settings cache', () => {
     mockSettingsFindAll.mockReset();
     mockAttendanceFindAll.mockReset();
     mockAttendanceFindAndCountAll.mockReset();
+    mockUserFindAll.mockReset();
+    mockDatabaseQuery.mockReset();
     mockFuzzyCalculate.mockClear();
   });
 
@@ -129,6 +161,14 @@ describe('summary settings cache', () => {
       count: 2,
       rows: buildSummaryRows()
     });
+    mockUserFindAll.mockResolvedValue(
+      buildSummaryRows().map((row) => ({
+        id_users: row.user.id_users,
+        full_name: row.user.full_name,
+        role: row.user.role,
+        division: null
+      }))
+    );
 
     arrangeAttendanceFindAllForSummary();
 
@@ -152,6 +192,14 @@ describe('summary settings cache', () => {
       count: 2,
       rows: buildSummaryRows()
     });
+    mockUserFindAll.mockResolvedValue(
+      buildSummaryRows().map((row) => ({
+        id_users: row.user.id_users,
+        full_name: row.user.full_name,
+        role: row.user.role,
+        division: null
+      }))
+    );
 
     arrangeAttendanceFindAllForSummary();
 

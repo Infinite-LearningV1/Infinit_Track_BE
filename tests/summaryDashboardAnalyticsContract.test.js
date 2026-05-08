@@ -13,7 +13,8 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Location: {},
   AttendanceCategory: {},
   AttendanceStatus: {},
-  Settings: {}
+  Settings: {},
+  Division: {}
 }));
 
 jest.unstable_mockModule('../src/utils/workHourFormatter.js', () => ({

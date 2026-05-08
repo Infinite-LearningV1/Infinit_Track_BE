@@ -248,6 +248,94 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
+  test('documents summary report response shape for both per-user summaries and raw detail rows', () => {
+    const summarySchema = schemaAt(openapi.paths['/api/summary'].get);
+    const summaryProperties = summarySchema.properties.summary.properties;
+    const reportProperties = summarySchema.properties.report.properties;
+    const userSummaryProperties = reportProperties.user_attendance_summary.items.properties;
+    const detailRowProperties = reportProperties.data.items.properties;
+
+    expect(summarySchema.properties).toMatchObject({
+      success: { type: 'boolean', example: true },
+      generated_at: {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-05-07T09:15:00.000Z'
+      },
+      summary: { type: 'object' },
+      report: { type: 'object' },
+      analytics: { type: 'object' },
+      period: { type: 'string', example: 'monthly' },
+      date_range: { type: 'object' },
+      message: {
+        type: 'string',
+        example: 'Summary report with discipline analysis generated successfully'
+      }
+    });
+    expect(summaryProperties).toMatchObject({
+      total_ontime: { type: 'integer', example: 14 },
+      total_late: { type: 'integer', example: 3 },
+      total_early: { type: 'integer', example: 1 },
+      total_alpha: { type: 'integer', example: 1 },
+      total_wfo: { type: 'integer', example: 10 },
+      total_wfh: { type: 'integer', example: 5 },
+      total_wfa: { type: 'integer', example: 3 }
+    });
+    expect(userSummaryProperties).toMatchObject({
+      user_id: { type: 'integer', example: 7 },
+      full_name: { type: 'string', example: 'Febri' },
+      role_name: { type: 'string', nullable: true, example: 'User' },
+      division: { type: 'string', nullable: true, example: 'Engineering' },
+      expected_working_days: { type: 'integer', nullable: true, example: 10 },
+      on_time_days: { type: 'integer', example: 8 },
+      late_days: { type: 'integer', example: 2 },
+      early_days: { type: 'integer', example: 1 },
+      alpha_days: { type: 'integer', example: 0 },
+      wfo_days: { type: 'integer', example: 6 },
+      wfh_days: { type: 'integer', example: 3 },
+      wfa_days: { type: 'integer', example: 1 },
+      valid_attendance_days: { type: 'integer', example: 10 },
+      attendance_coverage_label: { type: 'string', nullable: true, example: '10/10' },
+      latest_attendance_status: { type: 'string', nullable: true, example: 'Tepat Waktu' },
+      latest_attendance_date: {
+        type: 'string',
+        format: 'date',
+        nullable: true,
+        example: '2026-05-07'
+      },
+      summary_note: { type: 'string', example: 'Complete' }
+    });
+    expect(detailRowProperties).toMatchObject({
+      attendance_id: { type: 'integer', example: 101 },
+      user_id: { type: 'integer', nullable: true, example: 7 },
+      full_name: { type: 'string', example: 'Febri' },
+      role: { type: 'string', nullable: true, example: 'User' },
+      nip_nim: { type: 'string', nullable: true, example: 'NIP-007' },
+      email: { type: 'string', nullable: true, example: 'febri@example.com' },
+      time_in: { type: 'string', nullable: true, example: '08:03' },
+      time_out: { type: 'string', nullable: true, example: '17:01' },
+      work_hour: { type: 'string', nullable: true, example: '08:58' },
+      attendance_date: { type: 'string', format: 'date', example: '2026-05-04' },
+      location_details: { type: 'object', nullable: true },
+      status: { type: 'string', example: 'Tepat Waktu' },
+      information: { type: 'string', example: 'Work Duration: 8h' },
+      notes: { type: 'string', example: '' },
+      discipline_score: { type: 'number', format: 'float', nullable: true, example: 88 },
+      discipline_label: { type: 'string', nullable: true, example: 'Tinggi' },
+      discipline_breakdown: { type: 'object', nullable: true, additionalProperties: true }
+    });
+    expect(detailRowProperties).not.toHaveProperty('user');
+    expect(detailRowProperties).not.toHaveProperty('attendance_category');
+    expect(reportProperties.pagination.properties).toMatchObject({
+      current_page: { type: 'integer', example: 1 },
+      total_pages: { type: 'integer', example: 2 },
+      total_items: { type: 'integer', example: 15 },
+      items_per_page: { type: 'integer', example: 10 },
+      has_next_page: { type: 'boolean', example: true },
+      has_prev_page: { type: 'boolean', example: false }
+    });
+  });
+
   test('defines the Analysis tag used by published analysis endpoints', () => {
     expect(openapi.tags).toEqual(
       expect.arrayContaining([
