@@ -81,7 +81,7 @@ const createSummaryShell = (user, expectedWorkingDays) => ({
 });
 
 const finalizeSummary = (summary) => {
-  summary.valid_attendance_days = summary.on_time_days + summary.late_days + summary.early_days;
+  summary.valid_attendance_days = summary.on_time_days + summary.late_days;
 
   if (summary.expected_working_days == null) {
     summary.summary_note = 'Expected days unavailable';

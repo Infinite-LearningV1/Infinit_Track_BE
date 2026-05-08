@@ -51,7 +51,7 @@ describe('userAttendanceSummary utility', () => {
     ).toBeNull();
   });
 
-  it('summarizes one user into one row with explicit zeroes and robust latest-row selection', () => {
+  it('summarizes one user into one row with explicit zeroes, latest-row selection, and valid attendance excluding early days', () => {
     const summary = summarizeAttendanceRecords({
       user: {
         id_users: 101,
@@ -101,8 +101,8 @@ describe('userAttendanceSummary utility', () => {
       wfo_days: 2,
       wfh_days: 1,
       wfa_days: 1,
-      valid_attendance_days: 3,
-      attendance_coverage_label: '3/5',
+      valid_attendance_days: 2,
+      attendance_coverage_label: '2/5',
       latest_attendance_status: 'Terlambat',
       latest_attendance_date: '2026-05-10',
       summary_note: 'Partial'
