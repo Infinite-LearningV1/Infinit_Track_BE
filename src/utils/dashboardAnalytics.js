@@ -1,6 +1,13 @@
 import { Op } from 'sequelize';
 
-import { Attendance, AttendanceCategory, AttendanceStatus, LocationEvent } from '../models/index.js';
+import {
+  Attendance,
+  AttendanceCategory,
+  AttendanceStatus,
+  Location,
+  LocationEvent,
+  User
+} from '../models/index.js';
 import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
@@ -9,6 +16,7 @@ import {
 import { getJakartaDateString } from './geofence.js';
 import { parseIsoDateUtcStrict } from './isoDate.js';
 import { buildTodayLocationsSnapshot } from './todayLocationsSnapshot.js';
+import { formatTimeOnly } from './workHourFormatter.js';
 
 const STATUS_ALPHA = new Set(['alpa', 'alpha']);
 const STATUS_LATE = new Set(['terlambat', 'late']);
@@ -39,6 +47,7 @@ const buildSectionWindows = (effectiveWindow) => ({
   mode_mix: buildExecutedWindow(effectiveWindow),
   fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow),
   geofence_evidence_context: buildExecutedWindow(effectiveWindow),
+  map_context: buildExecutedWindow(effectiveWindow),
   today_locations: {
     mode: 'jakarta_today'
   }
@@ -235,6 +244,107 @@ const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
   };
 };
 
+const MAP_CONTEXT_MODE_BY_CATEGORY = {
+  wfo: 'WFO',
+  wfh: 'WFH',
+  wfa: 'WFA'
+};
+
+const MAP_CONTEXT_STATUS_BY_ATTENDANCE_STATUS = {
+  alpa: 'alpha',
+  alpha: 'alpha',
+  terlambat: 'late',
+  late: 'late',
+  early: 'early',
+  'lebih awal': 'early'
+};
+
+const trimToString = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim();
+};
+
+const toNumericValue = (value) => {
+  if (value == null) {
+    return null;
+  }
+
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const buildMapContextPoint = (attendance) => {
+  const normalizedCategory = normalizeCategoryName(attendance.attendance_category?.category_name);
+  const mode = normalizedCategory ? MAP_CONTEXT_MODE_BY_CATEGORY[normalizedCategory] : null;
+  const lat = toNumericValue(attendance.location?.latitude);
+  const lng = toNumericValue(attendance.location?.longitude);
+  const radius = toNumericValue(attendance.location?.radius);
+
+  if (attendance.id_attendance == null || attendance.user_id == null || !mode || lat == null || lng == null || radius == null) {
+    return null;
+  }
+
+  const userName = trimToString(attendance.user?.full_name) || 'Unknown User';
+  const normalizedStatusName = normalizeStatusName(attendance.status?.attendance_status_name);
+  const status = MAP_CONTEXT_STATUS_BY_ATTENDANCE_STATUS[normalizedStatusName] || 'on_time';
+  const notesDescription = trimToString(attendance.notes);
+  const locationDescription = trimToString(attendance.location?.description);
+
+  return {
+    id: `attendance:${attendance.id_attendance}`,
+    record_type: 'attendance_snapshot',
+    attendance_id: attendance.id_attendance,
+    user_id: attendance.user_id,
+    user_name: userName,
+    mode,
+    status,
+    label: `${userName} - ${mode} - ${attendance.attendance_date}`,
+    lat,
+    lng,
+    radius_m: radius,
+    attendance_date: attendance.attendance_date,
+    time_in: attendance.time_in ? formatTimeOnly(attendance.time_in) : null,
+    time_out: attendance.time_out ? formatTimeOnly(attendance.time_out) : null,
+    location_source: 'attendance.location',
+    coordinate_quality: 'exact',
+    description: notesDescription || locationDescription || ''
+  };
+};
+
+const buildMapContext = ({ effectiveWindow, attendanceRows, geofenceContext }) => {
+  const points = attendanceRows.map(buildMapContextPoint).filter(Boolean);
+  const totalRows = attendanceRows.length;
+  const totalRenderableRows = attendanceRows.filter(
+    (attendance) => !STATUS_ALPHA.has(normalizeStatusName(attendance.status?.attendance_status_name))
+  ).length;
+  const totalPoints = points.length;
+
+  let status = 'ready';
+  if (totalRows === 0 || totalPoints === 0) {
+    status = 'no_data';
+  } else if (totalPoints < totalRenderableRows) {
+    status = 'partial_data';
+  }
+
+  return {
+    status,
+    authority: 'context_only',
+    source: 'attendance_snapshot',
+    window: buildExecutedWindow(effectiveWindow),
+    summary: {
+      total_points: totalPoints,
+      wfo_points: points.filter((point) => point.mode === 'WFO').length,
+      wfh_points: points.filter((point) => point.mode === 'WFH').length,
+      wfa_points: points.filter((point) => point.mode === 'WFA').length
+    },
+    points,
+    geofence_context: geofenceContext
+  };
+};
+
 const buildInsights = ({ executiveKpis, modeMix, todayLocations }) => {
   const items = [];
   const rawCounts = executiveKpis.raw_counts;
@@ -303,7 +413,17 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
             [Op.between]: [effectiveWindow.startDateStr, effectiveWindow.endDateStr]
           }
         },
-        attributes: ['attendance_date', 'user_id', 'status_id', 'category_id'],
+        attributes: [
+          'id_attendance',
+          'attendance_date',
+          'user_id',
+          'status_id',
+          'category_id',
+          'location_id',
+          'time_in',
+          'time_out',
+          'notes'
+        ],
         include: [
           {
             model: AttendanceStatus,
@@ -314,6 +434,18 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
             model: AttendanceCategory,
             as: 'attendance_category',
             attributes: ['category_name']
+          },
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id_users', 'full_name'],
+            required: false
+          },
+          {
+            model: Location,
+            as: 'location',
+            attributes: ['location_id', 'latitude', 'longitude', 'radius', 'description'],
+            required: false
           }
         ],
         order: [
@@ -455,12 +587,23 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       allowedIds: analyzedUserIds
     })
   };
+  const executedWindow = buildExecutedWindow(effectiveWindow);
+  const geofenceEvidenceContext = buildGeofenceEvidenceContext({
+    effectiveWindow,
+    locationEvents
+  });
+  const mapContext = buildMapContext({
+    effectiveWindow,
+    attendanceRows,
+    geofenceContext: geofenceEvidenceContext
+  });
 
   return {
     meta: {
       generated_at: generatedAt,
       timezone: 'Asia/Jakarta',
       requested_window: requestedWindow,
+      executed_window: executedWindow,
       section_windows: buildSectionWindows(effectiveWindow),
       sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
     },
@@ -473,10 +616,8 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       percentages
     },
     today_locations: todayLocations,
-    geofence_evidence_context: buildGeofenceEvidenceContext({
-      effectiveWindow,
-      locationEvents
-    }),
+    geofence_evidence_context: geofenceEvidenceContext,
+    map_context: mapContext,
     fuzzy_ahp_snapshot: fuzzySnapshot,
     insights: buildInsights({
       executiveKpis,

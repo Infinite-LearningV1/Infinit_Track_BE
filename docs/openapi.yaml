@@ -1617,7 +1617,7 @@ paths:
       tags:
         - Reports & Analytics
       summary: Get dashboard analytics aggregation
-      description: Retrieve dashboard-ready aggregated attendance, mode mix, today locations, and lightweight Fuzzy AHP snapshots for Admin or Management users.
+      description: Retrieve dashboard-ready aggregated attendance, mode mix, canonical historical map context, an embedded today locations snapshot, and lightweight Fuzzy AHP snapshots for Admin or Management users. Use `/api/attendance/today-locations` as the dedicated today-locations surface.
       security:
         - bearerAuth: []
       parameters:
@@ -1653,6 +1653,37 @@ paths:
                   success:
                     type: boolean
                     example: true
+                  requested_window:
+                    type: object
+                    description: Raw window sesuai query client. Untuk period default seperti 30d, from/to dapat bernilai null.
+                    properties:
+                      period:
+                        type: string
+                        example: custom
+                      from:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-01'
+                      to:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-30'
+                  executed_window:
+                    type: object
+                    description: Effective historical window that the backend actually executed after resolving defaults.
+                    properties:
+                      from:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-01'
+                      to:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-30'
                   data:
                     type: object
                     properties:
@@ -1673,6 +1704,20 @@ paths:
                               period:
                                 type: string
                                 example: custom
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          executed_window:
+                            type: object
+                            description: Effective historical window that the backend actually executed after resolving defaults.
+                            properties:
                               from:
                                 type: string
                                 format: date
@@ -1740,6 +1785,19 @@ paths:
                                     nullable: true
                                     example: '2026-04-30'
                               geofence_evidence_context:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              map_context:
                                 type: object
                                 properties:
                                   from:
@@ -1964,6 +2022,153 @@ paths:
                               unique_users:
                                 type: integer
                                 example: 2
+                      map_context:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [ready, partial_data, no_data]
+                            example: ready
+                          authority:
+                            type: string
+                            example: context_only
+                          source:
+                            type: string
+                            example: attendance_snapshot
+                          window:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          summary:
+                            type: object
+                            properties:
+                              total_points:
+                                type: integer
+                                example: 2
+                              wfo_points:
+                                type: integer
+                                example: 1
+                              wfh_points:
+                                type: integer
+                                example: 0
+                              wfa_points:
+                                type: integer
+                                example: 1
+                          points:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  example: attendance:101
+                                record_type:
+                                  type: string
+                                  example: attendance_snapshot
+                                attendance_id:
+                                  type: integer
+                                  example: 101
+                                user_id:
+                                  type: integer
+                                  example: 7
+                                user_name:
+                                  type: string
+                                  example: Febri
+                                mode:
+                                  type: string
+                                  enum: [WFO, WFH, WFA]
+                                  example: WFO
+                                status:
+                                  type: string
+                                  enum: [on_time, late, alpha, early]
+                                  example: on_time
+                                label:
+                                  type: string
+                                  example: 'Febri - WFO - 2026-04-01'
+                                lat:
+                                  type: number
+                                  format: float
+                                  example: -0.8917
+                                lng:
+                                  type: number
+                                  format: float
+                                  example: 119.8707
+                                radius_m:
+                                  type: number
+                                  format: float
+                                  example: 100
+                                attendance_date:
+                                  type: string
+                                  format: date
+                                  example: '2026-04-01'
+                                time_in:
+                                  type: string
+                                  nullable: true
+                                  example: '08:15'
+                                time_out:
+                                  type: string
+                                  nullable: true
+                                  example: '17:01'
+                                location_source:
+                                  type: string
+                                  example: attendance.location
+                                coordinate_quality:
+                                  type: string
+                                  enum: [exact, approximate]
+                                  example: exact
+                                description:
+                                  type: string
+                                  example: Head Office
+                          geofence_context:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [available, no_events]
+                                example: available
+                              authority:
+                                type: string
+                                example: context_only
+                              final_attendance_authority:
+                                type: string
+                                example: attendance_records
+                              window:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              raw_counts:
+                                type: object
+                                properties:
+                                  total_events:
+                                    type: integer
+                                    example: 3
+                                  enter_events:
+                                    type: integer
+                                    example: 1
+                                  exit_events:
+                                    type: integer
+                                    example: 2
+                                  unique_users:
+                                    type: integer
+                                    example: 2
                       fuzzy_ahp_snapshot:
                         type: object
                         properties:

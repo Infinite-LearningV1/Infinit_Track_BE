@@ -199,6 +199,16 @@ describe('client-critical OpenAPI contract', () => {
     const dashboardSchema = schemaAt(openapi.paths['/api/summary/dashboard-analytics'].get);
     const dataSchema = dashboardSchema.properties.data;
 
+    expect(dashboardSchema.properties).toMatchObject({
+      success: { type: 'boolean', example: true },
+      requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
+      data: { type: 'object' },
+      message: {
+        type: 'string',
+        example: 'Dashboard analytics retrieved successfully'
+      }
+    });
     expect(dataSchema.properties.meta.properties).toMatchObject({
       generated_at: {
         type: 'string',
@@ -206,8 +216,15 @@ describe('client-critical OpenAPI contract', () => {
         example: '2026-05-03T02:30:00.000Z'
       },
       requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
       section_windows: { type: 'object' },
       sources: { type: 'array' }
+    });
+    expect(
+      dataSchema.properties.meta.properties.section_windows.properties.map_context.properties
+    ).toMatchObject({
+      from: { type: 'string', format: 'date', nullable: true },
+      to: { type: 'string', format: 'date', nullable: true }
     });
     expect(dataSchema.properties.executive_kpis.properties).toMatchObject({
       attendance_rate: { type: 'number', format: 'float' },
@@ -236,6 +253,43 @@ describe('client-critical OpenAPI contract', () => {
     expect(dataSchema.properties.geofence_evidence_context.properties.status).toMatchObject({
       type: 'string',
       example: 'available'
+    });
+    expect(dataSchema.properties.map_context.properties).toMatchObject({
+      status: {
+        type: 'string',
+        example: 'ready'
+      },
+      authority: {
+        type: 'string',
+        example: 'context_only'
+      },
+      source: {
+        type: 'string',
+        example: 'attendance_snapshot'
+      },
+      window: { type: 'object' },
+      summary: { type: 'object' },
+      points: { type: 'array' },
+      geofence_context: { type: 'object' }
+    });
+    expect(dataSchema.properties.map_context.properties.points.items.properties).toMatchObject({
+      id: { type: 'string', example: 'attendance:101' },
+      record_type: { type: 'string', example: 'attendance_snapshot' },
+      attendance_id: { type: 'integer', example: 101 },
+      user_id: { type: 'integer', example: 7 },
+      user_name: { type: 'string', example: 'Febri' },
+      mode: { type: 'string', example: 'WFO' },
+      status: { type: 'string', example: 'on_time' },
+      label: { type: 'string', example: 'Febri - WFO - 2026-04-01' },
+      lat: { type: 'number', format: 'float', example: -0.8917 },
+      lng: { type: 'number', format: 'float', example: 119.8707 },
+      radius_m: { type: 'number', format: 'float', example: 100 },
+      attendance_date: { type: 'string', format: 'date', example: '2026-04-01' },
+      time_in: { type: 'string', nullable: true, example: '08:15' },
+      time_out: { type: 'string', nullable: true, example: '17:01' },
+      location_source: { type: 'string', example: 'attendance.location' },
+      coordinate_quality: { type: 'string', example: 'exact' },
+      description: { type: 'string', example: 'Head Office' }
     });
     expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.status).toMatchObject({
       type: 'string',

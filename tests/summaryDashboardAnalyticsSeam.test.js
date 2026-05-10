@@ -14,6 +14,18 @@ const mockVerifyToken = jest.fn((req, _res, next) => {
   req.user = { id: 1, role_name: 'Admin' };
   next();
 });
+const mockFormatTimeOnly = jest.fn((value) => {
+  if (!value) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(value));
+});
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
   default: {}
@@ -42,7 +54,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 jest.unstable_mockModule('../src/utils/workHourFormatter.js', () => ({
   formatWorkHour: jest.fn(),
   calculateWorkHour: jest.fn(),
-  formatTimeOnly: jest.fn()
+  formatTimeOnly: mockFormatTimeOnly
 }));
 
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
@@ -81,20 +93,50 @@ describe('summary dashboard analytics seam', () => {
   it('serves a real dashboard analytics payload through the route-controller-helper seam', async () => {
     mockAttendanceFindAll.mockResolvedValueOnce([
       {
+        id_attendance: 101,
         attendance_date: '2026-04-01',
         user_id: 7,
+        time_in: '2026-04-01T01:15:00.000Z',
+        time_out: '2026-04-01T10:01:00.000Z',
+        notes: '',
+        user: { id_users: 7, full_name: 'Febri' },
+        location: {
+          location_id: 11,
+          latitude: '-0.891700',
+          longitude: '119.870700',
+          radius: 100,
+          description: 'Head Office'
+        },
         status: { attendance_status_name: 'Tepat Waktu' },
         attendance_category: { category_name: 'Work From Office' }
       },
       {
+        id_attendance: 102,
         attendance_date: '2026-04-02',
         user_id: 8,
+        time_in: null,
+        time_out: null,
+        notes: '',
+        user: { id_users: 8, full_name: 'Diana' },
+        location: null,
         status: { attendance_status_name: 'Alpha' },
         attendance_category: { category_name: 'Work From Home' }
       },
       {
+        id_attendance: 103,
         attendance_date: '2026-04-03',
         user_id: 8,
+        time_in: '2026-04-03T01:20:00.000Z',
+        time_out: null,
+        notes: 'Cafe shift',
+        user: { id_users: 8, full_name: 'Diana' },
+        location: {
+          location_id: 31,
+          latitude: '-0.900100',
+          longitude: '119.880200',
+          radius: 150,
+          description: 'Cafe Satu'
+        },
         status: { attendance_status_name: 'Terlambat' },
         attendance_category: { category_name: 'Work From Anywhere' }
       }
@@ -199,6 +241,15 @@ describe('summary dashboard analytics seam', () => {
     );
     expect(res.body).toMatchObject({
       success: true,
+      requested_window: {
+        period: 'custom',
+        from: '2026-04-01',
+        to: '2026-04-03'
+      },
+      executed_window: {
+        from: '2026-04-01',
+        to: '2026-04-03'
+      },
       message: 'Dashboard analytics retrieved successfully',
       data: {
         meta: {
@@ -207,6 +258,19 @@ describe('summary dashboard analytics seam', () => {
             period: 'custom',
             from: '2026-04-01',
             to: '2026-04-03'
+          },
+          executed_window: {
+            from: '2026-04-01',
+            to: '2026-04-03'
+          },
+          section_windows: {
+            executive_kpis: { from: '2026-04-01', to: '2026-04-03' },
+            historical_trend: { from: '2026-04-01', to: '2026-04-03' },
+            mode_mix: { from: '2026-04-01', to: '2026-04-03' },
+            fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' },
+            geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' },
+            map_context: { from: '2026-04-01', to: '2026-04-03' },
+            today_locations: { mode: 'jakarta_today' }
           }
         },
         executive_kpis: {
@@ -247,12 +311,77 @@ describe('summary dashboard analytics seam', () => {
           status: 'available',
           authority: 'context_only',
           final_attendance_authority: 'attendance_records',
+          window: { from: '2026-04-01', to: '2026-04-03' },
           raw_counts: {
             total_events: 3,
             enter_events: 1,
             exit_events: 2,
             unique_users: 2
           }
+        },
+        map_context: {
+          status: 'ready',
+          authority: 'context_only',
+          source: 'attendance_snapshot',
+          window: { from: '2026-04-01', to: '2026-04-03' },
+          summary: {
+            total_points: 2,
+            wfo_points: 1,
+            wfh_points: 0,
+            wfa_points: 1
+          },
+          geofence_context: {
+            status: 'available',
+            authority: 'context_only',
+            final_attendance_authority: 'attendance_records',
+            window: { from: '2026-04-01', to: '2026-04-03' },
+            raw_counts: {
+              total_events: 3,
+              enter_events: 1,
+              exit_events: 2,
+              unique_users: 2
+            }
+          },
+          points: [
+            {
+              id: 'attendance:101',
+              record_type: 'attendance_snapshot',
+              attendance_id: 101,
+              user_id: 7,
+              user_name: 'Febri',
+              mode: 'WFO',
+              status: 'on_time',
+              label: 'Febri - WFO - 2026-04-01',
+              lat: -0.8917,
+              lng: 119.8707,
+              radius_m: 100,
+              attendance_date: '2026-04-01',
+              time_in: '08:15',
+              time_out: '17:01',
+              location_source: 'attendance.location',
+              coordinate_quality: 'exact',
+              description: 'Head Office'
+            },
+            {
+              id: 'attendance:103',
+              record_type: 'attendance_snapshot',
+              attendance_id: 103,
+              user_id: 8,
+              user_name: 'Diana',
+              mode: 'WFA',
+              status: 'late',
+              label: 'Diana - WFA - 2026-04-03',
+              lat: -0.9001,
+              lng: 119.8802,
+              radius_m: 150,
+              attendance_date: '2026-04-03',
+              time_in: '08:20',
+              time_out: null,
+              location_source: 'attendance.location',
+              coordinate_quality: 'exact',
+              description: 'Cafe shift'
+            }
+          ]
         },
         fuzzy_ahp_snapshot: {
           discipline: {
