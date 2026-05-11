@@ -315,12 +315,35 @@ const buildMapContextPoint = (attendance) => {
 };
 
 const buildMapContext = ({ effectiveWindow, attendanceRows, geofenceContext }) => {
-  const points = attendanceRows.map(buildMapContextPoint).filter(Boolean);
+  const points = [];
+  const summary = {
+    total_points: 0,
+    wfo_points: 0,
+    wfh_points: 0,
+    wfa_points: 0
+  };
+  let totalRenderableRows = 0;
+
+  for (const attendance of attendanceRows) {
+    if (!STATUS_ALPHA.has(normalizeStatusName(attendance.status?.attendance_status_name))) {
+      totalRenderableRows += 1;
+    }
+
+    const point = buildMapContextPoint(attendance);
+    if (!point) {
+      continue;
+    }
+
+    points.push(point);
+    summary.total_points += 1;
+
+    if (point.mode === 'WFO') summary.wfo_points += 1;
+    if (point.mode === 'WFH') summary.wfh_points += 1;
+    if (point.mode === 'WFA') summary.wfa_points += 1;
+  }
+
   const totalRows = attendanceRows.length;
-  const totalRenderableRows = attendanceRows.filter(
-    (attendance) => !STATUS_ALPHA.has(normalizeStatusName(attendance.status?.attendance_status_name))
-  ).length;
-  const totalPoints = points.length;
+  const totalPoints = summary.total_points;
 
   let status = 'ready';
   if (totalRows === 0 || totalPoints === 0) {
@@ -334,12 +357,7 @@ const buildMapContext = ({ effectiveWindow, attendanceRows, geofenceContext }) =
     authority: 'context_only',
     source: 'attendance_snapshot',
     window: buildExecutedWindow(effectiveWindow),
-    summary: {
-      total_points: totalPoints,
-      wfo_points: points.filter((point) => point.mode === 'WFO').length,
-      wfh_points: points.filter((point) => point.mode === 'WFH').length,
-      wfa_points: points.filter((point) => point.mode === 'WFA').length
-    },
+    summary,
     points,
     geofence_context: geofenceContext
   };

@@ -26,7 +26,7 @@ const JAKARTA_DATE_ONLY = new Intl.DateTimeFormat('en-CA', {
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
-const toDateAtJakartaNoonUtc = (dateStr) => new Date(`${dateStr}T12:00:00+07:00`);
+const toDateAtJakartaLocalNoon = (dateStr) => new Date(`${dateStr}T12:00:00+07:00`);
 
 const getJakartaDateOnly = (value) => {
   if (!value) return null;
@@ -57,7 +57,7 @@ const getRowSortTimestamp = (row) => {
   const dateOnly = getJakartaDateOnly(row?.attendance_date);
   if (!dateOnly) return Number.NEGATIVE_INFINITY;
 
-  return toDateAtJakartaNoonUtc(dateOnly).getTime();
+  return toDateAtJakartaLocalNoon(dateOnly).getTime();
 };
 
 const createSummaryShell = (user, expectedWorkingDays) => ({
@@ -166,8 +166,8 @@ export const countExpectedWorkingDays = ({ period, startDate, endDate }) => {
 
   let count = 0;
   for (
-    let cursor = toDateAtJakartaNoonUtc(startDate);
-    cursor.getTime() <= toDateAtJakartaNoonUtc(endDate).getTime();
+    let cursor = toDateAtJakartaLocalNoon(startDate);
+    cursor.getTime() <= toDateAtJakartaLocalNoon(endDate).getTime();
     cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)
   ) {
     const weekday = JAKARTA_WEEKDAY.format(cursor);
