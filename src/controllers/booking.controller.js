@@ -17,9 +17,14 @@ import { getJakartaDateString } from '../utils/geofence.js';
  */
 async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
   try {
-    const geoapifyApiKey = process.env.GEOAPIFY_API_KEY;
+    const geoapifyApiKey = process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY;
+    if (!process.env.GEOAPIFY_API_KEY && process.env.GEOAPIFY_KEY) {
+      logger.warn(
+        'Using legacy GEOAPIFY_KEY fallback for booking suitability scoring; migrate to GEOAPIFY_API_KEY.'
+      );
+    }
     if (!geoapifyApiKey) {
-      logger.error('GEOAPIFY_API_KEY not found for booking suitability scoring.');
+      logger.error('Geoapify API key not found for booking suitability scoring. Set GEOAPIFY_API_KEY.');
       return {
         suitability_score: 50,
         suitability_label: 'Lokasi tidak terdaftar'
@@ -35,8 +40,9 @@ async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
       apiKey: geoapifyApiKey
     };
 
+    const diagnosticParams = { ...params, apiKey: '[REDACTED]' };
     logger.info(
-      `[DIAGNOSTIC] Calling Geoapify URL: ${apiUrl} with params: ${JSON.stringify(params)}`
+      `[DIAGNOSTIC] Calling Geoapify URL: ${apiUrl} with params: ${JSON.stringify(diagnosticParams)}`
     );
 
     const response = await axios.get(apiUrl, { params });

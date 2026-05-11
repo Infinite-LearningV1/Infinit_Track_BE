@@ -1,3 +1,7 @@
+# Legacy/historical backend artifact only.
+# Canonical backend runtime is the droplet-hosted Docker Compose stack that pulls
+# registry.digitalocean.com/infinit-track/infinit-track-backend behind host Nginx.
+# Do not treat this App Platform spec as the active backend deployment source of truth.
 name: infinit-track-production
 region: sgp1
 
@@ -99,7 +103,7 @@ services:
         type: GENERAL
 
       # Optional: Geoapify Key (if needed)
-      - key: GEOAPIFY_KEY
+      - key: GEOAPIFY_API_KEY
         scope: RUN_TIME
         type: SECRET
 
@@ -115,7 +119,7 @@ services:
         type: GENERAL
 
       - key: SPACES_BUCKET
-        value: infinite-track-staging-sgp1
+        value: <production-spaces-bucket>
         scope: RUN_TIME
         type: GENERAL
 

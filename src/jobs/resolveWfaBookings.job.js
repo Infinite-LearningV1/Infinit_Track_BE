@@ -31,7 +31,7 @@ export const resolveWfaBookingsJob = async () => {
     await handleUnusedApprovedBookings(targetDate, jakartaTime);
 
     // TASK B: Handle expired pending bookings
-    await handleExpiredPendingBookings(targetDate, jakartaTime);
+    await handleExpiredPendingBookings(targetDate);
 
     logger.info('Resolve WFA bookings job completed successfully');
   } catch (error) {
@@ -51,7 +51,7 @@ export const resolveWfaBookingsForDate = async (targetDate) => {
 
     logger.info(`Resolve WFA bookings for explicit date: ${targetDate}`);
     await handleUnusedApprovedBookings(targetDate, jakartaTime);
-    await handleExpiredPendingBookings(targetDate, jakartaTime);
+    await handleExpiredPendingBookings(targetDate);
     return { success: true, targetDate };
   } catch (error) {
     logger.error('Error in resolveWfaBookingsForDate:', error);
@@ -148,7 +148,7 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
 /**
  * Task B: Reject expired pending bookings
  */
-const handleExpiredPendingBookings = async (todayDate, _jakartaTime) => {
+const handleExpiredPendingBookings = async (todayDate) => {
   try {
     logger.info('Task B: Processing expired pending bookings...');
 
@@ -206,7 +206,7 @@ export const startResolveWfaBookingsJob = () => {
   logger.info('Resolve WFA Bookings job scheduled to run daily at 23:50');
 
   // Schedule cron job to run daily at 23:50 Jakarta time
-  cron.schedule(
+  const task = cron.schedule(
     '50 23 * * *',
     async () => {
       try {
@@ -226,6 +226,8 @@ export const startResolveWfaBookingsJob = () => {
   );
 
   logger.info('Resolve WFA Bookings cron job has been initialized');
+
+  return task;
 };
 
 /**

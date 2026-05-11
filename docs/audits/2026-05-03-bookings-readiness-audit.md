@@ -1,12 +1,12 @@
 # Bookings Readiness Audit — 2026-05-03
 
-## Interim status (Task 5 live verification findings captured)
-- This document now captures **Task 4 repository evidence** for bookings readiness across runtime routes, OpenAPI inventory, validators, controllers, and automated contract coverage.
-- This document now also captures **Task 5 live verification findings** from the parent session.
+## Final status (Task 6 readiness assessment captured)
+- This document captures **Task 4 repository evidence**, **Task 5 live verification findings**, and the **Task 6 final readiness assessment** for bookings readiness.
+- Fact: current repository evidence closes the earlier `GET /api/bookings` filter-mismatch concern and the earlier `DELETE /api/bookings/{id}` shared-location deletion concern.
 - Fact: unauthenticated live `GET` access to the bookings read endpoints is blocked with `401`.
 - Fact: authenticated live `GET` verification was not completed from this session because no valid live token could be obtained from available local credential sources without guessing.
 - Fact: live mutation verification for `POST`/`PATCH`/`DELETE` remains intentionally not performed because mutating staging actions are disallowed under the current constraint.
-- Final readiness decision (`READY` or `NOT READY`) remains pending for Task 6 and is not issued by this Task 5 update.
+- Final readiness decision is now issued as `NOT READY` because the required live evidence for authenticated read behavior and mutation flows is still incomplete under this audit standard.
 
 ## Scope audited
 - `POST /api/bookings`
@@ -31,9 +31,9 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `POST /api/bookings` | Yes — `verifyToken`, authenticated users | Yes — `/api/bookings` `post` | Yes — repository evidence captured | Yes — focused contract tests present | No — live mutation verification disallowed by current constraint | Pending readiness | Safe live mutation path still required |
 | `PATCH /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `patch` | Yes — repository evidence captured | Yes — focused contract tests present | No — live mutation verification disallowed by current constraint | Pending readiness | Safe live mutation path still required |
-| `GET /api/bookings` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Partial — OpenAPI documents `date_from`, `date_to`, and `user_id` filters not implemented by `getAllBookings` | Partial — repository evidence captured, but query-filter contract gap remains | Yes — focused contract tests present | Partial — unauthenticated live access verified blocked with `401`; authenticated live verification not completed | Pending contract gap + authenticated live verification | OpenAPI/runtime filter mismatch and no authenticated live read evidence |
+| `GET /api/bookings` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — OpenAPI filter contract matches current `getAllBookings` implementation | Yes — repository evidence captured | Yes — focused contract tests present | Partial — unauthenticated live access verified blocked with `401`; authenticated live verification not completed | Pending authenticated live verification | No authenticated live read evidence |
 | `GET /api/bookings/history` | Yes — `verifyToken`, scoped to `req.user.id` | Yes — `/api/bookings/history` documents `get` with pagination/status/sort metadata | Yes — repository evidence captured | Yes — focused contract tests present | Partial — unauthenticated live access verified blocked with `401`; authenticated live verification not completed | Pending authenticated live verification | No authenticated live read evidence |
-| `DELETE /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `delete` | Partial — repository evidence captured, but shared-location deletion risk remains needs-verification | Yes — focused contract tests present | No — live mutation verification disallowed by current constraint | Pending readiness + logic gap | Safe live mutation path and shared-location deletion evidence still required |
+| `DELETE /api/bookings/{id}` | Yes — `verifyToken` plus Admin/Management `roleGuard` | Yes — `/api/bookings/{id}` documents `delete` | Yes — repository evidence captured and current delete flow does not remove `Location` records | Yes — focused contract tests present | No — live mutation verification disallowed by current constraint | Pending live mutation verification | Safe live mutation path still required |
 
 ## Findings by endpoint
 
@@ -113,7 +113,9 @@
 - No route-level request validator is mounted for `GET /api/bookings`.
 
 #### Controller evidence
-- `getAllBookings` reads `status`, `page`, and `limit` query parameters.
+- `getAllBookings` reads `status`, `page`, `limit`, `user_id`, `date_from`, and `date_to` query parameters.
+- `getAllBookings` validates positive-integer pagination and enforces an admin safety cap of `limit <= 100`.
+- `getAllBookings` validates `user_id` as a positive integer and validates `date_from`/`date_to` as strict `YYYY-MM-DD` values with an ordered date-range check.
 - `getAllBookings` maps `approved`/`rejected`/`pending` status strings to persisted status IDs for filtering.
 - `getAllBookings` queries bookings with user, position, role, location, and booking status relations.
 - `getAllBookings` sorts pending first, then approved, then rejected, with newest records first inside each status group.
@@ -122,6 +124,8 @@
 #### Automated verification evidence
 - `tests/bookingsReadinessContract.test.js` verifies authenticated non-admin users are blocked from `GET /api/bookings` with `403`.
 - `tests/bookingsReadinessContract.test.js` verifies unauthenticated requests are blocked by `verifyToken` before reaching `GET /api/bookings`.
+- `tests/bookingsControllerReadiness.test.js` verifies `getAllBookings` applies the documented `status`, `user_id`, `date_from`, and `date_to` filters plus pagination metadata.
+- `tests/bookingsControllerReadiness.test.js` verifies invalid `status`, pagination, `user_id`, and date-range inputs are rejected before querying the database.
 - `tests/openApiMountedRoutesContract.test.js` verifies `/api/bookings` remains present in the public OpenAPI inventory.
 
 #### Live verification evidence
@@ -131,10 +135,9 @@
 - Fact: one attempted login using credentials available in the current workspace was rejected at the validation layer with message `Password harus kombinasi huruf dan angka tanpa spasi`.
 
 #### Status
-- Repository evidence present, but OpenAPI/runtime filter alignment is partial because documented `date_from`, `date_to`, and `user_id` filters are not implemented by `getAllBookings`; live evidence confirms unauthenticated access is blocked, but authenticated read behavior remains unverified.
+- Repository evidence present and current OpenAPI/runtime filter alignment is confirmed; live evidence confirms unauthenticated access is blocked, but authenticated read behavior remains unverified.
 
 #### Blocking notes
-- Contract gap: OpenAPI documents `date_from`, `date_to`, and `user_id` query filters, but repository evidence shows `getAllBookings` only reads `status`, `page`, and `limit`.
 - Authenticated read-only live verification remains incomplete for final readiness evidence.
 
 ### `GET /api/bookings/history`
@@ -189,41 +192,42 @@
 
 #### Controller evidence
 - `deleteBooking` returns `404` when the requested booking record/ID does not exist.
-- `deleteBooking` deletes the booking record and then deletes the related location record inside the same transaction.
-- Needs verification: `createBooking` can reuse an existing `location_id`, so deleting the related location record may remove a location still shared by another booking.
+- `deleteBooking` deletes only the booking record inside the transaction and does not destroy any related `Location` record.
 
 #### Automated verification evidence
 - `tests/bookingsReadinessContract.test.js` verifies authenticated non-admin users are blocked from `DELETE /api/bookings/{id}` with `403`.
 - `tests/bookingsReadinessContract.test.js` verifies unauthenticated requests are blocked by `verifyToken` before reaching `DELETE /api/bookings/{id}`.
+- `tests/bookingsControllerReadiness.test.js` verifies `deleteBooking` deletes only the booking record without deleting a shared `Location`.
 - `tests/openApiMountedRoutesContract.test.js` verifies `/api/bookings/{id}` remains present in the public OpenAPI inventory.
 
 #### Live verification evidence
 - Fact: live mutation verification was not performed for `DELETE /api/bookings/{id}` because mutating staging actions are disallowed under the current audit constraint.
 
 #### Status
-- Repository evidence present, but delete readiness remains partial because shared-location deletion safety is not proven; live mutation verification still required for readiness.
+- Repository evidence present and current delete logic no longer carries the earlier shared-location deletion risk; live mutation verification still required for readiness.
 
 #### Blocking notes
-- Logic gap / needs verification: `createBooking` can reuse `location_id`, while `deleteBooking` destroys the related `Location` record; repository evidence does not prove the location is exclusively owned by the deleted booking.
 - Mutation readiness remains unproven until a safe live `DELETE /api/bookings/{id}` verification path exists.
 
 ## Automated verification evidence
 - `tests/bookingsReadinessContract.test.js` verifies route/auth boundaries and exported validator contract shape.
+- `tests/bookingsControllerReadiness.test.js` verifies the current controller-level filter, validation, pagination, and delete-safety behavior that previously appeared stale in this audit.
 - `tests/openApiMountedRoutesContract.test.js` verifies the bookings paths remain present in the public OpenAPI inventory.
 
 ## Task 5 endpoint status posture
 - `POST /api/bookings`: repository evidence present, but live mutation verification remains not performed because mutating staging actions are disallowed under the current constraint.
 - `PATCH /api/bookings/{id}`: repository evidence present, but live mutation verification remains not performed because mutating staging actions are disallowed under the current constraint.
-- `GET /api/bookings`: repository evidence present, OpenAPI/runtime filter alignment is partial, and unauthenticated live access is blocked with `401`; authenticated live read behavior remains unverified because no valid live token could be obtained without guessing.
+- `GET /api/bookings`: repository evidence present, OpenAPI/runtime filter alignment is confirmed, and unauthenticated live access is blocked with `401`; authenticated live read behavior remains unverified because no valid live token could be obtained without guessing.
 - `GET /api/bookings/history`: repository evidence present and unauthenticated live access is blocked with `401`; authenticated live read behavior remains unverified because no valid live token could be obtained without guessing.
-- `DELETE /api/bookings/{id}`: repository evidence present, shared-location deletion safety remains needs-verification, and live mutation verification remains not performed because mutating staging actions are disallowed under the current constraint.
+- `DELETE /api/bookings/{id}`: repository evidence present, current delete behavior no longer removes `Location` records, and live mutation verification remains not performed because mutating staging actions are disallowed under the current constraint.
 
 ## Blocking gap list
 ### Contract gaps
-- `GET /api/bookings` is not fully OpenAPI-aligned: OpenAPI documents `date_from`, `date_to`, and `user_id` filters, while repository evidence shows `getAllBookings` only implements `status`, `page`, and `limit`.
+- None currently evidenced in repository state.
 ### Logic gaps
-- `createBooking` can reuse an existing `location_id`, but `deleteBooking` destroys the related `Location` record after deleting the booking. Repository evidence does not prove that a deleted booking's location is never shared by another booking, so this remains a logic gap / needs-verification item.
+- None currently evidenced in repository state.
 ### Automated verification gaps
+- None blocking from repository-side coverage for the audited contract and controller behaviors.
 ### Live verification gaps
 - Authenticated live verification for `GET /api/bookings` remains incomplete because no valid live token could be obtained from available local credential sources without guessing.
 - Authenticated live verification for `GET /api/bookings/history` remains incomplete because no valid live token could be obtained from available local credential sources without guessing.
@@ -240,16 +244,15 @@
 - Needs Verification: authenticated `GET` behavior and all mutation endpoint live behavior still need approved credentials and/or an approved safe mutation path.
 
 ## Final readiness decision
-- Decision: `PENDING`
+- Decision: `NOT READY`
 - Reasoning:
   - Task 4 repository evidence is captured for runtime routes, OpenAPI documentation, validators, controllers, and automated contract tests.
+  - Current repository evidence closes the earlier `GET /api/bookings` filter-alignment concern and the earlier `DELETE /api/bookings/{id}` shared-location deletion concern.
   - Task 5 live verification confirms unauthenticated live access is blocked for both read endpoints, but authenticated live read behavior remains unverified because no valid live token could be obtained without guessing.
   - Task 5 live mutation verification remains intentionally not performed because mutating staging actions are disallowed under the current constraint.
-  - Task 6 must issue the final `READY` or `NOT READY` result; this Task 5 update does not issue the final decision.
+  - Under this audit standard, missing authenticated live read evidence plus missing live mutation evidence is sufficient to keep the bookings surface out of `READY` status.
 
 ## Fix queue
 1. Provide an approved valid live token or credential source for authenticated `GET /api/bookings` and `GET /api/bookings/history` verification.
 2. Provide an approved safe live mutation verification path for `POST /api/bookings`, `PATCH /api/bookings/{id}`, and `DELETE /api/bookings/{id}`.
-3. Resolve or explicitly accept the `GET /api/bookings` OpenAPI/runtime filter mismatch.
-4. Resolve or explicitly accept the `DELETE /api/bookings/{id}` shared-location deletion needs-verification risk.
-5. Complete Task 6 final readiness assessment with explicit `READY` or `NOT READY` decision.
+3. Re-run the final bookings readiness assessment once the missing live evidence is available.

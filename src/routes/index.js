@@ -10,8 +10,12 @@ import wfaRoutes from './wfa.routes.js';
 import disciplineRoutes from './discipline.routes.js';
 import analysisRoutes from './analysis.routes.js';
 import settingsRoutes from './settings.routes.js';
+import { getLiveness, getReadiness } from '../controllers/health.controller.js';
 
 const router = express.Router();
+
+router.get('/livez', getLiveness);
+router.get('/health', getReadiness);
 
 // API routes
 router.use('/api/auth', authRoutes);
@@ -24,11 +28,6 @@ router.use('/api/wfa', wfaRoutes);
 router.use('/api/discipline', disciplineRoutes);
 router.use('/api/analysis', analysisRoutes);
 router.use('/api/settings', settingsRoutes);
-
-// Health check
-router.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
 
 // 404 handler
 router.use('*', (req, res) => {

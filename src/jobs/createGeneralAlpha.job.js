@@ -192,7 +192,7 @@ export const startCreateGeneralAlphaJob = () => {
   logger.info('Create General Alpha job scheduled to run on working days at 23:55');
 
   // Schedule cron job to run Monday-Friday at 23:55 Jakarta time
-  cron.schedule(
+  const task = cron.schedule(
     '55 23 * * 1-5',
     async () => {
       try {
@@ -212,6 +212,8 @@ export const startCreateGeneralAlphaJob = () => {
   );
 
   logger.info('Create General Alpha cron job has been initialized');
+
+  return task;
 };
 
 /**
