@@ -12,8 +12,7 @@ import {
   BookingStatus,
   User,
   Role,
-  LocationEvent,
-  Photo
+  LocationEvent
 } from '../models/index.js';
 import {
   calculateDistance,

@@ -5,32 +5,62 @@ import app from './app.js';
 import config from './config/index.js';
 import sequelize from './config/database.js';
 import logger from './utils/logger.js';
-import { startCreateGeneralAlphaJob } from './jobs/createGeneralAlpha.job.js';
-import { startResolveWfaBookingsJob } from './jobs/resolveWfaBookings.job.js';
-import { startAutoCheckoutJob } from './jobs/autoCheckout.job.js';
+import { ensureSchedulerStarted } from './utils/schedulerLifecycle.js';
+import {
+  getReadinessSnapshot,
+  markDatabaseReady,
+  markDatabaseUnready,
+  markSchedulerUnready
+} from './utils/readinessState.js';
 
 (async () => {
+  let databaseReady = false;
+
   try {
     await sequelize.authenticate();
+    markDatabaseReady();
+    databaseReady = true;
     logger.info('Database connected successfully');
+  } catch (error) {
+    markDatabaseUnready();
+    markSchedulerUnready();
+    logger.error('Database connection failed', {
+      error: error.message,
+      stack: error.stack
+    });
+    logger.warn('Server will start without database connection; readiness will remain failed.');
+  }
 
-    // All smart features are now centralized in fuzzyAhpEngine.js
+  if (databaseReady) {
     logger.info('Fuzzy AHP Engine ready for intelligent features');
 
-    // Initialize all automated jobs
-    startCreateGeneralAlphaJob();
-    startResolveWfaBookingsJob();
-    startAutoCheckoutJob();
-
-    logger.info('All automated attendance jobs have been scheduled.');
-  } catch (err) {
-    logger.error('Database connection failed:', err.message);
-    logger.warn('Server will start without database connection');
+    try {
+      await ensureSchedulerStarted({ source: 'startup' });
+    } catch (schedulerError) {
+      logger.warn('Server will start without scheduled jobs; readiness will remain failed.', {
+        error: schedulerError.message,
+        stack: schedulerError.stack
+      });
+    }
   }
 
   app.listen(config.port, () => {
+    const readiness = getReadinessSnapshot();
+
     logger.info(`Server 🚀 on port ${config.port}`);
+    if (readiness.ready) {
+      logger.info('Startup dependencies are ready.');
+    } else {
+      logger.warn('Server started in degraded mode.', {
+        components: readiness.components,
+        missing: readiness.missing
+      });
+    }
+
     console.log(`🚀 Server running on port ${config.port}`);
+    if (!readiness.ready) {
+      console.warn(`⚠️ Startup readiness failed: ${readiness.missing.join(', ')}`);
+    }
     console.log(`📚 API Documentation: http://localhost:${config.port}/docs`);
   });
 })();
