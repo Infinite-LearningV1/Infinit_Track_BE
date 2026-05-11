@@ -645,6 +645,8 @@ export const getDashboardAnalytics = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
+      requested_window: data.meta?.requested_window ?? null,
+      executed_window: data.meta?.executed_window ?? null,
       data,
       message: 'Dashboard analytics retrieved successfully'
     });
