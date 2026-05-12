@@ -302,8 +302,23 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
+  test('documents canonical and deprecated summary report routes against the same shared schema', () => {
+    const canonicalOperation = openapi.paths['/api/summary/reports'].get;
+    const legacyOperation = openapi.paths['/api/summary'].get;
+
+    expect(canonicalOperation.deprecated).not.toBe(true);
+    expect(legacyOperation.deprecated).toBe(true);
+    expect(schemaAt(canonicalOperation)).toEqual({
+      $ref: '#/components/schemas/SummaryReportResponse'
+    });
+    expect(schemaAt(legacyOperation)).toEqual({
+      $ref: '#/components/schemas/SummaryReportResponse'
+    });
+    expect(legacyOperation.description).toContain('/api/summary/reports');
+  });
+
   test('documents summary report response shape for both per-user summaries and raw detail rows', () => {
-    const summarySchema = schemaAt(openapi.paths['/api/summary'].get);
+    const summarySchema = componentSchema(openapi, 'SummaryReportResponse');
     const summaryProperties = summarySchema.properties.summary.properties;
     const reportProperties = summarySchema.properties.report.properties;
     const userSummaryProperties = reportProperties.user_attendance_summary.items.properties;
