@@ -58,11 +58,9 @@ const responseShell = {
       historical_trend: { from: '2026-04-01', to: '2026-04-15' },
       mode_mix: { from: '2026-04-01', to: '2026-04-15' },
       fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-15' },
-      geofence_evidence_context: { from: '2026-04-01', to: '2026-04-15' },
-      map_context: { from: '2026-04-01', to: '2026-04-15' },
-      today_locations: { mode: 'jakarta_today' }
+      geofence_evidence_context: { from: '2026-04-01', to: '2026-04-15' }
     },
-    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
+    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
   },
   executive_kpis: {
     attendance_rate: 0,
@@ -96,14 +94,6 @@ const responseShell = {
       wfa: 0
     }
   },
-  today_locations: {
-    date: '2026-05-03',
-    timezone: 'Asia/Jakarta',
-    snapshot_type: 'attendance_checkin_snapshot',
-    is_live_tracking: false,
-    total_users: 0,
-    locations: []
-  },
   geofence_evidence_context: {
     status: 'no_events',
     authority: 'context_only',
@@ -114,31 +104,6 @@ const responseShell = {
       enter_events: 0,
       exit_events: 0,
       unique_users: 0
-    }
-  },
-  map_context: {
-    status: 'no_data',
-    authority: 'context_only',
-    source: 'attendance_snapshot',
-    window: { from: '2026-04-01', to: '2026-04-15' },
-    summary: {
-      total_points: 0,
-      wfo_points: 0,
-      wfh_points: 0,
-      wfa_points: 0
-    },
-    points: [],
-    geofence_context: {
-      status: 'no_events',
-      authority: 'context_only',
-      final_attendance_authority: 'attendance_records',
-      window: { from: '2026-04-01', to: '2026-04-15' },
-      raw_counts: {
-        total_events: 0,
-        enter_events: 0,
-        exit_events: 0,
-        unique_users: 0
-      }
     }
   },
   fuzzy_ahp_snapshot: {
@@ -224,11 +189,9 @@ describe('summary dashboard analytics controller contract', () => {
           historical_trend: { from: '2026-04-04', to: '2026-05-03' },
           mode_mix: { from: '2026-04-04', to: '2026-05-03' },
           fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' },
-          geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' },
-          map_context: { from: '2026-04-04', to: '2026-05-03' },
-          today_locations: { mode: 'jakarta_today' }
+          geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' }
         },
-        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
+        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
       }
     });
 

@@ -25,10 +25,9 @@ describe('userAttendanceSummary utility', () => {
     mockDatabaseQuery.mockReset();
   });
 
-  it('counts Jakarta weekdays for finite periods and returns null for all period', () => {
+  it('counts Jakarta weekdays for bounded date windows', () => {
     expect(
       countExpectedWorkingDays({
-        period: 'weekly',
         startDate: '2026-05-04',
         endDate: '2026-05-10'
       })
@@ -36,7 +35,6 @@ describe('userAttendanceSummary utility', () => {
 
     expect(
       countExpectedWorkingDays({
-        period: 'monthly',
         startDate: '2026-05-01',
         endDate: '2026-05-31'
       })
@@ -44,11 +42,10 @@ describe('userAttendanceSummary utility', () => {
 
     expect(
       countExpectedWorkingDays({
-        period: 'all',
         startDate: '2026-01-01',
         endDate: '2026-12-31'
       })
-    ).toBeNull();
+    ).toBe(261);
   });
 
   it('summarizes one user into one row with explicit zeroes, latest-row selection, and valid attendance excluding early days', () => {
@@ -109,7 +106,7 @@ describe('userAttendanceSummary utility', () => {
     });
   });
 
-  it('builds per-user summaries over full window with expected-day null semantics for all period', async () => {
+  it('builds per-user summaries over a bounded window with expected-day coverage semantics', async () => {
     mockUserFindAll.mockResolvedValueOnce([
       {
         id_users: 1,
@@ -141,7 +138,6 @@ describe('userAttendanceSummary utility', () => {
     ]);
 
     const rows = await buildUserAttendanceSummary({
-      period: 'all',
       startDate: '2026-05-01',
       endDate: '2026-05-31'
     });
@@ -152,7 +148,7 @@ describe('userAttendanceSummary utility', () => {
         full_name: 'Ayu',
         role_name: 'Admin',
         division: 'Ops',
-        expected_working_days: null,
+        expected_working_days: 21,
         on_time_days: 1,
         late_days: 1,
         early_days: 0,
@@ -161,17 +157,17 @@ describe('userAttendanceSummary utility', () => {
         wfh_days: 1,
         wfa_days: 0,
         valid_attendance_days: 2,
-        attendance_coverage_label: null,
+        attendance_coverage_label: '2/21',
         latest_attendance_status: 'late',
         latest_attendance_date: '2026-05-06',
-        summary_note: 'Expected days unavailable'
+        summary_note: 'Partial'
       },
       {
         user_id: 2,
         full_name: 'Bima',
         role_name: null,
         division: null,
-        expected_working_days: null,
+        expected_working_days: 21,
         on_time_days: 0,
         late_days: 0,
         early_days: 0,
@@ -180,10 +176,10 @@ describe('userAttendanceSummary utility', () => {
         wfh_days: 0,
         wfa_days: 0,
         valid_attendance_days: 0,
-        attendance_coverage_label: null,
+        attendance_coverage_label: '0/21',
         latest_attendance_status: null,
         latest_attendance_date: null,
-        summary_note: 'Expected days unavailable'
+        summary_note: 'Partial'
       }
     ]);
   });

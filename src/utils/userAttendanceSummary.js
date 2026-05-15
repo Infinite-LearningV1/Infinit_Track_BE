@@ -99,17 +99,17 @@ const toCount = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const buildAttendanceDateFilter = ({ period, startDate, endDate, tableAlias }) => {
-  if (period !== 'all' && startDate && endDate) {
-    return `${tableAlias}.attendance_date BETWEEN :startDate AND :endDate`;
+const buildAttendanceDateFilter = ({ startDate, endDate, tableAlias }) => {
+  if (!startDate || !endDate) {
+    return '1 = 0';
   }
 
-  return '1 = 1';
+  return `${tableAlias}.attendance_date BETWEEN :startDate AND :endDate`;
 };
 
-const loadAttendanceMetricsByUser = async ({ period, startDate, endDate }) => {
-  const outerDateFilter = buildAttendanceDateFilter({ period, startDate, endDate, tableAlias: 'a' });
-  const innerDateFilter = buildAttendanceDateFilter({ period, startDate, endDate, tableAlias: 'a2' });
+const loadAttendanceMetricsByUser = async ({ startDate, endDate }) => {
+  const outerDateFilter = buildAttendanceDateFilter({ startDate, endDate, tableAlias: 'a' });
+  const innerDateFilter = buildAttendanceDateFilter({ startDate, endDate, tableAlias: 'a2' });
 
   const query = `
     SELECT
@@ -146,13 +146,12 @@ const loadAttendanceMetricsByUser = async ({ period, startDate, endDate }) => {
     ORDER BY a.user_id ASC
   `;
 
-  const replacements =
-    period !== 'all' && startDate && endDate
-      ? {
-          startDate,
-          endDate
-        }
-      : {};
+  const replacements = startDate && endDate
+    ? {
+        startDate,
+        endDate
+      }
+    : {};
 
   return sequelize.query(query, {
     replacements,
@@ -160,8 +159,7 @@ const loadAttendanceMetricsByUser = async ({ period, startDate, endDate }) => {
   });
 };
 
-export const countExpectedWorkingDays = ({ period, startDate, endDate }) => {
-  if (period === 'all') return null;
+export const countExpectedWorkingDays = ({ startDate, endDate }) => {
   if (!startDate || !endDate) return 0;
 
   let count = 0;
@@ -220,9 +218,8 @@ export const summarizeAttendanceRecords = ({ user, attendanceRows, expectedWorki
   return finalizeSummary(summary);
 };
 
-export const buildUserAttendanceSummary = async ({ period, startDate, endDate }) => {
+export const buildUserAttendanceSummary = async ({ startDate, endDate }) => {
   const expectedWorkingDays = countExpectedWorkingDays({
-    period,
     startDate,
     endDate
   });
@@ -237,7 +234,6 @@ export const buildUserAttendanceSummary = async ({ period, startDate, endDate })
       order: [['id_users', 'ASC']]
     }),
     loadAttendanceMetricsByUser({
-      period,
       startDate,
       endDate
     })

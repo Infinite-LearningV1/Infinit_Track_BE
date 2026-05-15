@@ -3,13 +3,11 @@ import { Op } from 'sequelize';
 import { jest } from '@jest/globals';
 import request from 'supertest';
 
-const mockGetJakartaDateString = jest.fn(() => '2026-05-03');
 const mockAttendanceFindAll = jest.fn();
 const mockLocationEventFindAll = jest.fn();
 const mockBuildDisciplineAnalysis = jest.fn();
 const mockBuildWfaAnalysis = jest.fn();
 const mockBuildSmartAcAnalysis = jest.fn();
-const mockBuildTodayLocationsSnapshot = jest.fn();
 const mockVerifyToken = jest.fn((req, _res, next) => {
   req.user = { id: 1, role_name: 'Admin' };
   next();
@@ -61,18 +59,10 @@ jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
   default: {}
 }));
 
-jest.unstable_mockModule('../src/utils/geofence.js', () => ({
-  getJakartaDateString: mockGetJakartaDateString
-}));
-
 jest.unstable_mockModule('../src/controllers/analysis.controller.js', () => ({
   buildDisciplineAnalysis: mockBuildDisciplineAnalysis,
   buildWfaAnalysis: mockBuildWfaAnalysis,
   buildSmartAcAnalysis: mockBuildSmartAcAnalysis
-}));
-
-jest.unstable_mockModule('../src/utils/todayLocationsSnapshot.js', () => ({
-  buildTodayLocationsSnapshot: mockBuildTodayLocationsSnapshot
 }));
 
 jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
@@ -186,34 +176,6 @@ describe('summary dashboard analytics seam', () => {
       ]
     });
 
-    mockBuildTodayLocationsSnapshot.mockResolvedValueOnce({
-      date: '2026-05-03',
-      timezone: 'Asia/Jakarta',
-      snapshot_type: 'attendance_checkin_snapshot',
-      is_live_tracking: false,
-      total_users: 2,
-      locations: [
-        {
-          user_id: 7,
-          full_name: 'Febri',
-          status: 'WFO',
-          check_in_time: '08:15',
-          latitude: -0.8917,
-          longitude: 119.8707,
-          photo: null
-        },
-        {
-          user_id: 8,
-          full_name: 'Diana',
-          status: 'WFA',
-          check_in_time: '08:45',
-          latitude: -0.901,
-          longitude: 119.875,
-          photo: null
-        }
-      ]
-    });
-
     const res = await request(app).get(
       '/api/summary/dashboard-analytics?period=custom&from=2026-04-01&to=2026-04-03'
     );
@@ -268,9 +230,7 @@ describe('summary dashboard analytics seam', () => {
             historical_trend: { from: '2026-04-01', to: '2026-04-03' },
             mode_mix: { from: '2026-04-01', to: '2026-04-03' },
             fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' },
-            geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' },
-            map_context: { from: '2026-04-01', to: '2026-04-03' },
-            today_locations: { mode: 'jakarta_today' }
+            geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' }
           }
         },
         executive_kpis: {
@@ -302,11 +262,6 @@ describe('summary dashboard analytics seam', () => {
             wfa: 33.33
           }
         },
-        today_locations: {
-          snapshot_type: 'attendance_checkin_snapshot',
-          is_live_tracking: false,
-          total_users: 2
-        },
         geofence_evidence_context: {
           status: 'available',
           authority: 'context_only',
@@ -318,70 +273,6 @@ describe('summary dashboard analytics seam', () => {
             exit_events: 2,
             unique_users: 2
           }
-        },
-        map_context: {
-          status: 'ready',
-          authority: 'context_only',
-          source: 'attendance_snapshot',
-          window: { from: '2026-04-01', to: '2026-04-03' },
-          summary: {
-            total_points: 2,
-            wfo_points: 1,
-            wfh_points: 0,
-            wfa_points: 1
-          },
-          geofence_context: {
-            status: 'available',
-            authority: 'context_only',
-            final_attendance_authority: 'attendance_records',
-            window: { from: '2026-04-01', to: '2026-04-03' },
-            raw_counts: {
-              total_events: 3,
-              enter_events: 1,
-              exit_events: 2,
-              unique_users: 2
-            }
-          },
-          points: [
-            {
-              id: 'attendance:101',
-              record_type: 'attendance_snapshot',
-              attendance_id: 101,
-              user_id: 7,
-              user_name: 'Febri',
-              mode: 'WFO',
-              status: 'on_time',
-              label: 'Febri - WFO - 2026-04-01',
-              lat: -0.8917,
-              lng: 119.8707,
-              radius_m: 100,
-              attendance_date: '2026-04-01',
-              time_in: '08:15',
-              time_out: '17:01',
-              location_source: 'attendance.location',
-              coordinate_quality: 'exact',
-              description: 'Head Office'
-            },
-            {
-              id: 'attendance:103',
-              record_type: 'attendance_snapshot',
-              attendance_id: 103,
-              user_id: 8,
-              user_name: 'Diana',
-              mode: 'WFA',
-              status: 'late',
-              label: 'Diana - WFA - 2026-04-03',
-              lat: -0.9001,
-              lng: 119.8802,
-              radius_m: 150,
-              attendance_date: '2026-04-03',
-              time_in: '08:20',
-              time_out: null,
-              location_source: 'attendance.location',
-              coordinate_quality: 'exact',
-              description: 'Cafe shift'
-            }
-          ]
         },
         fuzzy_ahp_snapshot: {
           discipline: {
@@ -419,6 +310,8 @@ describe('summary dashboard analytics seam', () => {
         }
       }
     });
+    expect(res.body.data).not.toHaveProperty('today_locations');
+    expect(res.body.data).not.toHaveProperty('map_context');
     expect(res.body.data.historical_trend.points).toEqual([
       {
         date: '2026-04-01',

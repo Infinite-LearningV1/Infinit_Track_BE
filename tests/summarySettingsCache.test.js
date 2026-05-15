@@ -174,7 +174,7 @@ describe('summary settings cache', () => {
 
     const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
 
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const req = { query: { period: '30d', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
 
@@ -205,7 +205,7 @@ describe('summary settings cache', () => {
 
     const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
 
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const req = { query: { period: '30d', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
 
