@@ -1,24 +1,10 @@
 import express from 'express';
 
-import {
-  getWfaRecommendations,
-  getWfaAhpConfig,
-  testFuzzyAhp,
-  debugGeoapifyApi
-} from '../controllers/wfa.controller.js';
+import { getWfaRecommendations, getWfaAhpConfig, testFuzzyAhp } from '../controllers/wfa.controller.js';
 import { verifyToken } from '../middlewares/authJwt.js';
 import roleGuard from '../middlewares/roleGuard.js';
 
 const router = express.Router();
-const shouldEnableDebugRoutes = process.env.ENABLE_WFA_DEBUG_ROUTES === 'true';
-
-if (shouldEnableDebugRoutes) {
-  // Debug endpoint (temporary no auth for testing)
-  router.get('/debug-geoapify', debugGeoapifyApi);
-
-  // Temporary WFA recommendations without auth for testing
-  router.get('/recommendations-test', getWfaRecommendations);
-}
 
 // All WFA routes require authentication
 router.use(verifyToken);

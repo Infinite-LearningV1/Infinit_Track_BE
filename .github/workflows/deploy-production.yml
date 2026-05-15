@@ -176,7 +176,7 @@ jobs:
           echo "Canonical host: ${PRODUCTION_PUBLIC_BASE_URL}" >> $GITHUB_STEP_SUMMARY
           echo "Health endpoint: ${PRODUCTION_PUBLIC_BASE_URL}/health" >> $GITHUB_STEP_SUMMARY
           echo "Liveness endpoint: ${PRODUCTION_PUBLIC_BASE_URL}/livez" >> $GITHUB_STEP_SUMMARY
-          echo "API docs: ${PRODUCTION_PUBLIC_BASE_URL}/docs" >> $GITHUB_STEP_SUMMARY
+          echo "API docs: ${PRODUCTION_PUBLIC_BASE_URL}/docs (authenticated Admin/Management only)" >> $GITHUB_STEP_SUMMARY
 
   notify-failure:
     name: Notify on Failure

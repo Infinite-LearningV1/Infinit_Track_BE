@@ -189,52 +189,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
-  /api/auth/register:
-    post:
-      tags:
-        - Authentication
-      summary: User registration
-      description: Register a new user account
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - email
-                - password
-                - full_name
-                - role_id
-                - position_id
-                - division_id
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: 'newuser@company.com'
-                password:
-                  type: string
-                  format: password
-                  minLength: 6
-                  example: 'password123'
-                full_name:
-                  type: string
-                  example: 'John Doe'
-                role_id:
-                  type: integer
-                  example: 2
-                position_id:
-                  type: integer
-                  example: 1
-                division_id:
-                  type: integer
-                  example: 1
-      responses:
-        '201':
-          description: User registered successfully
+        '429':
+          description: Too many login attempts
           content:
             application/json:
               schema:
@@ -242,16 +198,16 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: true
+                    example: false
+                  code:
+                    type: string
+                    example: 'AUTH_RATE_LIMITED'
                   message:
                     type: string
-                    example: 'User registered successfully'
-                  data:
-                    $ref: '#/components/schemas/User'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
+                    example: 'Too many login attempts, please try again later'
+                  retryAfter:
+                    type: integer
+                    example: 900
 
   /api/auth/logout:
     post:

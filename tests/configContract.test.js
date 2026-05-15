@@ -16,6 +16,25 @@ async function loadRuntimeConfig() {
   return config;
 }
 
+const productionCorsValidationError =
+  'CORS_ORIGIN must be set explicitly in production; wildcard or empty origins are not allowed.';
+
+async function loadSecurityModule() {
+  return import('../src/middlewares/security.js');
+}
+
+async function loadProductionCorsValidation(origin) {
+  process.env.NODE_ENV = 'production';
+  process.env.JWT_SECRET = 'test-secret';
+  process.env.CORS_ORIGIN = origin;
+  setRequiredBaseEnv();
+
+  const config = await loadRuntimeConfig();
+  const { validateCorsOrigin } = await loadSecurityModule();
+
+  return { config, validateCorsOrigin };
+}
+
 function readDockerCompose() {
   return fs.readFileSync(path.resolve(process.cwd(), 'docker-compose.yml'), 'utf8');
 }
@@ -151,6 +170,26 @@ describe('backend runtime config contract', () => {
     expect(config.db.sslRejectUnauthorized).toBe(false);
   });
 
+  test('fails closed when production credentialed CORS origin resolves empty', async () => {
+    const { config, validateCorsOrigin } = await loadProductionCorsValidation('');
+
+    expect(config.cors.origin).toBe('');
+    expect(() => validateCorsOrigin()).toThrow(productionCorsValidationError);
+  });
+
+  test('fails closed when production CORS origin is left as wildcard', async () => {
+    const { validateCorsOrigin } = await loadProductionCorsValidation('*');
+
+    expect(() => validateCorsOrigin()).toThrow(productionCorsValidationError);
+  });
+
+  test('accepts explicit production CORS origin for credentialed requests', async () => {
+    const { config, validateCorsOrigin } = await loadProductionCorsValidation('https://app.example.com');
+
+    expect(config.cors.origin).toBe('https://app.example.com');
+    expect(() => validateCorsOrigin()).not.toThrow();
+  });
+
   test('reads DB_PORT and SSL settings into sequelize-cli config for managed database migrations', () => {
     process.env.DB_PORT = '25060';
     process.env.DB_SSL = 'true';
@@ -238,8 +277,9 @@ describe('backend runtime config contract', () => {
 
     expect(smokeTest).toContain('/livez');
     expect(smokeTest).toContain('/health');
-    expect(smokeTest).toContain('const originAllowed = corsHeader === requestedOrigin;');
-    expect(smokeTest).toContain("const credentialsAllowed = credentialsHeader === 'true';");
+    expect(smokeTest).toContain("const disallowedOrigin = 'https://example.com';");
+    expect(smokeTest).toContain('const disallowedOriginRejected = corsHeader !== disallowedOrigin;');
+    expect(smokeTest).toContain("const credentialsConfigured = credentialsHeader === 'true';");
     expect(smokeTest).toContain('Allow-Credentials');
     expect(smokeTest).not.toContain("corsHeader === '*'");
     expect(healthCheck).toContain('/livez');
@@ -366,6 +406,7 @@ describe('backend runtime config contract', () => {
     expect(stagingWorkflow).toContain('STAGING_PUBLIC_DOMAIN');
     expect(stagingWorkflow).toContain('STAGING_EXPECTED_IP');
     expect(stagingWorkflow).toContain('Missing required staging runtime variable');
+    expect(stagingWorkflow).toContain('authenticated Admin/Management only');
     expect(stagingWorkflow).not.toContain('https://api.infinite-track.tech');
     expect(stagingWorkflow).not.toContain('continue-on-error: true');
     expect(stagingWorkflow).not.toContain('doctl apps create-deployment');
@@ -380,6 +421,7 @@ describe('backend runtime config contract', () => {
     expect(productionWorkflow).toContain('npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"');
     expect(productionWorkflow).toContain('Type "deploy-to-production" to confirm');
     expect(productionWorkflow).toContain('PRODUCTION_PUBLIC_BASE_URL');
+    expect(productionWorkflow).toContain('authenticated Admin/Management only');
     expect(productionWorkflow).not.toContain('doctl apps create-deployment');
     expect(productionWorkflow).not.toContain('yourdomain.com');
     expect(productionWorkflow).not.toContain('ondigitalocean.app');
