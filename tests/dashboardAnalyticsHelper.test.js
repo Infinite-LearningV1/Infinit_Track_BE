@@ -20,7 +20,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   User: mockUserModel
 }));
 
-jest.unstable_mockModule('../src/controllers/analysis.controller.js', () => ({
+jest.unstable_mockModule('../src/services/fuzzyAhpAnalysis.service.js', () => ({
   buildDisciplineAnalysis: mockBuildDisciplineAnalysis,
   buildWfaAnalysis: mockBuildWfaAnalysis,
   buildSmartAcAnalysis: mockBuildSmartAcAnalysis
@@ -206,6 +206,8 @@ describe('dashboard analytics helper contract', () => {
 
     expect(result.geofence_evidence_context).toEqual({
       status: 'available',
+      needs_data: false,
+      reason: null,
       authority: 'context_only',
       final_attendance_authority: 'attendance_records',
       window: { from: '2026-04-01', to: '2026-04-03' },
@@ -420,7 +422,9 @@ describe('dashboard analytics helper contract', () => {
       }
     });
     expect(result.geofence_evidence_context).toEqual({
-      status: 'no_events',
+      status: 'needs_data',
+      needs_data: true,
+      reason: 'NO_GEOFENCE_EVENTS',
       authority: 'context_only',
       final_attendance_authority: 'attendance_records',
       window: { from: '2026-04-04', to: '2026-05-03' },
@@ -544,7 +548,9 @@ describe('dashboard analytics helper contract', () => {
     expect(result).not.toHaveProperty('today_locations');
 
     expect(result.geofence_evidence_context).toEqual({
-      status: 'no_events',
+      status: 'needs_data',
+      needs_data: true,
+      reason: 'NO_GEOFENCE_EVENTS',
       authority: 'context_only',
       final_attendance_authority: 'attendance_records',
       window: { from: '2026-04-01', to: '2026-04-03' },

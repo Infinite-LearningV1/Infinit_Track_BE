@@ -95,7 +95,9 @@ const responseShell = {
     }
   },
   geofence_evidence_context: {
-    status: 'no_events',
+    status: 'needs_data',
+    needs_data: true,
+    reason: 'NO_GEOFENCE_EVENTS',
     authority: 'context_only',
     final_attendance_authority: 'attendance_records',
     window: { from: '2026-04-01', to: '2026-04-15' },

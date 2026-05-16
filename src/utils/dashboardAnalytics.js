@@ -10,7 +10,7 @@ import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
   buildWfaAnalysis
-} from '../controllers/analysis.controller.js';
+} from '../services/fuzzyAhpAnalysis.service.js';
 import {
   addUtcDays,
   buildEffectiveWindow,
@@ -159,8 +159,12 @@ const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
     }
   }
 
+  const hasEvents = locationEvents.length > 0;
+
   return {
-    status: locationEvents.length > 0 ? 'available' : 'no_events',
+    status: hasEvents ? 'available' : 'needs_data',
+    needs_data: !hasEvents,
+    reason: hasEvents ? null : 'NO_GEOFENCE_EVENTS',
     authority: 'context_only',
     final_attendance_authority: 'attendance_records',
     window: buildExecutedWindow(effectiveWindow),

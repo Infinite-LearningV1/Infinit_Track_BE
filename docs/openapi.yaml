@@ -1916,11 +1916,19 @@ paths:
                                 example: 33.33
                       geofence_evidence_context:
                         type: object
+                        description: Context-only geofence evidence for the selected window. Final attendance authority remains attendance records.
                         properties:
                           status:
                             type: string
-                            enum: [available, no_events]
+                            enum: [available, needs_data]
                             example: available
+                          needs_data:
+                            type: boolean
+                            example: false
+                          reason:
+                            type: string
+                            nullable: true
+                            example: null
                           authority:
                             type: string
                             example: context_only

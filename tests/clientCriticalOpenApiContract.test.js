@@ -258,9 +258,29 @@ describe('client-critical OpenAPI contract', () => {
       message: { type: 'string' },
       severity: { type: 'string' }
     });
-    expect(dataSchema.properties.geofence_evidence_context.properties.status).toMatchObject({
-      type: 'string',
-      example: 'available'
+    expect(dataSchema.properties.geofence_evidence_context.properties).toMatchObject({
+      status: {
+        type: 'string',
+        enum: ['available', 'needs_data'],
+        example: 'available'
+      },
+      needs_data: {
+        type: 'boolean',
+        example: false
+      },
+      reason: {
+        type: 'string',
+        nullable: true,
+        example: null
+      },
+      authority: {
+        type: 'string',
+        example: 'context_only'
+      },
+      final_attendance_authority: {
+        type: 'string',
+        example: 'attendance_records'
+      }
     });
     expect(dataSchema.properties).not.toHaveProperty('today_locations');
     expect(dataSchema.properties).not.toHaveProperty('map_context');
