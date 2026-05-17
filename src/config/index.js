@@ -8,11 +8,14 @@ if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
   throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
 }
 
+const env = process.env.NODE_ENV || 'development';
+const corsOrigin = process.env.CORS_ORIGIN || (env === 'production' ? '' : '*');
+
 export default {
   port: process.env.PORT || 3000,
-  env: process.env.NODE_ENV || 'development',
+  env,
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: corsOrigin,
     credentials: true
   },
   jwt: {

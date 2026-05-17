@@ -128,21 +128,27 @@ async function testReadiness() {
 }
 
 /**
- * Test 3: API Documentation
+ * Test 3: API Documentation Access Control
  */
 async function testDocs() {
-  try {
-    const response = await axios.get(`${BASE_URL}/docs/`, { timeout: TIMEOUT });
+  const testName = 'API Documentation Access Control';
+  const blockedStatuses = [401, 403];
 
-    if (response.status === 200) {
-      logTest('API Documentation', true, `Status: ${response.status}`);
+  try {
+    const response = await axios.get(`${BASE_URL}/docs/`, {
+      timeout: TIMEOUT,
+      validateStatus: () => true
+    });
+
+    if (blockedStatuses.includes(response.status)) {
+      logTest(testName, true, `Anonymous access blocked with ${response.status}`);
       return true;
-    } else {
-      logTest('API Documentation', false, `Status: ${response.status}`);
-      return false;
     }
+
+    logTest(testName, false, `Expected 401/403 for anonymous docs access, got ${response.status}`);
+    return false;
   } catch (error) {
-    logTest('API Documentation', false, formatAxiosError(error));
+    logTest(testName, false, formatAxiosError(error));
     return false;
   }
 }
@@ -152,12 +158,12 @@ async function testDocs() {
  */
 async function testCORS() {
   try {
-    const requestedOrigin = 'https://example.com';
+    const disallowedOrigin = 'https://example.com';
     const response = await axios.options(`${BASE_URL}/api/auth/login`, {
       timeout: TIMEOUT,
       validateStatus: () => true,
       headers: {
-        Origin: requestedOrigin,
+        Origin: disallowedOrigin,
         'Access-Control-Request-Method': 'POST',
         'Access-Control-Request-Headers': 'Content-Type'
       }
@@ -167,8 +173,8 @@ async function testCORS() {
     const credentialsHeader = response.headers['access-control-allow-credentials'];
     const methodsHeader = response.headers['access-control-allow-methods'];
     const allowedHeaders = response.headers['access-control-allow-headers'];
-    const originAllowed = corsHeader === requestedOrigin;
-    const credentialsAllowed = credentialsHeader === 'true';
+    const disallowedOriginRejected = corsHeader !== disallowedOrigin;
+    const credentialsConfigured = credentialsHeader === 'true';
     const allowsPost = methodsHeader
       ?.split(',')
       .map((method) => method.trim().toUpperCase())
@@ -180,15 +186,15 @@ async function testCORS() {
 
     if (
       [200, 204].includes(response.status) &&
-      originAllowed &&
-      credentialsAllowed &&
+      disallowedOriginRejected &&
+      credentialsConfigured &&
       allowsPost &&
       allowsContentType
     ) {
       logTest(
         'CORS Headers',
         true,
-        `Allow-Origin: ${corsHeader}, Allow-Credentials: ${credentialsHeader}, Allow-Methods: ${methodsHeader}, Allow-Headers: ${allowedHeaders}`
+        `Requested-Origin: ${disallowedOrigin}, Allow-Origin: ${corsHeader || '-'}, Allow-Credentials: ${credentialsHeader}, Allow-Methods: ${methodsHeader}, Allow-Headers: ${allowedHeaders}`
       );
       return true;
     }
@@ -196,7 +202,7 @@ async function testCORS() {
     logTest(
       'CORS Headers',
       false,
-      `Status: ${response.status}, Allow-Origin: ${corsHeader || '-'}, Requested-Origin: ${requestedOrigin}, Allow-Credentials: ${credentialsHeader || '-'}, Allow-Methods: ${methodsHeader || '-'}, Allow-Headers: ${allowedHeaders || '-'}`
+      `Status: ${response.status}, Requested-Origin: ${disallowedOrigin}, Allow-Origin: ${corsHeader || '-'}, Allow-Credentials: ${credentialsHeader || '-'}, Allow-Methods: ${methodsHeader || '-'}, Allow-Headers: ${allowedHeaders || '-'}`
     );
     return false;
   } catch (error) {

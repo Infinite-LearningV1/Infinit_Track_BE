@@ -139,17 +139,17 @@ test_public_readiness() {
 }
 
 test_api_documentation() {
-    print_info "Testing API documentation endpoint..."
+    print_info "Testing API documentation access control..."
 
     local response
     response="$(curl -s -o /dev/null -w "%{http_code}" "${PUBLIC_BASE_URL}/docs/")"
 
-    if [ "$response" = "200" ]; then
-        print_success "API documentation endpoint is reachable"
+    if [ "$response" = "401" ] || [ "$response" = "403" ]; then
+        print_success "API documentation blocks anonymous access with HTTP $response"
         return 0
     fi
 
-    print_error "API documentation endpoint failed with HTTP $response"
+    print_error "Expected API documentation to block anonymous access with HTTP 401/403, got HTTP $response"
     return 1
 }
 

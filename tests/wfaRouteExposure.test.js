@@ -56,10 +56,10 @@ describe('WFA route exposure policy', () => {
     await request(app).get('/api/wfa/recommendations-test').expect(404);
   });
 
-  test('mounts temporary no-auth WFA routes only when explicit debug flag is enabled', async () => {
+  test('does not re-open temporary no-auth WFA routes even when legacy debug flag is enabled', async () => {
     const app = await buildApp({ nodeEnv: 'staging', enableDebugRoutes: 'true' });
 
-    await request(app).get('/api/wfa/debug-geoapify').expect(200);
-    await request(app).get('/api/wfa/recommendations-test').expect(200);
+    await request(app).get('/api/wfa/debug-geoapify').expect(404);
+    await request(app).get('/api/wfa/recommendations-test').expect(404);
   });
 });

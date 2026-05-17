@@ -147,17 +147,17 @@ Server akan berjalan di `http://localhost:3005` (atau port yang ditentukan di `.
 # Health check
 curl http://localhost:3005/health
 
-# API documentation
+# Swagger UI (requires authenticated Admin/Management session)
 open http://localhost:3005/docs
 
-# Published OpenAPI contract
-curl http://localhost:3005/docs/openapi.yaml
+# Raw OpenAPI contract (requires authenticated Admin/Management token)
+curl -H "Authorization: Bearer <admin_or_management_token>" http://localhost:3005/docs/openapi.yaml
 ```
 
 ## 5. Dokumentasi API (Endpoint Utama)
 
-Dokumentasi API interaktif yang lengkap tersedia melalui **Swagger UI** saat server berjalan di:
-**🌐 `http://localhost:3005/docs`**
+Dokumentasi API interaktif tersedia melalui **Swagger UI**, tetapi route `/docs` dan `/docs/openapi.yaml`
+bersifat internal-only dan memerlukan sesi `Admin` atau `Management` yang terautentikasi.
 
 ### **📋 5.1 Endpoint Overview**
 
@@ -679,8 +679,8 @@ npm run smoke-test <url>     # Test deployed instance
 npm run migrate:undo         # Rollback last migration (dev only)
 
 # Production Monitoring
-curl "$PRODUCTION_PUBLIC_BASE_URL/health"            # Health check
-curl "$PRODUCTION_PUBLIC_BASE_URL/docs/openapi.yaml" # Published API contract
+curl "$PRODUCTION_PUBLIC_BASE_URL/health" # Health check
+curl -H "Authorization: Bearer <admin_or_management_token>" "$PRODUCTION_PUBLIC_BASE_URL/docs/openapi.yaml" # Internal OpenAPI contract
 ```
 
 ### **🎯 8.9 Development Workflow Best Practices**
@@ -781,8 +781,8 @@ npm run health:check
 # Health check endpoints
 GET /livez               # Process liveness
 GET /health              # Dependency readiness
-GET /docs                # Interactive API documentation
-GET /docs/openapi.yaml   # Published OpenAPI contract
+GET /docs                # Internal Swagger UI (authenticated Admin/Management session required)
+GET /docs/openapi.yaml   # Internal OpenAPI contract (authenticated Admin/Management token required)
 ```
 
 ### **📝 10.2 Logging System**
@@ -818,9 +818,9 @@ npm run db:reset
 #### Timezone Issues
 
 ```bash
-# Verify service contract is being served
+# Verify service health and internal contract access
 curl http://localhost:3005/health
-curl http://localhost:3005/docs/openapi.yaml
+curl -H "Authorization: Bearer <admin_or_management_token>" http://localhost:3005/docs/openapi.yaml
 
 # Check database timezone settings
 npm run db:timezone:check
@@ -829,10 +829,10 @@ npm run db:timezone:check
 #### Operational Readiness Issues
 
 ```bash
-# Verify published contract and public operational surfaces
-GET /docs/openapi.yaml
-GET /api/settings/operational
-GET /api/attendance/today-locations
+# Verify hardened operational surfaces
+GET /health
+GET /api/settings/operational    # authenticated Admin/Management
+GET /api/attendance/today-locations # authenticated user
 ```
 
 ## 11. Contributing & Development Guidelines
@@ -895,7 +895,7 @@ try {
 
 ### **📚 Additional Documentation**
 
-- **📖 API Reference:** [`/docs`](http://localhost:3005/docs) (Swagger UI)
+- **📖 API Reference:** [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md) and local Swagger UI at `http://localhost:3005/docs` (authenticated `Admin`/`Management` session required)
 - **🚀 CD & Deployment:**
   - [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md) - Complete production deployment guide
   - [`docs/GITHUB_ACTIONS_SETUP.md`](docs/GITHUB_ACTIONS_SETUP.md) - GitHub Actions CI/CD setup
@@ -915,8 +915,8 @@ try {
 
 - **Process Liveness:** [`http://localhost:3005/livez`](http://localhost:3005/livez)
 - **Dependency Readiness:** [`http://localhost:3005/health`](http://localhost:3005/health)
-- **API Documentation:** [`http://localhost:3005/docs`](http://localhost:3005/docs)
-- **OpenAPI Spec:** [`http://localhost:3005/docs/openapi.yaml`](http://localhost:3005/docs/openapi.yaml)
+- **Swagger UI (authenticated `Admin`/`Management` session required):** `http://localhost:3005/docs`
+- **Raw OpenAPI (authenticated `Admin`/`Management` token required):** `http://localhost:3005/docs/openapi.yaml`
 
 ---
 

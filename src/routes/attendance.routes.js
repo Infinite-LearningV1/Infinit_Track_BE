@@ -45,7 +45,7 @@ router.post('/check-in', checkInValidation, validate, checkIn);
 router.post('/checkout/:id', checkOutValidation, validate, checkOut);
 router.get('/history', getAttendanceHistory);
 router.get('/status-today', getAttendanceStatus);
-router.get('/debug-checkin-time', debugCheckInTime); // Debug endpoint
+router.get('/debug-checkin-time', roleGuard(['Admin', 'Management']), debugCheckInTime);
 
 // Manual auto checkout endpoint (Admin only)
 router.post('/manual-auto-checkout', roleGuard(['Admin', 'Management']), manualAutoCheckout);
