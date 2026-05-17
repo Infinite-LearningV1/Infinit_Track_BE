@@ -140,13 +140,13 @@ jobs:
             set -euo pipefail
             cd '$STAGING_DEPLOY_PATH'
             echo '${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}' | docker login registry.digitalocean.com -u doctl --password-stdin
-            export BACKEND_IMAGE='$DOCKER_IMAGE'
-            export BACKEND_IMAGE_TAG='${GITHUB_SHA}'
+            export BACKEND_IMAGE="${DOCKER_IMAGE}"
+            export BACKEND_IMAGE_TAG="${GITHUB_SHA}"
             docker compose pull app
             docker compose up -d --force-recreate app
             docker compose exec -T app npm run migrate
             chmod +x ./deploy/scripts/verify-droplet-api.sh
-            DOMAIN='$STAGING_PUBLIC_DOMAIN' EXPECTED_IP='$STAGING_EXPECTED_IP' ./deploy/scripts/verify-droplet-api.sh
+            DOMAIN="${STAGING_PUBLIC_DOMAIN}" EXPECTED_IP="${STAGING_EXPECTED_IP}" ./deploy/scripts/verify-droplet-api.sh
             docker compose exec -T app npm run migrate:status
           "
 

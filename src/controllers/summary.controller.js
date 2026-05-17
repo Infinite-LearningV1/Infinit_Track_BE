@@ -14,6 +14,7 @@ import logger from '../utils/logger.js';
 import { formatWorkHour, formatTimeOnly, calculateWorkHour } from '../utils/workHourFormatter.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
 import { buildDashboardAnalytics } from '../utils/dashboardAnalytics.js';
+import { buildUserAttendanceSummary } from '../utils/userAttendanceSummary.js';
 
 /**
  * Calculate user metrics for discipline index calculation
@@ -568,6 +569,22 @@ export const getSummaryReport = async (req, res, next) => {
       has_prev_page: parseInt(page) > 1
     };
 
+    let userAttendanceSummary = [];
+    try {
+      userAttendanceSummary = await buildUserAttendanceSummary({
+        period,
+        startDate: startDateStr,
+        endDate: endDateStr
+      });
+    } catch (error) {
+      logger.warn('Failed to build user attendance summary; continuing with raw report data only', {
+        error: error.message,
+        period,
+        startDate: startDateStr,
+        endDate: endDateStr
+      });
+    }
+
     // ==== ANALYTICS SUMMARY ====
     const analyticsUsersCount = Object.keys(userDisciplineMap).length;
     const avgDisciplineScore =
@@ -584,10 +601,12 @@ export const getSummaryReport = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
+      generated_at: new Date().toISOString(),
       summary: summary,
       report: {
         data: transformedData,
-        pagination: pagination
+        pagination: pagination,
+        user_attendance_summary: userAttendanceSummary
       },
       analytics: {
         discipline_analysis: {
@@ -626,6 +645,8 @@ export const getDashboardAnalytics = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
+      requested_window: data.meta?.requested_window ?? null,
+      executed_window: data.meta?.executed_window ?? null,
       data,
       message: 'Dashboard analytics retrieved successfully'
     });

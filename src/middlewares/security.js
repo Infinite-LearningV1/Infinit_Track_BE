@@ -85,11 +85,21 @@ function getRequestSource(req) {
   return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
 }
 
+function pruneExpiredEntries(store, now) {
+  for (const [key, record] of store) {
+    if (now > record.resetTime) {
+      store.delete(key);
+    }
+  }
+}
+
 function checkRateLimit(store, key, { windowMs, maxRequests }) {
   const now = Date.now();
+  pruneExpiredEntries(store, now);
+
   const record = store.get(key);
 
-  if (!record || now > record.resetTime) {
+  if (!record) {
     store.set(key, { count: 1, resetTime: now + windowMs });
     return { allowed: true };
   }

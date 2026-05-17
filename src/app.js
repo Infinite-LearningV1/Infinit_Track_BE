@@ -20,6 +20,10 @@ import {
 
 const app = express();
 
+if (config.env === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Validate CORS configuration on startup
 validateCorsOrigin();
 

@@ -282,6 +282,9 @@ describe('backend runtime config contract', () => {
     expect(smokeTest).toContain("const credentialsConfigured = credentialsHeader === 'true';");
     expect(smokeTest).toContain('Allow-Credentials');
     expect(smokeTest).not.toContain("corsHeader === '*'");
+    expect(productionTest).toContain('Testing API documentation access control');
+    expect(productionTest).toContain('API documentation blocks anonymous access with HTTP $response');
+    expect(productionTest).toContain('Expected API documentation to block anonymous access with HTTP 401/403');
     expect(healthCheck).toContain('/livez');
     expect(healthCheck).toContain('/health');
     expect(healthCheck).toContain('http://localhost:${PORT:-3005}');
