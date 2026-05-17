@@ -42,11 +42,22 @@ jest.unstable_mockModule('../src/controllers/summary.controller.js', () => ({
 
 const { default: summaryRoutes } = await import('../src/routes/summary.routes.js');
 
+const reportRoutes = ['/api/summary', '/api/summary/reports'];
+const reportRouteAccessMatrix = reportRoutes.flatMap((routePath) => [
+  [routePath, 'Admin'],
+  [routePath, 'Management']
+]);
+const summaryReportQuery = {
+  period: 'monthly',
+  page: '2',
+  limit: '5'
+};
+
 const app = express();
 app.use(express.json());
 app.use('/api/summary', summaryRoutes);
 
-describe('summary dashboard analytics route', () => {
+describe('summary routes', () => {
   beforeEach(() => {
     authMode = 'allow';
     currentRole = 'Admin';
@@ -54,6 +65,52 @@ describe('summary dashboard analytics route', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  it.each(reportRoutes)('runs auth middleware before the report handler for %s', async (routePath) => {
+    authMode = 'reject';
+
+    const res = await request(app).get(routePath);
+
+    expect(res.status).toBe(401);
+    expect(mockVerifyToken).toHaveBeenCalled();
+    expect(mockGetSummaryReport).not.toHaveBeenCalled();
+  });
+
+  it.each(reportRouteAccessMatrix)(
+    'allows %s access to the report handler for %s',
+    async (routePath, roleName) => {
+      currentRole = roleName;
+
+      const res = await request(app).get(routePath);
+
+      expect(res.status).toBe(200);
+      expect(mockGetSummaryReport).toHaveBeenCalled();
+    }
+  );
+
+  it('keeps /api/summary and /api/summary/reports behaviorally equivalent for the same query', async () => {
+    const legacyResponse = await request(app).get('/api/summary').query(summaryReportQuery);
+    const canonicalResponse = await request(app).get('/api/summary/reports').query(summaryReportQuery);
+    const expectedSummaryReportCall = expect.objectContaining({
+      query: expect.objectContaining(summaryReportQuery)
+    });
+
+    expect(legacyResponse.status).toBe(200);
+    expect(canonicalResponse.status).toBe(200);
+    expect(canonicalResponse.body).toEqual(legacyResponse.body);
+    expect(mockGetSummaryReport).toHaveBeenNthCalledWith(
+      1,
+      expectedSummaryReportCall,
+      expect.anything(),
+      expect.anything()
+    );
+    expect(mockGetSummaryReport).toHaveBeenNthCalledWith(
+      2,
+      expectedSummaryReportCall,
+      expect.anything(),
+      expect.anything()
+    );
   });
 
   it('runs auth middleware before the dashboard analytics handler', async () => {

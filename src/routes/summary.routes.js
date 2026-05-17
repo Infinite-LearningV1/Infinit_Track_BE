@@ -7,6 +7,10 @@ import { dashboardAnalyticsValidation } from '../middlewares/validator.js';
 
 const router = express.Router();
 
+function registerSummaryReportRoute(path) {
+  router.get(path, verifyToken, roleGuard(['Admin', 'Management']), getSummaryReport);
+}
+
 router.get(
   '/dashboard-analytics',
   verifyToken,
@@ -15,6 +19,7 @@ router.get(
   getDashboardAnalytics
 );
 
-router.get('/', verifyToken, roleGuard(['Admin', 'Management']), getSummaryReport);
+registerSummaryReportRoute('/reports');
+registerSummaryReportRoute('/');
 
 export default router;

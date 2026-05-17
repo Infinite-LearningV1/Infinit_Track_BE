@@ -195,9 +195,10 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
-  test('documents dashboard analytics response shape in the public OpenAPI contract', () => {
+  test('documents dashboard analytics as cockpit aggregate only in the public OpenAPI contract', () => {
     const dashboardSchema = schemaAt(openapi.paths['/api/summary/dashboard-analytics'].get);
     const dataSchema = dashboardSchema.properties.data;
+    const sectionWindows = dataSchema.properties.meta.properties.section_windows.properties;
 
     expect(dashboardSchema.properties).toMatchObject({
       success: { type: 'boolean', example: true },
@@ -218,14 +219,21 @@ describe('client-critical OpenAPI contract', () => {
       requested_window: { type: 'object' },
       executed_window: { type: 'object' },
       section_windows: { type: 'object' },
-      sources: { type: 'array' }
+      sources: {
+        type: 'array',
+        items: { type: 'string' },
+        example: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+      }
     });
-    expect(
-      dataSchema.properties.meta.properties.section_windows.properties.map_context.properties
-    ).toMatchObject({
-      from: { type: 'string', format: 'date', nullable: true },
-      to: { type: 'string', format: 'date', nullable: true }
+    expect(sectionWindows).toMatchObject({
+      executive_kpis: { type: 'object' },
+      historical_trend: { type: 'object' },
+      mode_mix: { type: 'object' },
+      fuzzy_ahp_snapshot: { type: 'object' },
+      geofence_evidence_context: { type: 'object' }
     });
+    expect(sectionWindows).not.toHaveProperty('map_context');
+    expect(sectionWindows).not.toHaveProperty('today_locations');
     expect(dataSchema.properties.executive_kpis.properties).toMatchObject({
       attendance_rate: { type: 'number', format: 'float' },
       late_alpha_risk: { type: 'number', format: 'float' },
@@ -240,57 +248,42 @@ describe('client-critical OpenAPI contract', () => {
       present: { type: 'integer' },
       alpha: { type: 'integer' }
     });
-    expect(dataSchema.properties.today_locations.properties).toMatchObject({
-      snapshot_type: {
-        type: 'string',
-        example: 'attendance_checkin_snapshot'
-      },
-      is_live_tracking: {
-        type: 'boolean',
-        example: false
-      }
+    expect(dataSchema.properties.insights.properties.items).toMatchObject({
+      type: 'array',
+      items: { type: 'object' }
     });
-    expect(dataSchema.properties.geofence_evidence_context.properties.status).toMatchObject({
-      type: 'string',
-      example: 'available'
+    expect(dataSchema.properties.insights.properties.items.items.properties).toMatchObject({
+      type: { type: 'string' },
+      title: { type: 'string' },
+      message: { type: 'string' },
+      severity: { type: 'string' }
     });
-    expect(dataSchema.properties.map_context.properties).toMatchObject({
+    expect(dataSchema.properties.geofence_evidence_context.properties).toMatchObject({
       status: {
         type: 'string',
-        example: 'ready'
+        enum: ['available', 'needs_data'],
+        example: 'available'
+      },
+      needs_data: {
+        type: 'boolean',
+        example: false
+      },
+      reason: {
+        type: 'string',
+        nullable: true,
+        example: null
       },
       authority: {
         type: 'string',
         example: 'context_only'
       },
-      source: {
+      final_attendance_authority: {
         type: 'string',
-        example: 'attendance_snapshot'
-      },
-      window: { type: 'object' },
-      summary: { type: 'object' },
-      points: { type: 'array' },
-      geofence_context: { type: 'object' }
+        example: 'attendance_records'
+      }
     });
-    expect(dataSchema.properties.map_context.properties.points.items.properties).toMatchObject({
-      id: { type: 'string', example: 'attendance:101' },
-      record_type: { type: 'string', example: 'attendance_snapshot' },
-      attendance_id: { type: 'integer', example: 101 },
-      user_id: { type: 'integer', example: 7 },
-      user_name: { type: 'string', example: 'Febri' },
-      mode: { type: 'string', example: 'WFO' },
-      status: { type: 'string', example: 'on_time' },
-      label: { type: 'string', example: 'Febri - WFO - 2026-04-01' },
-      lat: { type: 'number', format: 'float', example: -0.8917 },
-      lng: { type: 'number', format: 'float', example: 119.8707 },
-      radius_m: { type: 'number', format: 'float', example: 100 },
-      attendance_date: { type: 'string', format: 'date', example: '2026-04-01' },
-      time_in: { type: 'string', nullable: true, example: '08:15' },
-      time_out: { type: 'string', nullable: true, example: '17:01' },
-      location_source: { type: 'string', example: 'attendance.location' },
-      coordinate_quality: { type: 'string', example: 'exact' },
-      description: { type: 'string', example: 'Head Office' }
-    });
+    expect(dataSchema.properties).not.toHaveProperty('today_locations');
+    expect(dataSchema.properties).not.toHaveProperty('map_context');
     expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.status).toMatchObject({
       type: 'string',
       example: 'ready'
@@ -302,8 +295,51 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
+  test('documents canonical and deprecated summary report routes against the same shared schema', () => {
+    const canonicalOperation = openapi.paths['/api/summary/reports'].get;
+    const legacyOperation = openapi.paths['/api/summary'].get;
+    const expectedPeriodParameter = expect.objectContaining({
+      name: 'period',
+      schema: expect.objectContaining({
+        type: 'string',
+        enum: ['30d', 'current_month', 'custom'],
+        default: '30d'
+      })
+    });
+    const expectedFromParameter = expect.objectContaining({
+      name: 'from',
+      schema: expect.objectContaining({ type: 'string', format: 'date' })
+    });
+    const expectedToParameter = expect.objectContaining({
+      name: 'to',
+      schema: expect.objectContaining({ type: 'string', format: 'date' })
+    });
+
+    expect(canonicalOperation.deprecated).not.toBe(true);
+    expect(legacyOperation.deprecated).toBe(true);
+    expect(schemaAt(canonicalOperation)).toEqual({
+      $ref: '#/components/schemas/SummaryReportResponse'
+    });
+    expect(schemaAt(legacyOperation)).toEqual({
+      $ref: '#/components/schemas/SummaryReportResponse'
+    });
+    expect(canonicalOperation.parameters).toEqual(
+      expect.arrayContaining([expectedPeriodParameter, expectedFromParameter, expectedToParameter])
+    );
+    expect(legacyOperation.parameters).toEqual(
+      expect.arrayContaining([expectedPeriodParameter, expectedFromParameter, expectedToParameter])
+    );
+    expect(canonicalOperation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
+      '30d, current_month, atau custom'
+    );
+    expect(legacyOperation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
+      '30d, current_month, atau custom'
+    );
+    expect(legacyOperation.description).toContain('/api/summary/reports');
+  });
+
   test('documents summary report response shape for both per-user summaries and raw detail rows', () => {
-    const summarySchema = schemaAt(openapi.paths['/api/summary'].get);
+    const summarySchema = componentSchema(openapi, 'SummaryReportResponse');
     const summaryProperties = summarySchema.properties.summary.properties;
     const reportProperties = summarySchema.properties.report.properties;
     const userSummaryProperties = reportProperties.user_attendance_summary.items.properties;
@@ -319,7 +355,7 @@ describe('client-critical OpenAPI contract', () => {
       summary: { type: 'object' },
       report: { type: 'object' },
       analytics: { type: 'object' },
-      period: { type: 'string', example: 'monthly' },
+      period: { type: 'string', example: '30d' },
       date_range: { type: 'object' },
       message: {
         type: 'string',

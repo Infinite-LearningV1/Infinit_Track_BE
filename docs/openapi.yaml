@@ -43,13 +43,13 @@ security:
   - bearerAuth: []
 
 paths:
-  # System Health Endpoints
+  # Health Check
   /livez:
     get:
       tags:
         - System
-      summary: Liveness probe endpoint
-      description: Check whether the API process is alive. Use this for liveness probes only.
+      summary: Liveness check endpoint
+      description: Check whether the API process is running.
       security: []
       responses:
         '200':
@@ -65,18 +65,18 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-                    example: '2025-07-05T12:00:00.000Z'
+                    example: '2026-05-17T12:00:00.000Z'
 
   /health:
     get:
       tags:
         - System
-      summary: Readiness probe endpoint
-      description: Check whether the API is ready to serve traffic after startup dependencies are initialized.
+      summary: Readiness check endpoint
+      description: Check whether database and scheduler dependencies are ready to serve traffic.
       security: []
       responses:
         '200':
-          description: Server is ready to serve traffic
+          description: Server dependencies are ready
           content:
             application/json:
               schema:
@@ -91,22 +91,23 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-                    example: '2025-07-05T12:00:00.000Z'
+                    example: '2026-05-17T12:00:00.000Z'
                   components:
                     type: object
-                    additionalProperties:
-                      type: string
-                      enum: [ready, not_ready]
-                    example:
-                      database: ready
-                      scheduler: ready
+                    properties:
+                      database:
+                        type: string
+                        example: ready
+                      scheduler:
+                        type: string
+                        example: ready
                   missing:
                     type: array
                     items:
                       type: string
                     example: []
         '503':
-          description: Server process is alive but not ready to serve traffic
+          description: One or more dependencies are not ready
           content:
             application/json:
               schema:
@@ -121,21 +122,21 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-                    example: '2025-07-05T12:00:00.000Z'
+                    example: '2026-05-17T12:00:00.000Z'
                   components:
                     type: object
-                    additionalProperties:
-                      type: string
-                      enum: [ready, not_ready]
-                    example:
-                      database: ready
-                      scheduler: not_ready
+                    properties:
+                      database:
+                        type: string
+                        example: ready
+                      scheduler:
+                        type: string
+                        example: not_ready
                   missing:
                     type: array
                     items:
                       type: string
-                    example:
-                      - scheduler
+                    example: [scheduler]
 
   # Authentication Endpoints
   /api/auth/login:
@@ -1687,7 +1688,7 @@ paths:
       tags:
         - Reports & Analytics
       summary: Get dashboard analytics aggregation
-      description: Retrieve dashboard-ready aggregated attendance, mode mix, canonical historical map context, an embedded today locations snapshot, and lightweight Fuzzy AHP snapshots for Admin or Management users. Use `/api/attendance/today-locations` as the dedicated today-locations surface.
+      description: Retrieve dashboard-ready cockpit aggregates for attendance KPIs, historical trend, mode mix, geofence evidence context, and lightweight Fuzzy AHP snapshots for Admin or Management users. This endpoint does not own today/live map snapshots; use `/api/attendance/today-locations` for today locations.
       security:
         - bearerAuth: []
       parameters:
@@ -1867,30 +1868,11 @@ paths:
                                     format: date
                                     nullable: true
                                     example: '2026-04-30'
-                              map_context:
-                                type: object
-                                properties:
-                                  from:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-01'
-                                  to:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-30'
-                              today_locations:
-                                type: object
-                                properties:
-                                  mode:
-                                    type: string
-                                    example: jakarta_today
                           sources:
                             type: array
                             items:
                               type: string
-                            example: [Attendance, AttendanceCategory, AttendanceStatus, Location, LocationEvent, User]
+                            example: [Attendance, AttendanceCategory, AttendanceStatus, LocationEvent]
                       executive_kpis:
                         type: object
                         properties:
@@ -2003,61 +1985,21 @@ paths:
                                 type: number
                                 format: float
                                 example: 33.33
-                      today_locations:
-                        type: object
-                        properties:
-                          date:
-                            type: string
-                            format: date
-                            example: '2026-05-03'
-                          timezone:
-                            type: string
-                            example: Asia/Jakarta
-                          snapshot_type:
-                            type: string
-                            example: attendance_checkin_snapshot
-                          is_live_tracking:
-                            type: boolean
-                            example: false
-                          total_users:
-                            type: integer
-                            example: 2
-                          locations:
-                            type: array
-                            items:
-                              type: object
-                              properties:
-                                user_id:
-                                  type: integer
-                                  example: 7
-                                full_name:
-                                  type: string
-                                  example: Febri
-                                photo:
-                                  type: string
-                                  nullable: true
-                                  example: null
-                                status:
-                                  type: string
-                                  example: WFO
-                                check_in_time:
-                                  type: string
-                                  example: '08:15'
-                                latitude:
-                                  type: number
-                                  format: float
-                                  example: -0.8917
-                                longitude:
-                                  type: number
-                                  format: float
-                                  example: 119.8707
                       geofence_evidence_context:
                         type: object
+                        description: Context-only geofence evidence for the selected window. Final attendance authority remains attendance records.
                         properties:
                           status:
                             type: string
-                            enum: [available, no_events]
+                            enum: [available, needs_data]
                             example: available
+                          needs_data:
+                            type: boolean
+                            example: false
+                          reason:
+                            type: string
+                            nullable: true
+                            example: null
                           authority:
                             type: string
                             example: context_only
@@ -2092,153 +2034,6 @@ paths:
                               unique_users:
                                 type: integer
                                 example: 2
-                      map_context:
-                        type: object
-                        properties:
-                          status:
-                            type: string
-                            enum: [ready, partial_data, no_data]
-                            example: ready
-                          authority:
-                            type: string
-                            example: context_only
-                          source:
-                            type: string
-                            example: attendance_snapshot
-                          window:
-                            type: object
-                            properties:
-                              from:
-                                type: string
-                                format: date
-                                nullable: true
-                                example: '2026-04-01'
-                              to:
-                                type: string
-                                format: date
-                                nullable: true
-                                example: '2026-04-30'
-                          summary:
-                            type: object
-                            properties:
-                              total_points:
-                                type: integer
-                                example: 2
-                              wfo_points:
-                                type: integer
-                                example: 1
-                              wfh_points:
-                                type: integer
-                                example: 0
-                              wfa_points:
-                                type: integer
-                                example: 1
-                          points:
-                            type: array
-                            items:
-                              type: object
-                              properties:
-                                id:
-                                  type: string
-                                  example: attendance:101
-                                record_type:
-                                  type: string
-                                  example: attendance_snapshot
-                                attendance_id:
-                                  type: integer
-                                  example: 101
-                                user_id:
-                                  type: integer
-                                  example: 7
-                                user_name:
-                                  type: string
-                                  example: Febri
-                                mode:
-                                  type: string
-                                  enum: [WFO, WFH, WFA]
-                                  example: WFO
-                                status:
-                                  type: string
-                                  enum: [on_time, late, alpha, early]
-                                  example: on_time
-                                label:
-                                  type: string
-                                  example: 'Febri - WFO - 2026-04-01'
-                                lat:
-                                  type: number
-                                  format: float
-                                  example: -0.8917
-                                lng:
-                                  type: number
-                                  format: float
-                                  example: 119.8707
-                                radius_m:
-                                  type: number
-                                  format: float
-                                  example: 100
-                                attendance_date:
-                                  type: string
-                                  format: date
-                                  example: '2026-04-01'
-                                time_in:
-                                  type: string
-                                  nullable: true
-                                  example: '08:15'
-                                time_out:
-                                  type: string
-                                  nullable: true
-                                  example: '17:01'
-                                location_source:
-                                  type: string
-                                  example: attendance.location
-                                coordinate_quality:
-                                  type: string
-                                  enum: [exact, approximate]
-                                  example: exact
-                                description:
-                                  type: string
-                                  example: Head Office
-                          geofence_context:
-                            type: object
-                            properties:
-                              status:
-                                type: string
-                                enum: [available, no_events]
-                                example: available
-                              authority:
-                                type: string
-                                example: context_only
-                              final_attendance_authority:
-                                type: string
-                                example: attendance_records
-                              window:
-                                type: object
-                                properties:
-                                  from:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-01'
-                                  to:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-30'
-                              raw_counts:
-                                type: object
-                                properties:
-                                  total_events:
-                                    type: integer
-                                    example: 3
-                                  enter_events:
-                                    type: integer
-                                    example: 1
-                                  exit_events:
-                                    type: integer
-                                    example: 2
-                                  unique_users:
-                                    type: integer
-                                    example: 2
                       fuzzy_ahp_snapshot:
                         type: object
                         properties:
@@ -2499,12 +2294,12 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-  /api/summary:
+  /api/summary/reports:
     get:
       tags:
         - Reports & Analytics
       summary: Get summary report (Admin/Management only)
-      description: Retrieve legacy summary aggregates, attendance report rows, and discipline-analysis overview for Admin or Management users.
+      description: Retrieve the canonical reporting and export contract for summary aggregates, attendance report rows, and discipline-analysis overview for Admin or Management users.
       security:
         - bearerAuth: []
       parameters:
@@ -2512,9 +2307,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [daily, weekly, monthly, all]
-            default: daily
-          description: Summary window preset used by the backend.
+            enum: [30d, current_month, custom]
+            default: 30d
+          description: Historical report window. Use `custom` together with `from` and `to`.
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+            example: '2026-04-01'
+          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+            example: '2026-04-30'
+          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
         - in: query
           name: page
           schema:
@@ -2535,256 +2344,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  generated_at:
-                    type: string
-                    format: date-time
-                    example: '2026-05-07T09:15:00.000Z'
-                  summary:
-                    type: object
-                    properties:
-                      total_ontime:
-                        type: integer
-                        example: 14
-                      total_late:
-                        type: integer
-                        example: 3
-                      total_early:
-                        type: integer
-                        example: 1
-                      total_alpha:
-                        type: integer
-                        example: 1
-                      total_wfo:
-                        type: integer
-                        example: 10
-                      total_wfh:
-                        type: integer
-                        example: 5
-                      total_wfa:
-                        type: integer
-                        example: 3
-                  report:
-                    type: object
-                    properties:
-                      user_attendance_summary:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            user_id:
-                              type: integer
-                              example: 7
-                            full_name:
-                              type: string
-                              example: Febri
-                            role_name:
-                              type: string
-                              nullable: true
-                              example: User
-                            division:
-                              type: string
-                              nullable: true
-                              example: Engineering
-                            expected_working_days:
-                              type: integer
-                              nullable: true
-                              example: 10
-                            on_time_days:
-                              type: integer
-                              example: 8
-                            late_days:
-                              type: integer
-                              example: 2
-                            early_days:
-                              type: integer
-                              example: 1
-                            alpha_days:
-                              type: integer
-                              example: 0
-                            wfo_days:
-                              type: integer
-                              example: 6
-                            wfh_days:
-                              type: integer
-                              example: 3
-                            wfa_days:
-                              type: integer
-                              example: 1
-                            valid_attendance_days:
-                              type: integer
-                              example: 10
-                            attendance_coverage_label:
-                              type: string
-                              nullable: true
-                              example: 10/10
-                            latest_attendance_status:
-                              type: string
-                              nullable: true
-                              example: Tepat Waktu
-                            latest_attendance_date:
-                              type: string
-                              format: date
-                              nullable: true
-                              example: '2026-05-07'
-                            summary_note:
-                              type: string
-                              example: Complete
-                      data:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            attendance_id:
-                              type: integer
-                              example: 101
-                            user_id:
-                              type: integer
-                              nullable: true
-                              example: 7
-                            full_name:
-                              type: string
-                              example: Febri
-                            role:
-                              type: string
-                              nullable: true
-                              example: User
-                            nip_nim:
-                              type: string
-                              nullable: true
-                              example: NIP-007
-                            email:
-                              type: string
-                              nullable: true
-                              example: febri@example.com
-                            time_in:
-                              type: string
-                              nullable: true
-                              example: '08:03'
-                            time_out:
-                              type: string
-                              nullable: true
-                              example: '17:01'
-                            work_hour:
-                              type: string
-                              nullable: true
-                              example: '08:58'
-                            attendance_date:
-                              type: string
-                              format: date
-                              example: '2026-05-04'
-                            location_details:
-                              type: object
-                              nullable: true
-                              properties:
-                                location_id:
-                                  type: integer
-                                  nullable: true
-                                  example: 3
-                                description:
-                                  type: string
-                                  example: Kantor Pusat
-                                category:
-                                  type: string
-                                  example: Work From Office
-                                coordinates:
-                                  type: object
-                                  nullable: true
-                                  properties:
-                                    latitude:
-                                      type: number
-                                      format: float
-                                      example: -6.2
-                                    longitude:
-                                      type: number
-                                      format: float
-                                      example: 106.8
-                            status:
-                              type: string
-                              example: Tepat Waktu
-                            information:
-                              type: string
-                              example: 'Work Duration: 8h'
-                            notes:
-                              type: string
-                              example: ''
-                            discipline_score:
-                              type: number
-                              format: float
-                              nullable: true
-                              example: 88
-                            discipline_label:
-                              type: string
-                              nullable: true
-                              example: Tinggi
-                            discipline_breakdown:
-                              type: object
-                              nullable: true
-                              additionalProperties: true
-                              example:
-                                alpha_rate: 0
-                                lateness_frequency: 0.1
-                      pagination:
-                        type: object
-                        properties:
-                          current_page:
-                            type: integer
-                            example: 1
-                          total_pages:
-                            type: integer
-                            example: 2
-                          total_items:
-                            type: integer
-                            example: 15
-                          items_per_page:
-                            type: integer
-                            example: 10
-                          has_next_page:
-                            type: boolean
-                            example: true
-                          has_prev_page:
-                            type: boolean
-                            example: false
-                  analytics:
-                    type: object
-                    properties:
-                      discipline_analysis:
-                        type: object
-                        properties:
-                          users_analyzed:
-                            type: integer
-                            example: 12
-                          average_discipline_score:
-                            type: number
-                            format: float
-                            example: 74.25
-                          methodology:
-                            type: string
-                            example: Fuzzy AHP Engine
-                          criteria:
-                            type: array
-                            items:
-                              type: string
-                            example: [Alpha Rate, Lateness Severity, Lateness Frequency, Work Focus]
-                  period:
-                    type: string
-                    example: monthly
-                  date_range:
-                    type: object
-                    properties:
-                      start_date:
-                        type: string
-                        example: '2026-05-01'
-                      end_date:
-                        type: string
-                        example: '2026-05-31'
-                  message:
-                    type: string
-                    example: Summary report with discipline analysis generated successfully
+                $ref: '#/components/schemas/SummaryReportResponse'
         '400':
           description: Invalid summary period value
           content:
@@ -2800,7 +2360,80 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, atau all
+                    example: Parameter period harus berupa: 30d, current_month, atau custom
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/summary:
+    get:
+      deprecated: true
+      tags:
+        - Reports & Analytics
+      summary: Get summary report (deprecated alias, Admin/Management only)
+      description: Transitional deprecated alias for the canonical `/api/summary/reports` reporting and export contract. Returns the same summary aggregates, attendance report rows, and discipline-analysis overview for Admin or Management users.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [30d, current_month, custom]
+            default: 30d
+          description: Historical report window. Use `custom` together with `from` and `to`.
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+            example: '2026-04-01'
+          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+            example: '2026-04-30'
+          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Report pagination page number.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+          description: Number of attendance rows returned in the report section.
+      responses:
+        '200':
+          description: Summary report with discipline analysis generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryReportResponse'
+        '400':
+          description: Invalid summary period value
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter period harus berupa: 30d, current_month, atau custom
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3552,6 +3185,258 @@ components:
         description:
           type: string
           example: 'Software development division'
+
+    SummaryReportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        generated_at:
+          type: string
+          format: date-time
+          example: '2026-05-07T09:15:00.000Z'
+        summary:
+          type: object
+          properties:
+            total_ontime:
+              type: integer
+              example: 14
+            total_late:
+              type: integer
+              example: 3
+            total_early:
+              type: integer
+              example: 1
+            total_alpha:
+              type: integer
+              example: 1
+            total_wfo:
+              type: integer
+              example: 10
+            total_wfh:
+              type: integer
+              example: 5
+            total_wfa:
+              type: integer
+              example: 3
+        report:
+          type: object
+          properties:
+            user_attendance_summary:
+              type: array
+              items:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                    example: 7
+                  full_name:
+                    type: string
+                    example: Febri
+                  role_name:
+                    type: string
+                    nullable: true
+                    example: User
+                  division:
+                    type: string
+                    nullable: true
+                    example: Engineering
+                  expected_working_days:
+                    type: integer
+                    nullable: true
+                    example: 10
+                  on_time_days:
+                    type: integer
+                    example: 8
+                  late_days:
+                    type: integer
+                    example: 2
+                  early_days:
+                    type: integer
+                    example: 1
+                  alpha_days:
+                    type: integer
+                    example: 0
+                  wfo_days:
+                    type: integer
+                    example: 6
+                  wfh_days:
+                    type: integer
+                    example: 3
+                  wfa_days:
+                    type: integer
+                    example: 1
+                  valid_attendance_days:
+                    type: integer
+                    example: 10
+                  attendance_coverage_label:
+                    type: string
+                    nullable: true
+                    example: 10/10
+                  latest_attendance_status:
+                    type: string
+                    nullable: true
+                    example: Tepat Waktu
+                  latest_attendance_date:
+                    type: string
+                    format: date
+                    nullable: true
+                    example: '2026-05-07'
+                  summary_note:
+                    type: string
+                    example: Complete
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  attendance_id:
+                    type: integer
+                    example: 101
+                  user_id:
+                    type: integer
+                    nullable: true
+                    example: 7
+                  full_name:
+                    type: string
+                    example: Febri
+                  role:
+                    type: string
+                    nullable: true
+                    example: User
+                  nip_nim:
+                    type: string
+                    nullable: true
+                    example: NIP-007
+                  email:
+                    type: string
+                    nullable: true
+                    example: febri@example.com
+                  time_in:
+                    type: string
+                    nullable: true
+                    example: '08:03'
+                  time_out:
+                    type: string
+                    nullable: true
+                    example: '17:01'
+                  work_hour:
+                    type: string
+                    nullable: true
+                    example: '08:58'
+                  attendance_date:
+                    type: string
+                    format: date
+                    example: '2026-05-04'
+                  location_details:
+                    type: object
+                    nullable: true
+                    properties:
+                      location_id:
+                        type: integer
+                        nullable: true
+                        example: 3
+                      description:
+                        type: string
+                        example: Kantor Pusat
+                      category:
+                        type: string
+                        example: Work From Office
+                      coordinates:
+                        type: object
+                        nullable: true
+                        properties:
+                          latitude:
+                            type: number
+                            format: float
+                            example: -6.2
+                          longitude:
+                            type: number
+                            format: float
+                            example: 106.8
+                  status:
+                    type: string
+                    example: Tepat Waktu
+                  information:
+                    type: string
+                    example: 'Work Duration: 8h'
+                  notes:
+                    type: string
+                    example: ''
+                  discipline_score:
+                    type: number
+                    format: float
+                    nullable: true
+                    example: 88
+                  discipline_label:
+                    type: string
+                    nullable: true
+                    example: Tinggi
+                  discipline_breakdown:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                    example:
+                      alpha_rate: 0
+                      lateness_frequency: 0.1
+            pagination:
+              type: object
+              properties:
+                current_page:
+                  type: integer
+                  example: 1
+                total_pages:
+                  type: integer
+                  example: 2
+                total_items:
+                  type: integer
+                  example: 15
+                items_per_page:
+                  type: integer
+                  example: 10
+                has_next_page:
+                  type: boolean
+                  example: true
+                has_prev_page:
+                  type: boolean
+                  example: false
+        analytics:
+          type: object
+          properties:
+            discipline_analysis:
+              type: object
+              properties:
+                users_analyzed:
+                  type: integer
+                  example: 12
+                average_discipline_score:
+                  type: number
+                  format: float
+                  example: 74.25
+                methodology:
+                  type: string
+                  example: Fuzzy AHP Engine
+                criteria:
+                  type: array
+                  items:
+                    type: string
+                  example: [Alpha Rate, Lateness Severity, Lateness Frequency, Work Focus]
+        period:
+          type: string
+          example: 30d
+        date_range:
+          type: object
+          properties:
+            start_date:
+              type: string
+              example: '2026-05-01'
+            end_date:
+              type: string
+              example: '2026-05-31'
+        message:
+          type: string
+          example: Summary report with discipline analysis generated successfully
 
     ReferenceRole:
       type: object
