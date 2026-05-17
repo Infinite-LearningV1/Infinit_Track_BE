@@ -5,6 +5,26 @@ import logger from '../utils/logger.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import { calculateDistance } from '../utils/geofence.js';
 
+function getGeoapifyApiKey(context) {
+  if (process.env.GEOAPIFY_API_KEY) {
+    return process.env.GEOAPIFY_API_KEY;
+  }
+
+  if (process.env.GEOAPIFY_KEY) {
+    logger.warn(`Using legacy GEOAPIFY_KEY fallback for ${context}; migrate to GEOAPIFY_API_KEY.`);
+    return process.env.GEOAPIFY_KEY;
+  }
+
+  return null;
+}
+
+function redactGeoapifyParams(params) {
+  return {
+    ...params,
+    apiKey: '[REDACTED]'
+  };
+}
+
 /**
  * Get WFA recommendations based on user location
  * Uses Geoapify API to find nearby places and applies Unified Fuzzy AHP scoring
@@ -65,9 +85,9 @@ export const getWfaRecommendations = async (req, res, next) => {
     }
 
     // Langkah B: Panggil API Geoapify
-    const geoapifyApiKey = process.env.GEOAPIFY_API_KEY;
+    const geoapifyApiKey = getGeoapifyApiKey('WFA recommendations');
     if (!geoapifyApiKey) {
-      logger.error('GEOAPIFY_API_KEY not found in environment variables');
+      logger.error('Geoapify API key not found for WFA recommendations. Set GEOAPIFY_API_KEY.');
       return res.status(500).json({
         success: false,
         code: 'E_CONFIG',
@@ -84,7 +104,9 @@ export const getWfaRecommendations = async (req, res, next) => {
       apiKey: geoapifyApiKey,
       lang: 'en'
     };
-    logger.info(`Calling Geoapify API with params: ${JSON.stringify(geoapifyParams)}`);
+    logger.info(
+      `Calling Geoapify API with params: ${JSON.stringify(redactGeoapifyParams(geoapifyParams))}`
+    );
 
     // Retry function for API calls
     const makeGeoapifyRequest = async (retryCount = 0) => {
@@ -446,8 +468,9 @@ export const debugGeoapifyApi = async (req, res, next) => {
     const longitude = parseFloat(lng);
     const searchRadius = parseInt(radius);
 
-    const geoapifyApiKey = process.env.GEOAPIFY_API_KEY;
+    const geoapifyApiKey = getGeoapifyApiKey('WFA Geoapify debug endpoint');
     if (!geoapifyApiKey) {
+      logger.error('Geoapify API key not found for WFA Geoapify debug endpoint. Set GEOAPIFY_API_KEY.');
       return res.status(500).json({
         success: false,
         message: 'GEOAPIFY_API_KEY tidak ditemukan'
@@ -488,7 +511,7 @@ export const debugGeoapifyApi = async (req, res, next) => {
 
     for (const testCase of testCases) {
       try {
-        logger.info(`Running ${testCase.name} with params:`, testCase.params);
+        logger.info(`Running ${testCase.name} with params:`, redactGeoapifyParams(testCase.params));
 
         const response = await axios.get('https://api.geoapify.com/v2/places', {
           params: testCase.params,
@@ -503,7 +526,7 @@ export const debugGeoapifyApi = async (req, res, next) => {
 
         results.push({
           test_name: testCase.name,
-          params_used: testCase.params,
+          params_used: redactGeoapifyParams(testCase.params),
           results_count: features.length,
           sample_places: features.slice(0, 3).map((place) => ({
             name: place.properties?.name || 'Unnamed',
@@ -521,7 +544,7 @@ export const debugGeoapifyApi = async (req, res, next) => {
       } catch (error) {
         results.push({
           test_name: testCase.name,
-          params_used: testCase.params,
+          params_used: redactGeoapifyParams(testCase.params),
           error: error.message,
           status: 'FAILED',
           response_status: error.response?.status || 'NO_RESPONSE'

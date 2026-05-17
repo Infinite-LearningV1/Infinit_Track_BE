@@ -44,16 +44,16 @@ security:
 
 paths:
   # Health Check
-  /health:
+  /livez:
     get:
       tags:
         - System
-      summary: Health check endpoint
-      description: Check if the API server is running and healthy
+      summary: Liveness check endpoint
+      description: Check whether the API process is running.
       security: []
       responses:
         '200':
-          description: Server is healthy
+          description: Server process is alive
           content:
             application/json:
               schema:
@@ -65,7 +65,78 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-                    example: '2025-07-05T12:00:00.000Z'
+                    example: '2026-05-17T12:00:00.000Z'
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Readiness check endpoint
+      description: Check whether database and scheduler dependencies are ready to serve traffic.
+      security: []
+      responses:
+        '200':
+          description: Server dependencies are ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: 'OK'
+                  ready:
+                    type: boolean
+                    example: true
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2026-05-17T12:00:00.000Z'
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: ready
+                      scheduler:
+                        type: string
+                        example: ready
+                  missing:
+                    type: array
+                    items:
+                      type: string
+                    example: []
+        '503':
+          description: One or more dependencies are not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: 'NOT_READY'
+                  ready:
+                    type: boolean
+                    example: false
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2026-05-17T12:00:00.000Z'
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: ready
+                      scheduler:
+                        type: string
+                        example: not_ready
+                  missing:
+                    type: array
+                    items:
+                      type: string
+                    example: [scheduler]
 
   # Authentication Endpoints
   /api/auth/login:
