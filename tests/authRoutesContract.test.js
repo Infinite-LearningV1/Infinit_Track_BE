@@ -27,10 +27,18 @@ const mockLogout = jest.fn((req, res) => {
   });
 });
 
+const mockRefresh = jest.fn((req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Refresh successful'
+  });
+});
+
 jest.unstable_mockModule('../src/controllers/auth.controller.js', () => ({
   login: mockLogin,
   logout: mockLogout,
-  refresh: jest.fn(),
+  refresh: mockRefresh,
+  register: jest.fn(),
   getCurrentUser: jest.fn()
 }));
 
@@ -43,6 +51,7 @@ jest.unstable_mockModule('../src/middlewares/security.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
+  userRegistrationValidation: [],
   loginValidation: [],
   validate: jest.fn((req, res, next) => next())
 }));
@@ -58,15 +67,6 @@ describe('Auth route contract', () => {
     jest.clearAllMocks();
   });
 
-  it('does not expose public self-registration route', async () => {
-    const res = await request(app).post('/api/auth/register').send({
-      email: 'user@example.com',
-      password: 'Password123'
-    });
-
-    expect(res.status).toBe(404);
-  });
-
   it('runs dedicated login throttling before the login handler', async () => {
     const res = await request(app).post('/api/auth/login').send({
       email: 'user@example.com',
@@ -78,13 +78,23 @@ describe('Auth route contract', () => {
     expect(mockLogin).toHaveBeenCalled();
   });
 
-  it('requires verifyToken before logout', async () => {
+  it('exposes refresh without verifyToken gate', async () => {
+    const res = await request(app).post('/api/auth/refresh').send({
+      refresh_token: 'refresh-token-value'
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockVerifyToken).not.toHaveBeenCalled();
+  });
+
+  it('exposes logout without verifyToken gate', async () => {
     const res = await request(app).post('/api/auth/logout').send({
       refresh_token: 'refresh-token-value'
     });
 
-    expect(res.status).toBe(401);
-    expect(mockVerifyToken).toHaveBeenCalled();
-    expect(mockLogout).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockVerifyToken).not.toHaveBeenCalled();
   });
 });

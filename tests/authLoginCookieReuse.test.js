@@ -40,11 +40,19 @@ jest.unstable_mockModule('bcryptjs', () => ({
   }
 }));
 
+const mockAuthSession = {
+  create: jest.fn(async () => ({ session_id: 42 }))
+};
+
 jest.unstable_mockModule('../src/config/index.js', () => ({
   default: {
     jwt: {
       secret: 'test-secret',
-      ttl: 7200
+      refreshSecret: 'refresh-secret',
+      ttl: 7200,
+      accessTtl: 7200,
+      refreshTtl: 2592000,
+      refreshInactivityWindowSeconds: 172800
     }
   }
 }));
@@ -60,7 +68,8 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Program: {},
   Position: {},
   Division: {},
-  AttendanceCategory: {}
+  AttendanceCategory: {},
+  AuthSession: mockAuthSession
 }));
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
@@ -149,8 +158,8 @@ describe('auth login cookie token reuse', () => {
     );
   });
 
-  it('refreshes the login token when the existing cookie token is not active yet', async () => {
-    jest.spyOn(jwt, 'verify').mockImplementation(() => {
+  it('ignores an existing cookie token and issues fresh login credentials', async () => {
+    const verifySpy = jest.spyOn(jwt, 'verify').mockImplementation(() => {
       throw new jwt.NotBeforeError('jwt not active', new Date());
     });
 
@@ -173,6 +182,13 @@ describe('auth login cookie token reuse', () => {
 
     await login(req, res);
 
+    expect(verifySpy).not.toHaveBeenCalled();
+    expect(mockAuthSession.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 2,
+        client_type: 'web'
+      })
+    );
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -185,8 +201,8 @@ describe('auth login cookie token reuse', () => {
     expect(res.cookie).toHaveBeenCalled();
   });
 
-  it('does not treat unexpected cookie verification failures as a normal token refresh', async () => {
-    jest.spyOn(jwt, 'verify').mockImplementation(() => {
+  it('does not fail login when an existing cookie token would be unreadable', async () => {
+    const verifySpy = jest.spyOn(jwt, 'verify').mockImplementation(() => {
       throw new Error('jwt library unavailable');
     });
 
@@ -209,12 +225,16 @@ describe('auth login cookie token reuse', () => {
 
     await login(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      success: false,
-      code: 'E_LOGIN',
-      message: 'Terjadi kesalahan pada server'
-    });
-    expect(res.cookie).not.toHaveBeenCalled();
+    expect(verifySpy).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          token: expect.any(String)
+        })
+      })
+    );
+    expect(res.cookie).toHaveBeenCalled();
   });
 });

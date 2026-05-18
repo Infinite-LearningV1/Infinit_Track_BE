@@ -18,6 +18,10 @@ export const LEGACY_MIGRATION_NAME_ALIASES = [
   {
     legacy: '20260424000000-bootstrap-operational-settings.js',
     current: '20260424000000-bootstrap-operational-settings.cjs'
+  },
+  {
+    legacy: '20260511000000-create-auth-sessions.js',
+    current: '20260511000000-create-auth-sessions.cjs'
   }
 ];
 

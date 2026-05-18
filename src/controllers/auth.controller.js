@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import { validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -11,7 +13,8 @@ import {
   Program,
   Position,
   Division,
-  AttendanceCategory
+  AttendanceCategory,
+  AuthSession
 } from '../models/index.js';
 import sequelize from '../config/database.js';
 import Location from '../models/location.js';
@@ -32,8 +35,7 @@ export const login = async (req, res) => {
 
     const { email, password } = req.body;
     const userAgent = req.get('User-Agent') || '';
-    const isMobile =
-      userAgent.includes('Mobile') || req.headers.authorization?.startsWith('Bearer '); // Find user by email (case insensitive)
+    const clientType = resolveClientType(req);
     const user = await User.findOne({
       where: { email: email.toLowerCase() },
       include: [
@@ -68,23 +70,6 @@ export const login = async (req, res) => {
         message: 'Email tidak terdaftar'
       });
     }
-    // Debug logging untuk troubleshooting role issues
-    console.log('🔍 Login Debug Info:');
-    console.log('- User ID:', user.id_users);
-    console.log('- User Email:', user.email);
-    console.log('- User id_roles:', user.id_roles);
-    console.log('- User Role Object:', user.role);
-    console.log('- Role Name:', user.role?.role_name);
-    console.log('- Full User Object (roles):', JSON.stringify(user.role, null, 2));
-
-    // Check if user has role assigned
-    if (!user.id_roles) {
-      console.log('❌ User has no role assigned (id_roles is null)');
-    } else if (!user.role) {
-      console.log('❌ Role relationship not loaded or role does not exist');
-      console.log('- Looking for role with ID:', user.id_roles);
-    }
-
     // Check password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -118,48 +103,26 @@ export const login = async (req, res) => {
       );
     }
 
-    // Check if existing token needs refresh (sliding window)
-    let token;
-    let shouldRefresh = false;
-
-    if (req.cookies?.token) {
-      try {
-        const decoded = jwt.verify(req.cookies.token, config.jwt.secret);
-        const timeToExpiry = decoded.exp - Math.floor(Date.now() / 1000);
-
-        const tokenBelongsToUser = decoded.id === user.id_users;
-
-        // If less than 1 hour remaining or token belongs to another user, refresh token
-        if (timeToExpiry < 3600 || !tokenBelongsToUser) {
-          shouldRefresh = true;
-        } else {
-          token = req.cookies.token;
-        }
-      } catch (error) {
-        if (
-          error instanceof jwt.TokenExpiredError ||
-          error instanceof jwt.JsonWebTokenError ||
-          error instanceof jwt.NotBeforeError
-        ) {
-          shouldRefresh = true;
-        } else {
-          throw error;
-        }
-      }
-    } else {
-      shouldRefresh = true;
-    }
+const roleName = await resolveRoleName(user);
+    const photoUrl = user.photo_file ? user.photo_file.photo_url : null;
+    const tokenUserState = {
+      id: user.id_users,
+      email: user.email,
+      full_name: user.full_name,
+      role_name: roleName,
+      photo: photoUrl
+    };
     const responseData = {
       id: user.id_users,
       full_name: user.full_name,
       email: user.email,
-      role_name: user.role?.role_name || null,
+      role_name: roleName,
       position_name: user.position?.position_name || null,
       program_name: user.program?.program_name || null,
       division_name: user.division ? user.division.division_name : null,
       nip_nim: user.nip_nim,
       phone: user.phone,
-      photo: user.photo_file ? user.photo_file.photo_url : null,
+      photo: photoUrl,
       photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
       location: wfhLocation
         ? {
@@ -171,47 +134,34 @@ export const login = async (req, res) => {
           }
         : null
     };
-    if (shouldRefresh || !token) {
-      // Ensure we have the role_name for the token
-      let roleName = user.role?.role_name;
 
-      // If role_name is still not available, try to fetch it directly
-      if (!roleName && user.id_roles) {
-        try {
-          const roleData = await Role.findByPk(user.id_roles);
-          roleName = roleData?.role_name;
-          console.log('🔧 Fetched role name directly:', roleName);
-        } catch (roleError) {
-          console.error('Error fetching role:', roleError.message);
-        }
-      }
+    const currentTime = new Date();
+    const refreshJti = randomUUID();
+    const session = await AuthSession.create({
+      user_id: user.id_users,
+      refresh_jti: refreshJti,
+      client_type: clientType,
+      user_agent: userAgent || null,
+      last_activity_at: currentTime,
+      expires_at: new Date(currentTime.getTime() + config.jwt.refreshTtl * 1000)
+    });
 
-      const payload = {
-        id: user.id_users,
-        email: user.email,
-        full_name: user.full_name,
-        role_name: roleName || null,
-        photo: user.photo_file ? user.photo_file.photo_url : null
-      };
+    const { accessToken, refreshToken } = buildSessionTokens(
+      tokenUserState,
+      session.session_id,
+      refreshJti
+    );
 
-      console.log('🔍 Creating JWT token with payload:', payload);
+    if (clientType === 'web') {
+      setSessionCookies(res, accessToken, refreshToken);
+    }
 
-      token = jwt.sign(payload, config.jwt.secret, {
-        expiresIn: config.jwt.ttl
-      });
+    responseData.token = accessToken;
+    if (clientType !== 'web') {
+      responseData.refresh_token = refreshToken;
+    }
 
-      // Set cookie for web clients
-      if (!isMobile) {
-        res.cookie('token', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          maxAge: config.jwt.ttl * 1000
-        });
-      }
-
-      logger.info(`Login successful for user: ${email}`);
-    } // Always add token to response (for both mobile and web clients)
-    responseData.token = token;
+    logger.info(`Login successful for user: ${email}`);
 
     res.json({
       success: true,
@@ -228,9 +178,392 @@ export const login = async (req, res) => {
   }
 };
 
-export const logout = (req, res) => {
+function resolveRefreshToken(req) {
+  return req.cookies?.refresh_token || req.body?.refresh_token || null;
+}
+
+function resolveAccessToken(req) {
+  const authHeader = req.headers?.authorization;
+
+  if (authHeader) {
+    const [scheme, value, extra] = authHeader.trim().split(/\s+/);
+
+    if (scheme?.toLowerCase() === 'bearer' && value && !extra) {
+      return value;
+    }
+  }
+
+  return req.cookies?.token || null;
+}
+
+function resolveClientType(req) {
+  const userAgent = req.get('User-Agent') || '';
+  const authHeader = req.headers?.authorization || '';
+  const browserUserAgentPattern = /(Mozilla\/|AppleWebKit\/|Chrome\/|Safari\/|Firefox\/|Edg\/)/i;
+  const nativeUserAgentPattern = /(okhttp|dalvik|cfnetwork)/i;
+
+  if (browserUserAgentPattern.test(userAgent)) {
+    return 'web';
+  }
+
+  if (nativeUserAgentPattern.test(userAgent)) {
+    return 'android';
+  }
+
+  if (authHeader.trim().toLowerCase().startsWith('bearer ')) {
+    return 'android';
+  }
+
+  return 'android';
+}
+
+function buildAccessTokenPayload({ session_id, id, email, full_name, role_name, photo }) {
+  return {
+    session_id,
+    id,
+    email,
+    full_name,
+    role_name: role_name || null,
+    photo: photo || null
+  };
+}
+
+function buildRefreshTokenPayload({ session_id, id, email, full_name, role_name, photo, jti }) {
+  return {
+    session_id,
+    jti,
+    id,
+    email,
+    full_name,
+    role_name: role_name || null,
+    photo: photo || null
+  };
+}
+
+function buildSessionTokens(userState, sessionId, refreshJti) {
+  const accessPayload = buildAccessTokenPayload({
+    ...userState,
+    session_id: sessionId
+  });
+  const refreshPayload = buildRefreshTokenPayload({
+    ...accessPayload,
+    jti: refreshJti
+  });
+
+  return {
+    accessToken: jwt.sign(accessPayload, config.jwt.secret, {
+      expiresIn: config.jwt.accessTtl
+    }),
+    refreshToken: jwt.sign(refreshPayload, config.jwt.refreshSecret, {
+      expiresIn: config.jwt.refreshTtl
+    })
+  };
+}
+
+async function resolveRoleName(user) {
+  if (user.role?.role_name) {
+    return user.role.role_name;
+  }
+
+  if (!user.id_roles) {
+    throw new Error(`Role claim missing for user ${user.id_users}`);
+  }
+
+  const role = await Role.findByPk(user.id_roles);
+
+  if (!role) {
+    throw new Error(`Role ${user.id_roles} not found for user ${user.id_users}`);
+  }
+
+  return role.role_name;
+}
+
+async function loadSessionTokenUserState(userId) {
+  const user = await User.findByPk(userId, {
+    include: [
+      {
+        model: Role,
+        as: 'role',
+        attributes: ['id_roles', 'role_name']
+      },
+      {
+        model: Photo,
+        as: 'photo_file',
+        attributes: ['photo_url']
+      }
+    ]
+  });
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id_users,
+    email: user.email,
+    full_name: user.full_name,
+    role_name: await resolveRoleName(user),
+    photo: user.photo_file?.photo_url || null
+  };
+}
+
+function setSessionCookies(res, accessToken, refreshToken) {
+  res.cookie('token', accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: config.jwt.accessTtl * 1000
+  });
+  res.cookie('refresh_token', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: config.jwt.refreshTtl * 1000
+  });
+}
+
+function clearSessionCookies(res) {
   res.clearCookie('token');
-  res.json({ message: 'Logout successful' });
+  res.clearCookie('refresh_token');
+}
+
+function verifyOptionalToken(token, secret) {
+  if (!token) {
+    return { payload: null, error: null };
+  }
+
+  try {
+    return { payload: jwt.verify(token, secret), error: null };
+  } catch (error) {
+    if (!isJwtVerificationError(error)) {
+      throw error;
+    }
+
+    return { payload: null, error };
+  }
+}
+
+function isJwtExpiredError(error) {
+  return error?.name === 'TokenExpiredError';
+}
+
+function isJwtVerificationError(error) {
+  return (
+    error?.name === 'TokenExpiredError' ||
+    error?.name === 'JsonWebTokenError' ||
+    error?.name === 'NotBeforeError'
+  );
+}
+
+function isSessionInactive(lastActivityAt, inactivityWindowSeconds) {
+  if (!lastActivityAt) {
+    return true;
+  }
+
+  return Date.now() - new Date(lastActivityAt).getTime() > inactivityWindowSeconds * 1000;
+}
+
+function sendInvalidRefreshResponse(res) {
+  return res.status(401).json({
+    success: false,
+    code: 'AUTH_REFRESH_INVALID',
+    message: 'Refresh token invalid'
+  });
+}
+
+function sendExpiredRefreshResponse(res) {
+  return res.status(401).json({
+    success: false,
+    code: 'AUTH_REFRESH_EXPIRED',
+    message: 'Refresh session expired'
+  });
+}
+
+function sendInternalServerErrorResponse(res) {
+  return res.status(500).json({
+    success: false,
+    message: 'Internal server error'
+  });
+}
+
+export const refresh = async (req, res) => {
+  let decoded = null;
+  let sessionUserId = null;
+
+  try {
+    const refreshToken = resolveRefreshToken(req);
+
+    if (!refreshToken) {
+      return sendInvalidRefreshResponse(res);
+    }
+
+    decoded = jwt.verify(refreshToken, config.jwt.refreshSecret);
+    const session = await AuthSession.findByPk(decoded.session_id);
+    sessionUserId = session?.user_id || decoded.id || null;
+
+    if (!session || session.user_id !== decoded.id || session.refresh_jti !== decoded.jti) {
+      return sendInvalidRefreshResponse(res);
+    }
+
+    if (session.revoked_at) {
+      return res.status(401).json({
+        success: false,
+        code: 'AUTH_REFRESH_REVOKED',
+        message: 'Refresh session revoked'
+      });
+    }
+
+    if (
+      isSessionInactive(session.last_activity_at, config.jwt.refreshInactivityWindowSeconds) ||
+      new Date(session.expires_at).getTime() <= Date.now()
+    ) {
+      await session.update({
+        revoked_at: new Date(),
+        revocation_reason: 'expired'
+      });
+
+      return sendExpiredRefreshResponse(res);
+    }
+
+    const tokenUserState = await loadSessionTokenUserState(session.user_id);
+
+    if (!tokenUserState) {
+      await session.update({
+        revoked_at: new Date(),
+        revocation_reason: 'user_not_found'
+      });
+
+      return sendInvalidRefreshResponse(res);
+    }
+
+    const nextRefreshJti = randomUUID();
+    const { accessToken, refreshToken: nextRefreshToken } = buildSessionTokens(
+      tokenUserState,
+      session.session_id,
+      nextRefreshJti
+    );
+    const currentTime = new Date();
+
+    const [rotatedSessionCount] = await AuthSession.update(
+      {
+        refresh_jti: nextRefreshJti,
+        last_activity_at: currentTime,
+        expires_at: new Date(currentTime.getTime() + config.jwt.refreshTtl * 1000)
+      },
+      {
+        where: {
+          session_id: session.session_id,
+          refresh_jti: decoded.jti,
+          revoked_at: null
+        }
+      }
+    );
+
+    if (rotatedSessionCount !== 1) {
+      logger.warn('Refresh rejected after CAS rotation miss', {
+        session_id: session.session_id,
+        user_id: session.user_id,
+        refresh_jti: decoded.jti
+      });
+      return sendInvalidRefreshResponse(res);
+    }
+
+    if (session.client_type === 'web' || req.cookies?.refresh_token) {
+      setSessionCookies(res, accessToken, nextRefreshToken);
+
+      return res.json({
+        success: true,
+        data: {
+          access_token: accessToken
+        },
+        message: 'Refresh successful'
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        access_token: accessToken,
+        refresh_token: nextRefreshToken
+      },
+      message: 'Refresh successful'
+    });
+  } catch (error) {
+    if (isJwtExpiredError(error)) {
+      logger.warn(`Refresh expired: ${error.message}`);
+      return sendExpiredRefreshResponse(res);
+    }
+
+    if (isJwtVerificationError(error)) {
+      logger.warn(`Refresh rejected: ${error.message}`);
+      return sendInvalidRefreshResponse(res);
+    }
+
+    logger.error(`Refresh failed: ${error.message}`, {
+      stack: error.stack,
+      session_id: decoded?.session_id || null,
+      user_id: sessionUserId || decoded?.id || null
+    });
+    return sendInternalServerErrorResponse(res);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  let sessionId = null;
+
+  try {
+    sessionId = req.user?.session_id || null;
+
+    const accessTokenResult = verifyOptionalToken(resolveAccessToken(req), config.jwt.secret);
+
+    if (!sessionId) {
+      sessionId = accessTokenResult.payload?.session_id || null;
+    }
+
+    const refreshTokenResult = !sessionId
+      ? verifyOptionalToken(resolveRefreshToken(req), config.jwt.refreshSecret)
+      : { payload: null, error: null };
+
+    if (!sessionId) {
+      sessionId = refreshTokenResult.payload?.session_id || null;
+    }
+
+    if (!sessionId) {
+      if (accessTokenResult.error) {
+        logger.warn(`Logout access token could not identify session: ${accessTokenResult.error.message}`);
+      }
+
+      if (refreshTokenResult.error) {
+        logger.warn(
+          `Logout refresh token could not identify session: ${refreshTokenResult.error.message}`
+        );
+      }
+    }
+
+    if (sessionId) {
+      try {
+        const session = await AuthSession.findByPk(sessionId);
+
+        if (session && !session.revoked_at) {
+          await session.update({
+            revoked_at: new Date(),
+            revocation_reason: 'logout'
+          });
+        }
+      } catch (error) {
+        logger.error(`Logout failed after session identification: ${error.message}`, {
+          stack: error.stack,
+          session_id: sessionId,
+          user_id: req.user?.id || accessTokenResult.payload?.id || refreshTokenResult.payload?.id || null
+        });
+        clearSessionCookies(res);
+        return sendInternalServerErrorResponse(res);
+      }
+    }
+
+    clearSessionCookies(res);
+    return res.json({ success: true, message: 'Logout successful' });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 export const register = async (req, res) => {
