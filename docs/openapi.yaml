@@ -26,7 +26,7 @@ info:
 
     ## Base URL
     - Development: `http://localhost:3005`
-    - Production: `https://your-domain.com`
+    - Production: `https://api.infinite-track.tech`
 
   version: 1.0.0
   contact:
@@ -39,8 +39,8 @@ info:
 servers:
   - url: http://localhost:3005
     description: Development server
-  - url: https://your-domain.com
-    description: Production server
+  - url: https://api.infinite-track.tech
+    description: Staging production-like server
 
 security:
   - bearerAuth: []
@@ -48,16 +48,16 @@ security:
 
 paths:
   # Health Check
-  /health:
+  /livez:
     get:
       tags:
         - System
-      summary: Health check endpoint
-      description: Check if the API server is running and healthy
+      summary: Liveness check endpoint
+      description: Check whether the API process is running.
       security: []
       responses:
         '200':
-          description: Server is healthy
+          description: Server process is alive
           content:
             application/json:
               schema:
@@ -69,7 +69,78 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-                    example: '2025-07-05T12:00:00.000Z'
+                    example: '2026-05-17T12:00:00.000Z'
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Readiness check endpoint
+      description: Check whether database and scheduler dependencies are ready to serve traffic.
+      security: []
+      responses:
+        '200':
+          description: Server dependencies are ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: 'OK'
+                  ready:
+                    type: boolean
+                    example: true
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2026-05-17T12:00:00.000Z'
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: ready
+                      scheduler:
+                        type: string
+                        example: ready
+                  missing:
+                    type: array
+                    items:
+                      type: string
+                    example: []
+        '503':
+          description: One or more dependencies are not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: 'NOT_READY'
+                  ready:
+                    type: boolean
+                    example: false
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2026-05-17T12:00:00.000Z'
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: ready
+                      scheduler:
+                        type: string
+                        example: not_ready
+                  missing:
+                    type: array
+                    items:
+                      type: string
+                    example: [scheduler]
 
   # Authentication Endpoints
   /api/auth/login:
@@ -100,54 +171,8 @@ paths:
                   - $ref: '#/components/schemas/LoginNonWebResponse'
         '400':
           $ref: '#/components/responses/AuthLoginError'
-        '500':
-          $ref: '#/components/responses/AuthLoginServerError'
-
-  /api/auth/register:
-    post:
-      tags:
-        - Authentication
-      summary: User registration
-      description: Register a new user account
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - email
-                - password
-                - full_name
-                - role_id
-                - position_id
-                - division_id
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: 'newuser@company.com'
-                password:
-                  type: string
-                  format: password
-                  minLength: 6
-                  example: 'password123'
-                full_name:
-                  type: string
-                  example: 'John Doe'
-                role_id:
-                  type: integer
-                  example: 2
-                position_id:
-                  type: integer
-                  example: 1
-                division_id:
-                  type: integer
-                  example: 1
-      responses:
-        '201':
-          description: User registered successfully
+        '429':
+          description: Too many login attempts
           content:
             application/json:
               schema:
@@ -155,16 +180,18 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: true
+                    example: false
+                  code:
+                    type: string
+                    example: 'AUTH_RATE_LIMITED'
                   message:
                     type: string
-                    example: 'User registered successfully'
-                  data:
-                    $ref: '#/components/schemas/User'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
+                    example: 'Too many login attempts, please try again later'
+                  retryAfter:
+                    type: integer
+                    example: 900
+        '500':
+          $ref: '#/components/responses/AuthLoginServerError'
 
   /api/auth/refresh:
     post:
@@ -260,7 +287,255 @@ paths:
         '404':
           $ref: '#/components/responses/AuthenticatedUserNotFound'
 
+  /api/analysis/fuzzy-ahp:
+    get:
+      tags:
+        - Analysis
+      summary: Get Fuzzy AHP analysis
+      description: Retrieve dashboard-ready Fuzzy AHP analysis for WFA, discipline, or smart auto checkout.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [wfa, discipline, smart_ac]
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [weekly, monthly]
+            default: monthly
+      responses:
+        '200':
+          description: Analysis retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        example: discipline
+                      period:
+                        type: string
+                        example: monthly
+                      generated_at:
+                        type: string
+                        format: date-time
+                      timezone:
+                        type: string
+                        example: Asia/Jakarta
+                      window:
+                        type: object
+                        properties:
+                          start_at:
+                            type: string
+                            format: date-time
+                          end_at:
+                            type: string
+                            format: date-time
+                      entity_kind:
+                        type: string
+                        example: user
+                      consistency:
+                        type: object
+                        properties:
+                          CR:
+                            type: number
+                          CI:
+                            type: number
+                          lambda_max:
+                            type: number
+                          threshold:
+                            type: number
+                          is_consistent:
+                            type: boolean
+                          verdict:
+                            type: string
+                      weights:
+                        type: object
+                        properties:
+                          criteria:
+                            type: array
+                            items:
+                              type: string
+                          values:
+                            type: array
+                            items:
+                              type: number
+                          method:
+                            type: string
+                      distribution:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      ranking:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            rank:
+                              type: integer
+                            id:
+                              oneOf:
+                                - type: integer
+                                - type: string
+                            name:
+                              type: string
+                            score:
+                              type: number
+                            label:
+                              type: string
+                            breakdown:
+                              type: object
+                              additionalProperties: true
+                example:
+                  success: true
+                  data:
+                    type: discipline
+                    period: monthly
+                    generated_at: '2026-04-23T10:30:00+07:00'
+                    timezone: Asia/Jakarta
+                    window:
+                      start_at: '2026-04-01T00:00:00+07:00'
+                      end_at: '2026-04-23T10:30:00+07:00'
+                    entity_kind: user
+                    consistency:
+                      CR: 0.037
+                      CI: 0
+                      lambda_max: 0
+                      threshold: 0.1
+                      is_consistent: true
+                      verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
+                    weights:
+                      criteria: ['alpha_rate', 'lateness_severity', 'lateness_frequency', 'work_focus']
+                      values: [0.45, 0.25, 0.18, 0.12]
+                      method: "Chang's Extent Analysis"
+                    distribution:
+                      Sangat Tinggi: 1
+                      Tinggi: 0
+                      Sedang: 0
+                      Rendah: 0
+                      Sangat Rendah: 0
+                    ranking:
+                      - rank: 1
+                        id: 7
+                        name: Andi
+                        score: 87.5
+                        label: Sangat Tinggi
+                        breakdown:
+                          alpha_rate: 0
+                          avg_lateness_minutes: 3
+                          lateness_frequency: 5
+                          work_hour_consistency: 95
+                  message: 'Fuzzy AHP analysis retrieved successfully'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   # Attendance Endpoints
+  /api/attendance/today-locations:
+    get:
+      tags:
+        - Attendance
+      summary: Get today hero map locations
+      description: Retrieve render-ready hero map locations for users who already checked in today (Asia/Jakarta) and have valid coordinates.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Today locations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      date:
+                        type: string
+                        format: date
+                        example: '2026-04-22'
+                      timezone:
+                        type: string
+                        example: 'Asia/Jakarta'
+                      snapshot_type:
+                        type: string
+                        example: 'attendance_checkin_snapshot'
+                      is_live_tracking:
+                        type: boolean
+                        example: false
+                      total_users:
+                        type: integer
+                        example: 1
+                      locations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user_id:
+                              type: integer
+                              example: 7
+                            full_name:
+                              type: string
+                              example: 'Febri'
+                            photo:
+                              type: string
+                              nullable: true
+                              example: 'https://cdn.example.com/photos/febri.jpg'
+                            status:
+                              type: string
+                              example: 'WFO'
+                            check_in_time:
+                              type: string
+                              example: '08:15'
+                            latitude:
+                              type: number
+                              format: float
+                              example: -0.8917
+                            longitude:
+                              type: number
+                              format: float
+                              example: 119.8707
+                example:
+                  success: true
+                  data:
+                    date: '2026-04-22'
+                    timezone: 'Asia/Jakarta'
+                    snapshot_type: 'attendance_checkin_snapshot'
+                    is_live_tracking: false
+                    total_users: 1
+                    locations:
+                      - user_id: 7
+                        full_name: 'Febri'
+                        photo: 'https://cdn.example.com/photos/febri.jpg'
+                        status: 'WFO'
+                        check_in_time: '08:15'
+                        latitude: -0.8917
+                        longitude: 119.8707
+                  message: 'Today locations retrieved successfully'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/attendance:
     get:
       tags:
@@ -336,25 +611,32 @@ paths:
             schema:
               type: object
               required:
+                - category_id
                 - latitude
                 - longitude
               properties:
+                category_id:
+                  type: integer
+                  enum: [1, 2, 3]
+                  example: 1
+                  description: 1=WFO, 2=WFH, 3=WFA
                 latitude:
                   type: number
                   format: float
                   example: -6.200000
-                  description: Latitude coordinate
                 longitude:
                   type: number
                   format: float
                   example: 106.816666
-                  description: Longitude coordinate
-                face_photo:
+                notes:
                   type: string
-                  format: binary
-                  description: Base64 encoded face photo for verification
+                  example: Client-critical smoke gate WFO check-in
+                booking_id:
+                  type: integer
+                  example: 123
+                  description: Required when category_id is 3 (WFA)
       responses:
-        '200':
+        '201':
           description: Check-in successful
           content:
             application/json:
@@ -364,11 +646,15 @@ paths:
                   success:
                     type: boolean
                     example: true
+                  data:
+                    type: object
                   message:
                     type: string
-                    example: 'Check-in successful'
-                  data:
-                    $ref: '#/components/schemas/Attendance'
+                    example: 'Check-in berhasil dengan status: ON TIME'
+              example:
+                success: true
+                data: {}
+                message: 'Check-in berhasil dengan status: ON TIME'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -495,14 +781,35 @@ paths:
                   data:
                     type: object
                     properties:
-                      has_checked_in:
+                      can_check_in:
                         type: boolean
-                        example: true
-                      has_checked_out:
+                      can_check_out:
                         type: boolean
-                        example: false
-                      attendance:
-                        $ref: '#/components/schemas/Attendance'
+                        nullable: true
+                        description: Nullable when no attendance exists for today.
+                      checked_in_at:
+                        type: string
+                        nullable: true
+                      checked_out_at:
+                        type: string
+                        nullable: true
+                      active_mode:
+                        type: string
+                      active_location:
+                        type: object
+                        nullable: true
+                      today_date:
+                        type: string
+                      is_holiday:
+                        type: boolean
+                      holiday_checkin_enabled:
+                        type: boolean
+                      current_time:
+                        type: string
+                      checkin_window:
+                        type: object
+                      checkout_auto_time:
+                        type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -967,6 +1274,8 @@ paths:
                           $ref: '#/components/schemas/Booking'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -984,19 +1293,14 @@ paths:
             schema:
               type: object
               required:
-                - date
-                - location_name
+                - schedule_date
                 - latitude
                 - longitude
-                - reason
               properties:
-                date:
+                schedule_date:
                   type: string
                   format: date
-                  example: '2025-07-10'
-                location_name:
-                  type: string
-                  example: 'Coffee Shop Downtown'
+                  example: '2026-04-29'
                 latitude:
                   type: number
                   format: float
@@ -1005,12 +1309,15 @@ paths:
                   type: number
                   format: float
                   example: 106.816666
-                reason:
+                radius:
+                  type: number
+                  example: 100
+                description:
                   type: string
-                  example: 'Working on client presentation'
+                  example: 'WFA smoke gate location'
                 notes:
                   type: string
-                  example: 'Will be available 9 AM - 5 PM'
+                  example: 'Client-critical smoke gate booking'
       responses:
         '201':
           description: Booking created successfully
@@ -1024,9 +1331,25 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: 'WFA booking created successfully'
+                    example: 'Booking WFA berhasil diajukan dan menunggu persetujuan.'
                   data:
-                    $ref: '#/components/schemas/Booking'
+                    type: object
+                    properties:
+                      booking_id:
+                        type: integer
+                      schedule_date:
+                        type: string
+                      location_id:
+                        type: integer
+                      status:
+                        type: string
+                        example: pending
+                      suitability_score:
+                        type: number
+                        nullable: true
+                      suitability_label:
+                        type: string
+                        nullable: true
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1347,346 +1670,40 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/wfa/test-ahp:
-    post:
-      tags:
-        - WFA System
-      summary: Test Fuzzy AHP algorithm (Admin only)
-      description: Test the Fuzzy AHP algorithm with custom values
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                test_locations:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                        example: 'Test Cafe'
-                      wifi_quality:
-                        type: number
-                        format: float
-                        example: 4.5
-                      noise_level:
-                        type: number
-                        format: float
-                        example: 3.0
-                      amenities:
-                        type: integer
-                        example: 8
-                      distance:
-                        type: number
-                        format: float
-                        example: 500.0
-                custom_weights:
-                  type: object
-                  properties:
-                    wifi_quality:
-                      type: number
-                      format: float
-                      example: 0.4
-                    noise_level:
-                      type: number
-                      format: float
-                      example: 0.3
-                    amenities:
-                      type: number
-                      format: float
-                      example: 0.2
-                    distance:
-                      type: number
-                      format: float
-                      example: 0.1
-      responses:
-        '200':
-          description: AHP test completed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      test_results:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            location:
-                              type: string
-                              example: 'Test Cafe'
-                            score:
-                              type: number
-                              format: float
-                              example: 0.87
-                            ranking:
-                              type: integer
-                              example: 1
-                      algorithm_details:
-                        type: object
-                        description: Detailed algorithm computation results
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  # Job Management Endpoints
-  /api/jobs/status:
-    get:
-      tags:
-        - Job Management
-      summary: Get jobs status (Admin only)
-      description: Get status and information about all cron jobs
-      responses:
-        '200':
-          description: Jobs status retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      jobs:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/JobStatus'
-                      server_info:
-                        type: object
-                        properties:
-                          uptime:
-                            type: string
-                            example: '2 hours, 15 minutes'
-                          timezone:
-                            type: string
-                            example: 'Asia/Jakarta'
-                          current_time:
-                            type: string
-                            example: '2025-07-05 15:30:00 WIB'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/jobs/trigger/general-alpha:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger General Alpha job (Admin only)
-      description: Manually trigger the general alpha generation job
-      responses:
-        '200':
-          description: General Alpha job triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'General Alpha job triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        example: 'general-alpha-20250705-153000'
-                      execution_time:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      records_processed:
-                        type: integer
-                        example: 25
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/jobs/trigger/wfa-bookings:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger WFA bookings job (Admin only)
-      description: Manually trigger the WFA bookings resolution job
-      responses:
-        '200':
-          description: WFA bookings job triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'WFA bookings job triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        example: 'wfa-bookings-20250705-153000'
-                      execution_time:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      bookings_processed:
-                        type: integer
-                        example: 5
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/jobs/trigger/auto-checkout:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger auto checkout job (Admin only)
-      description: Manually trigger the smart auto checkout job
-      responses:
-        '200':
-          description: Auto checkout job triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Auto checkout job triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        example: 'auto-checkout-20250705-153000'
-                      execution_time:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      users_processed:
-                        type: integer
-                        example: 12
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/jobs/trigger/all:
-    post:
-      tags:
-        - Job Management
-      summary: Trigger all jobs (Admin only)
-      description: Manually trigger all available jobs in sequence
-      responses:
-        '200':
-          description: All jobs triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'All jobs triggered successfully'
-                  data:
-                    type: object
-                    properties:
-                      jobs_executed:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            job_name:
-                              type: string
-                              example: 'general-alpha'
-                            status:
-                              type: string
-                              example: 'completed'
-                            execution_time:
-                              type: string
-                              example: '2025-07-05 15:30:00 WIB'
-                            records_processed:
-                              type: integer
-                              example: 25
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   # Summary & Reports Endpoints
-  /api/summary:
+  /api/summary/dashboard-analytics:
     get:
       tags:
         - Reports & Analytics
-      summary: Get summary report (Admin/Management only)
-      description: Get comprehensive attendance and performance summary report
+      summary: Get dashboard analytics aggregation
+      description: Retrieve dashboard-ready cockpit aggregates for attendance KPIs, historical trend, mode mix, geofence evidence context, and lightweight Fuzzy AHP snapshots for Admin or Management users. This endpoint does not own today/live map snapshots; use `/api/attendance/today-locations` for today locations.
+      security:
+        - bearerAuth: []
       parameters:
         - in: query
-          name: start_date
+          name: period
+          schema:
+            type: string
+            enum: [30d, current_month, custom]
+            default: 30d
+          description: Historical aggregation window. Use `custom` together with `from` and `to`.
+        - in: query
+          name: from
           schema:
             type: string
             format: date
-          description: Start date for report period (YYYY-MM-DD)
+            example: '2026-04-01'
+          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
         - in: query
-          name: end_date
+          name: to
           schema:
             type: string
             format: date
-          description: End date for report period (YYYY-MM-DD)
-        - in: query
-          name: division_id
-          schema:
-            type: integer
-          description: Filter by specific division
-        - in: query
-          name: user_id
-          schema:
-            type: integer
-          description: Filter by specific user
-        - in: query
-          name: report_type
-          schema:
-            type: string
-            enum: [attendance, discipline, wfa, overview]
-            default: overview
-          description: Type of summary report to generate
+            example: '2026-04-30'
+          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
       responses:
         '200':
-          description: Summary report generated successfully
+          description: Dashboard analytics retrieved successfully
           content:
             application/json:
               schema:
@@ -1695,81 +1712,208 @@ paths:
                   success:
                     type: boolean
                     example: true
+                  requested_window:
+                    type: object
+                    description: Raw window sesuai query client. Untuk period default seperti 30d, from/to dapat bernilai null.
+                    properties:
+                      period:
+                        type: string
+                        example: custom
+                      from:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-01'
+                      to:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-30'
+                  executed_window:
+                    type: object
+                    description: Effective historical window that the backend actually executed after resolving defaults.
+                    properties:
+                      from:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-01'
+                      to:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-30'
                   data:
                     type: object
                     properties:
-                      period:
+                      meta:
                         type: object
                         properties:
-                          start_date:
+                          generated_at:
                             type: string
-                            format: date
-                            example: '2025-07-01'
-                          end_date:
+                            format: date-time
+                            example: '2026-05-03T02:30:00.000Z'
+                          timezone:
                             type: string
-                            format: date
-                            example: '2025-07-31'
-                      overview:
-                        type: object
-                        properties:
-                          total_employees:
-                            type: integer
-                            example: 45
-                          total_attendances:
-                            type: integer
-                            example: 950
-                          average_attendance_rate:
-                            type: number
-                            format: float
-                            example: 92.5
-                          total_wfa_bookings:
-                            type: integer
-                            example: 25
-                          on_time_percentage:
-                            type: number
-                            format: float
-                            example: 87.3
-                      attendance_summary:
-                        type: object
-                        properties:
-                          present_days:
-                            type: integer
-                            example: 880
-                          late_days:
-                            type: integer
-                            example: 70
-                          alpha_days:
-                            type: integer
-                            example: 15
-                          wfa_days:
-                            type: integer
-                            example: 25
-                      discipline_summary:
-                        type: object
-                        properties:
-                          average_discipline_index:
-                            type: number
-                            format: float
-                            example: 8.7
-                          top_performers:
+                            example: Asia/Jakarta
+                          requested_window:
+                            type: object
+                            description: Raw window sesuai query client. Untuk period default seperti 30d, from/to dapat bernilai null.
+                            properties:
+                              period:
+                                type: string
+                                example: custom
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          executed_window:
+                            type: object
+                            description: Effective historical window that the backend actually executed after resolving defaults.
+                            properties:
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          section_windows:
+                            type: object
+                            description: Window efektif yang benar-benar dipakai untuk agregasi historis, geofence context, dan snapshot fuzzy AHP.
+                            properties:
+                              executive_kpis:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              historical_trend:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              mode_mix:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              fuzzy_ahp_snapshot:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              geofence_evidence_context:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                          sources:
                             type: array
                             items:
-                              type: object
-                              properties:
-                                user_id:
-                                  type: integer
-                                  example: 5
-                                full_name:
-                                  type: string
-                                  example: 'John Doe'
-                                discipline_index:
-                                  type: number
-                                  format: float
-                                  example: 9.8
-                      charts_data:
+                              type: string
+                            example: [Attendance, AttendanceCategory, AttendanceStatus, LocationEvent]
+                      executive_kpis:
                         type: object
                         properties:
-                          daily_attendance:
+                          attendance_rate:
+                            type: number
+                            format: float
+                            example: 66.67
+                          late_alpha_risk:
+                            type: number
+                            format: float
+                            example: 66.67
+                          avg_discipline:
+                            type: number
+                            format: float
+                            nullable: true
+                            example: 82
+                          needs_attention:
+                            type: integer
+                            example: 1
+                          raw_counts:
+                            type: object
+                            properties:
+                              total_attendance_records:
+                                type: integer
+                                example: 3
+                              total_present:
+                                type: integer
+                                example: 2
+                              total_alpha:
+                                type: integer
+                                example: 1
+                              total_late:
+                                type: integer
+                                example: 1
+                              total_on_time:
+                                type: integer
+                                example: 1
+                              total_wfo:
+                                type: integer
+                                example: 1
+                              total_wfh:
+                                type: integer
+                                example: 1
+                              total_wfa:
+                                type: integer
+                                example: 1
+                              discipline_users_analyzed:
+                                type: integer
+                                example: 2
+                      historical_trend:
+                        type: object
+                        properties:
+                          points:
                             type: array
                             items:
                               type: object
@@ -1777,32 +1921,507 @@ paths:
                                 date:
                                   type: string
                                   format: date
-                                  example: '2025-07-05'
-                                present:
+                                  example: '2026-04-01'
+                                on_time:
                                   type: integer
-                                  example: 42
+                                  example: 1
                                 late:
                                   type: integer
-                                  example: 3
+                                  example: 0
+                                present:
+                                  type: integer
+                                  example: 1
                                 alpha:
                                   type: integer
                                   example: 0
-                          division_performance:
+                                wfo:
+                                  type: integer
+                                  example: 1
+                                wfh:
+                                  type: integer
+                                  example: 0
+                                wfa:
+                                  type: integer
+                                  example: 0
+                      mode_mix:
+                        type: object
+                        properties:
+                          totals:
+                            type: object
+                            properties:
+                              wfo:
+                                type: integer
+                                example: 1
+                              wfh:
+                                type: integer
+                                example: 1
+                              wfa:
+                                type: integer
+                                example: 1
+                          percentages:
+                            type: object
+                            properties:
+                              wfo:
+                                type: number
+                                format: float
+                                example: 33.33
+                              wfh:
+                                type: number
+                                format: float
+                                example: 33.33
+                              wfa:
+                                type: number
+                                format: float
+                                example: 33.33
+                      geofence_evidence_context:
+                        type: object
+                        description: Context-only geofence evidence for the selected window. Final attendance authority remains attendance records.
+                        properties:
+                          status:
+                            type: string
+                            enum: [available, needs_data]
+                            example: available
+                          needs_data:
+                            type: boolean
+                            example: false
+                          reason:
+                            type: string
+                            nullable: true
+                            example: null
+                          authority:
+                            type: string
+                            example: context_only
+                          final_attendance_authority:
+                            type: string
+                            example: attendance_records
+                          window:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          raw_counts:
+                            type: object
+                            properties:
+                              total_events:
+                                type: integer
+                                example: 3
+                              enter_events:
+                                type: integer
+                                example: 1
+                              exit_events:
+                                type: integer
+                                example: 2
+                              unique_users:
+                                type: integer
+                                example: 2
+                      fuzzy_ahp_snapshot:
+                        type: object
+                        properties:
+                          discipline:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [ready, no_data]
+                                example: ready
+                              generated_at:
+                                type: string
+                                format: date-time
+                                example: '2026-05-03T02:30:00.000Z'
+                              window:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              weights:
+                                type: object
+                                additionalProperties:
+                                  type: number
+                                  format: float
+                                example:
+                                  alpha_rate: 0.6
+                                  lateness_severity: 0.4
+                              consistency:
+                                type: object
+                                nullable: true
+                                properties:
+                                  CR:
+                                    type: number
+                                    format: float
+                                    example: 0.021
+                                  threshold:
+                                    type: number
+                                    format: float
+                                    example: 0.1
+                                  is_consistent:
+                                    type: boolean
+                                    example: true
+                              top_rank:
+                                type: object
+                                nullable: true
+                                properties:
+                                  id:
+                                    type: integer
+                                    example: 7
+                                  name:
+                                    type: string
+                                    example: Febri
+                                  score:
+                                    type: number
+                                    format: float
+                                    example: 84
+                                  label:
+                                    type: string
+                                    example: Tinggi
+                              distribution:
+                                type: object
+                                additionalProperties:
+                                  type: integer
+                                example:
+                                  Tinggi: 1
+                                  Sedang: 1
+                          wfa:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [ready, no_data]
+                                example: ready
+                              generated_at:
+                                type: string
+                                format: date-time
+                                example: '2026-05-03T02:30:00.000Z'
+                              window:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              weights:
+                                type: object
+                                additionalProperties:
+                                  type: number
+                                  format: float
+                                example:
+                                  location_type: 0.55
+                                  distance_factor: 0.45
+                              consistency:
+                                type: object
+                                nullable: true
+                                properties:
+                                  CR:
+                                    type: number
+                                    format: float
+                                    example: 0.018
+                                  threshold:
+                                    type: number
+                                    format: float
+                                    example: 0.1
+                                  is_consistent:
+                                    type: boolean
+                                    example: true
+                              top_rank:
+                                type: object
+                                nullable: true
+                                properties:
+                                  id:
+                                    type: integer
+                                    example: 31
+                                  name:
+                                    type: string
+                                    example: Cafe Satu
+                                  score:
+                                    type: number
+                                    format: float
+                                    example: 90
+                                  label:
+                                    type: string
+                                    example: Sangat Tinggi
+                              distribution:
+                                type: object
+                                additionalProperties:
+                                  type: integer
+                                example:
+                                  Sangat Tinggi: 1
+                                  Tinggi: 1
+                          smart_ac:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum: [ready, no_data]
+                                example: ready
+                              generated_at:
+                                type: string
+                                format: date-time
+                                example: '2026-05-03T02:30:00.000Z'
+                              window:
+                                type: object
+                                properties:
+                                  from:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-01'
+                                  to:
+                                    type: string
+                                    format: date
+                                    nullable: true
+                                    example: '2026-04-30'
+                              weights:
+                                type: object
+                                additionalProperties:
+                                  type: number
+                                  format: float
+                                example:
+                                  history: 0.4
+                                  context: 0.6
+                              consistency:
+                                type: object
+                                nullable: true
+                                properties:
+                                  CR:
+                                    type: number
+                                    format: float
+                                    example: 0
+                                  threshold:
+                                    type: number
+                                    format: float
+                                    example: 0.1
+                                  is_consistent:
+                                    type: boolean
+                                    example: true
+                              top_rank:
+                                type: object
+                                nullable: true
+                                properties:
+                                  id:
+                                    type: integer
+                                    example: 8
+                                  name:
+                                    type: string
+                                    example: Diana
+                                  score:
+                                    type: number
+                                    format: float
+                                    example: 72
+                                  label:
+                                    type: string
+                                    example: Tinggi
+                              distribution:
+                                type: object
+                                additionalProperties:
+                                  type: integer
+                                example:
+                                  Tinggi: 1
+                                  Sedang: 1
+                      insights:
+                        type: object
+                        properties:
+                          items:
                             type: array
                             items:
                               type: object
                               properties:
-                                division_name:
+                                type:
                                   type: string
-                                  example: 'Engineering'
-                                attendance_rate:
-                                  type: number
-                                  format: float
-                                  example: 95.2
-                                average_discipline:
-                                  type: number
-                                  format: float
-                                  example: 9.1
+                                  example: alpha_spike
+                                title:
+                                  type: string
+                                  example: Alpha rate elevated
+                                message:
+                                  type: string
+                                  example: Alpha reached 33.3% of attendance records in the selected window.
+                                severity:
+                                  type: string
+                                  example: high
+                  message:
+                    type: string
+                    example: Dashboard analytics retrieved successfully
+        '400':
+          description: Invalid dashboard analytics query parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Rentang tanggal custom maksimal 31 hari
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/summary/reports:
+    get:
+      tags:
+        - Reports & Analytics
+      summary: Get summary report (Admin/Management only)
+      description: Retrieve the canonical reporting and export contract for summary aggregates, attendance report rows, and discipline-analysis overview for Admin or Management users.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [30d, current_month, custom]
+            default: 30d
+          description: Historical report window. Use `custom` together with `from` and `to`.
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+            example: '2026-04-01'
+          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+            example: '2026-04-30'
+          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Report pagination page number.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+          description: Number of attendance rows returned in the report section.
+      responses:
+        '200':
+          description: Summary report with discipline analysis generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryReportResponse'
+        '400':
+          description: Invalid summary period value
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter period harus berupa: 30d, current_month, atau custom
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/summary:
+    get:
+      deprecated: true
+      tags:
+        - Reports & Analytics
+      summary: Get summary report (deprecated alias, Admin/Management only)
+      description: Transitional deprecated alias for the canonical `/api/summary/reports` reporting and export contract. Returns the same summary aggregates, attendance report rows, and discipline-analysis overview for Admin or Management users.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [30d, current_month, custom]
+            default: 30d
+          description: Historical report window. Use `custom` together with `from` and `to`.
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+            example: '2026-04-01'
+          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+            example: '2026-04-30'
+          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Report pagination page number.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+          description: Number of attendance rows returned in the report section.
+      responses:
+        '200':
+          description: Summary report with discipline analysis generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryReportResponse'
+        '400':
+          description: Invalid summary period value
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter period harus berupa: 30d, current_month, atau custom
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1937,7 +2556,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-    /api/discipline/all:
+  /api/discipline/all:
     get:
       tags:
         - Discipline Management
@@ -2155,285 +2774,77 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-  # Advanced Attendance Management Endpoints
-  /api/attendance/manual-auto-checkout:
-    post:
-      tags:
-        - Advanced Attendance
-      summary: Manual auto checkout (Admin/Management only)
-      description: Manually trigger auto checkout for users who forgot to check out
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                user_ids:
-                  type: array
-                  items:
-                    type: integer
-                  example: [1, 2, 3]
-                  description: Specific user IDs to process (optional - if empty, processes all eligible users)
-                date:
-                  type: string
-                  format: date
-                  example: '2025-07-05'
-                  description: Date to process (optional - defaults to yesterday)
-      responses:
-        '200':
-          description: Auto checkout completed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Auto checkout completed successfully'
-                  data:
-                    type: object
-                    properties:
-                      processed_users:
-                        type: integer
-                        example: 5
-                      updated_attendances:
-                        type: integer
-                        example: 5
-                      skipped_users:
-                        type: integer
-                        example: 2
-                      details:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            user_id:
-                              type: integer
-                              example: 1
-                            user_name:
-                              type: string
-                              example: 'John Doe'
-                            status:
-                              type: string
-                              enum: [updated, skipped, error]
-                              example: 'updated'
-                            reason:
-                              type: string
-                              example: 'Auto checkout applied based on location history'
-                            checkout_time:
-                              type: string
-                              format: time
-                              example: '17:45:00'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/attendance/setup-auto-checkout:
-    post:
-      tags:
-        - Advanced Attendance
-      summary: Setup auto checkout configuration (Admin/Management only)
-      description: Configure auto checkout settings and process historical data
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                enable_auto_checkout:
-                  type: boolean
-                  example: true
-                default_checkout_time:
-                  type: string
-                  format: time
-                  example: '17:30:00'
-                smart_prediction:
-                  type: boolean
-                  example: true
-                  description: Enable smart checkout time prediction
-                location_based:
-                  type: boolean
-                  example: true
-                  description: Use location history for checkout prediction
-                minimum_work_hours:
-                  type: number
-                  format: float
-                  example: 8.0
-                maximum_work_hours:
-                  type: number
-                  format: float
-                  example: 10.0
-                process_historical_data:
-                  type: boolean
-                  example: false
-                  description: Also process historical incomplete attendance records
-      responses:
-        '200':
-          description: Auto checkout configuration updated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Auto checkout configuration updated successfully'
-                  data:
-                    type: object
-                    properties:
-                      configuration:
-                        type: object
-                        properties:
-                          enable_auto_checkout:
-                            type: boolean
-                            example: true
-                          default_checkout_time:
-                            type: string
-                            format: time
-                            example: '17:30:00'
-                          smart_prediction:
-                            type: boolean
-                            example: true
-                          location_based:
-                            type: boolean
-                            example: true
-                      historical_processing:
-                        type: object
-                        properties:
-                          enabled:
-                            type: boolean
-                            example: false
-                          records_processed:
-                            type: integer
-                            example: 0
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/attendance/smart-prediction:
-    post:
-      tags:
-        - Advanced Attendance
-      summary: Get smart checkout prediction (Admin/Management only)
-      description: Get smart checkout time prediction for a user based on historical data and location patterns
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - user_id
-                - date
-              properties:
-                user_id:
-                  type: integer
-                  example: 1
-                date:
-                  type: string
-                  format: date
-                  example: '2025-07-05'
-                current_location:
-                  type: object
-                  properties:
-                    latitude:
-                      type: number
-                      format: float
-                      example: -6.200000
-                    longitude:
-                      type: number
-                      format: float
-                      example: 106.816666
-      responses:
-        '200':
-          description: Smart prediction generated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      user_id:
-                        type: integer
-                        example: 1
-                      predicted_checkout_time:
-                        type: string
-                        format: time
-                        example: '17:45:00'
-                      confidence_score:
-                        type: number
-                        format: float
-                        example: 0.87
-                        description: Prediction confidence (0-1)
-                      prediction_method:
-                        type: string
-                        example: 'fuzzy_logic_with_location'
-                      factors:
-                        type: object
-                        properties:
-                          historical_pattern:
-                            type: number
-                            format: float
-                            example: 0.8
-                          location_context:
-                            type: number
-                            format: float
-                            example: 0.9
-                          day_of_week:
-                            type: number
-                            format: float
-                            example: 0.7
-                          work_load_indicator:
-                            type: number
-                            format: float
-                            example: 0.6
-                      alternatives:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            time:
-                              type: string
-                              format: time
-                              example: '17:30:00'
-                            probability:
-                              type: number
-                              format: float
-                              example: 0.25
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/attendance/test-timezone:
+  /api/settings/operational:
     get:
       tags:
-        - Development & Testing
-      summary: Test timezone configuration
-      description: Test endpoint to verify timezone handling and time formatting
-      security: []
+        - Settings
+      summary: Get operational settings (Admin/Management only)
+      description: |
+        Retrieve the current operational attendance settings as the backend-authoritative typed object.
+
+        Only the approved operational settings are exposed by this endpoint. It does not expose arbitrary settings rows,
+        secrets, or analysis configuration such as `AHP_CR_THRESHOLD`.
+
+        This endpoint is strict about storage integrity. If any approved operational setting row is missing or contains an
+        invalid persisted value, the request fails instead of silently substituting defaults.
       responses:
         '200':
-          description: Timezone test results
+          description: Operational settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationalSettings'
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Invalid token'
+                required:
+                  - message
+                additionalProperties: false
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/OperationalSettingsIntegrityError'
+    patch:
+      tags:
+        - Settings
+      summary: Partially update operational settings (Admin/Management only)
+      description: |
+        Partially update the approved operational attendance settings.
+
+        Request input accepts `defaultShiftEnd` in `HH:mm` or `HH:mm:ss` format, and successful responses always normalize
+        `defaultShiftEnd` to `HH:mm:ss`.
+
+        The PATCH write path mutates only explicitly provided fields. The success response is returned only when the
+        full post-update operational settings state is valid; otherwise the request fails instead of masking unrelated
+        storage corruption with defaults.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationalSettingsPatchRequest'
+            examples:
+              updateIdleAndShiftEnd:
+                summary: Update idle timeout and fallback shift end
+                value:
+                  autoCheckoutIdleMin: 12
+                  defaultShiftEnd: '18:00'
+      responses:
+        '200':
+          description: Operational settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationalSettings'
+        '400':
+          description: Validation error for rejected operational settings payloads
           content:
             application/json:
               schema:
@@ -2441,53 +2852,48 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      server_timezone:
-                        type: string
-                        example: 'Asia/Jakarta'
-                      current_time_utc:
-                        type: string
-                        format: date-time
-                        example: '2025-07-05T08:30:00.000Z'
-                      current_time_wib:
-                        type: string
-                        example: '2025-07-05 15:30:00 WIB'
-                      database_timezone:
-                        type: string
-                        example: '+07:00'
-                      test_formatting:
-                        type: object
-                        properties:
-                          time_in_format:
-                            type: string
-                            example: '15:30:00'
-                          date_format:
-                            type: string
-                            example: '2025-07-05'
-                          work_hour_calculation:
-                            type: object
-                            properties:
-                              sample_checkin:
-                                type: string
-                                example: '09:00:00'
-                              sample_checkout:
-                                type: string
-                                example: '17:30:00'
-                              calculated_hours:
-                                type: number
-                                format: float
-                                example: 8.5
+                    example: false
+                  code:
+                    type: string
+                    example: 'E_VALIDATION'
+                  message:
+                    type: string
+                    example: 'Unknown operational setting field: ahpCrThreshold'
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                required:
+                  - success
+                  - code
+                  - message
+                  - errors
+                additionalProperties: false
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Invalid token'
+                required:
+                  - message
+                additionalProperties: false
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/OperationalSettingsIntegrityError'
 
   # Reference Data Endpoints
   /api/roles:
     get:
       tags:
         - Reference Data
-      summary: Get all roles
-      description: Retrieve all available user roles
+      summary: Get all roles (Admin/Management only)
+      description: Retrieve all available user roles for Admin and Management users
       responses:
         '200':
           description: Roles retrieved successfully
@@ -2502,16 +2908,65 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Role'
+                      $ref: '#/components/schemas/ReferenceRole'
+                  message:
+                    type: string
+                    example: Roles retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/programs:
+    get:
+      tags:
+        - Reference Data
+      summary: Get all programs (Admin/Management only)
+      description: Retrieve all available programs for Admin and Management users
+      responses:
+        '200':
+          description: Programs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id_programs:
+                          type: integer
+                          example: 1
+                        program_name:
+                          type: string
+                          example: Kampus Merdeka
+                  message:
+                    type: string
+                    example: Programs retrieved successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/positions:
     get:
       tags:
         - Reference Data
-      summary: Get all positions
-      description: Retrieve all available job positions
+      summary: Get all positions (Admin/Management only)
+      description: Retrieve all available job positions for Admin and Management users
+      parameters:
+        - in: query
+          name: program_id
+          schema:
+            type: integer
+          required: false
+          description: Filter positions by program ID
+          example: 1
       responses:
         '200':
           description: Positions retrieved successfully
@@ -2526,16 +2981,21 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Position'
+                      $ref: '#/components/schemas/ReferencePosition'
+                  message:
+                    type: string
+                    example: Positions retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/divisions:
     get:
       tags:
         - Reference Data
-      summary: Get all divisions
-      description: Retrieve all available company divisions
+      summary: Get all divisions (Admin/Management only)
+      description: Retrieve all available company divisions for Admin and Management users
       responses:
         '200':
           description: Divisions retrieved successfully
@@ -2550,81 +3010,14 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Division'
+                      $ref: '#/components/schemas/ReferenceDivision'
+                  message:
+                    type: string
+                    example: Divisions retrieved successfully
         '401':
           $ref: '#/components/responses/Unauthorized'
-
-  /api/attendance-categories:
-    get:
-      tags:
-        - Reference Data
-      summary: Get attendance categories
-      description: Retrieve all attendance categories (Alpha, WFA, etc.)
-      responses:
-        '200':
-          description: Attendance categories retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/AttendanceCategory'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/attendance-statuses:
-    get:
-      tags:
-        - Reference Data
-      summary: Get attendance statuses
-      description: Retrieve all attendance statuses (Present, Late, etc.)
-      responses:
-        '200':
-          description: Attendance statuses retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/AttendanceStatus'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/locations:
-    get:
-      tags:
-        - Reference Data
-      summary: Get all locations
-      description: Retrieve all available office locations
-      responses:
-        '200':
-          description: Locations retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Location'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
 components:
   securitySchemes:
@@ -3035,6 +3428,78 @@ components:
           format: date-time
           example: '2025-07-01T10:00:00.000Z'
 
+    OperationalSettings:
+      type: object
+      description: |
+        Backend-authoritative operational attendance settings.
+
+        This schema intentionally exposes only the approved operational settings. It does not include arbitrary
+        settings-table rows or analysis configuration such as `AHP_CR_THRESHOLD`.
+      properties:
+        geofenceRadiusDefaultM:
+          type: integer
+          minimum: 1
+          example: 100
+          description: Default geofence radius in meters for attendance enforcement.
+        autoCheckoutIdleMin:
+          type: integer
+          minimum: 1
+          example: 10
+          description: Idle threshold in minutes before auto checkout is considered.
+        autoCheckoutTBufferMin:
+          type: integer
+          minimum: 1
+          example: 30
+          description: Time buffer in minutes used by auto-checkout evaluation logic.
+        lateCheckoutToleranceMin:
+          type: integer
+          minimum: 1
+          example: 15
+          description: Late-checkout tolerance in minutes before fallback handling applies.
+        defaultShiftEnd:
+          type: string
+          pattern: '^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$'
+          example: '17:00:00'
+          description: Default fallback shift end time normalized to HH:mm:ss.
+      required:
+        - geofenceRadiusDefaultM
+        - autoCheckoutIdleMin
+        - autoCheckoutTBufferMin
+        - lateCheckoutToleranceMin
+        - defaultShiftEnd
+      additionalProperties: false
+
+    OperationalSettingsPatchRequest:
+      type: object
+      description: |
+        Partial update payload for operational attendance settings.
+
+        Only the approved operational settings may be sent. `defaultShiftEnd` accepts `HH:mm` or `HH:mm:ss` on input
+        and is normalized to `HH:mm:ss` in the success response.
+      properties:
+        geofenceRadiusDefaultM:
+          type: integer
+          minimum: 1
+          example: 150
+        autoCheckoutIdleMin:
+          type: integer
+          minimum: 1
+          example: 12
+        autoCheckoutTBufferMin:
+          type: integer
+          minimum: 1
+          example: 45
+        lateCheckoutToleranceMin:
+          type: integer
+          minimum: 1
+          example: 20
+        defaultShiftEnd:
+          type: string
+          pattern: '^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$'
+          example: '18:00'
+      minProperties: 1
+      additionalProperties: false
+
     Role:
       type: object
       properties:
@@ -3073,6 +3538,298 @@ components:
         description:
           type: string
           example: 'Software development division'
+
+    SummaryReportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        generated_at:
+          type: string
+          format: date-time
+          example: '2026-05-07T09:15:00.000Z'
+        summary:
+          type: object
+          properties:
+            total_ontime:
+              type: integer
+              example: 14
+            total_late:
+              type: integer
+              example: 3
+            total_early:
+              type: integer
+              example: 1
+            total_alpha:
+              type: integer
+              example: 1
+            total_wfo:
+              type: integer
+              example: 10
+            total_wfh:
+              type: integer
+              example: 5
+            total_wfa:
+              type: integer
+              example: 3
+        report:
+          type: object
+          properties:
+            user_attendance_summary:
+              type: array
+              items:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                    example: 7
+                  full_name:
+                    type: string
+                    example: Febri
+                  role_name:
+                    type: string
+                    nullable: true
+                    example: User
+                  division:
+                    type: string
+                    nullable: true
+                    example: Engineering
+                  expected_working_days:
+                    type: integer
+                    nullable: true
+                    example: 10
+                  on_time_days:
+                    type: integer
+                    example: 8
+                  late_days:
+                    type: integer
+                    example: 2
+                  early_days:
+                    type: integer
+                    example: 1
+                  alpha_days:
+                    type: integer
+                    example: 0
+                  wfo_days:
+                    type: integer
+                    example: 6
+                  wfh_days:
+                    type: integer
+                    example: 3
+                  wfa_days:
+                    type: integer
+                    example: 1
+                  valid_attendance_days:
+                    type: integer
+                    example: 10
+                  attendance_coverage_label:
+                    type: string
+                    nullable: true
+                    example: 10/10
+                  latest_attendance_status:
+                    type: string
+                    nullable: true
+                    example: Tepat Waktu
+                  latest_attendance_date:
+                    type: string
+                    format: date
+                    nullable: true
+                    example: '2026-05-07'
+                  summary_note:
+                    type: string
+                    example: Complete
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  attendance_id:
+                    type: integer
+                    example: 101
+                  user_id:
+                    type: integer
+                    nullable: true
+                    example: 7
+                  full_name:
+                    type: string
+                    example: Febri
+                  role:
+                    type: string
+                    nullable: true
+                    example: User
+                  nip_nim:
+                    type: string
+                    nullable: true
+                    example: NIP-007
+                  email:
+                    type: string
+                    nullable: true
+                    example: febri@example.com
+                  time_in:
+                    type: string
+                    nullable: true
+                    example: '08:03'
+                  time_out:
+                    type: string
+                    nullable: true
+                    example: '17:01'
+                  work_hour:
+                    type: string
+                    nullable: true
+                    example: '08:58'
+                  attendance_date:
+                    type: string
+                    format: date
+                    example: '2026-05-04'
+                  location_details:
+                    type: object
+                    nullable: true
+                    properties:
+                      location_id:
+                        type: integer
+                        nullable: true
+                        example: 3
+                      description:
+                        type: string
+                        example: Kantor Pusat
+                      category:
+                        type: string
+                        example: Work From Office
+                      coordinates:
+                        type: object
+                        nullable: true
+                        properties:
+                          latitude:
+                            type: number
+                            format: float
+                            example: -6.2
+                          longitude:
+                            type: number
+                            format: float
+                            example: 106.8
+                  status:
+                    type: string
+                    example: Tepat Waktu
+                  information:
+                    type: string
+                    example: 'Work Duration: 8h'
+                  notes:
+                    type: string
+                    example: ''
+                  discipline_score:
+                    type: number
+                    format: float
+                    nullable: true
+                    example: 88
+                  discipline_label:
+                    type: string
+                    nullable: true
+                    example: Tinggi
+                  discipline_breakdown:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                    example:
+                      alpha_rate: 0
+                      lateness_frequency: 0.1
+            pagination:
+              type: object
+              properties:
+                current_page:
+                  type: integer
+                  example: 1
+                total_pages:
+                  type: integer
+                  example: 2
+                total_items:
+                  type: integer
+                  example: 15
+                items_per_page:
+                  type: integer
+                  example: 10
+                has_next_page:
+                  type: boolean
+                  example: true
+                has_prev_page:
+                  type: boolean
+                  example: false
+        analytics:
+          type: object
+          properties:
+            discipline_analysis:
+              type: object
+              properties:
+                users_analyzed:
+                  type: integer
+                  example: 12
+                average_discipline_score:
+                  type: number
+                  format: float
+                  example: 74.25
+                methodology:
+                  type: string
+                  example: Fuzzy AHP Engine
+                criteria:
+                  type: array
+                  items:
+                    type: string
+                  example: [Alpha Rate, Lateness Severity, Lateness Frequency, Work Focus]
+        period:
+          type: string
+          example: 30d
+        date_range:
+          type: object
+          properties:
+            start_date:
+              type: string
+              example: '2026-05-01'
+            end_date:
+              type: string
+              example: '2026-05-31'
+        message:
+          type: string
+          example: Summary report with discipline analysis generated successfully
+
+    ReferenceRole:
+      type: object
+      properties:
+        id_roles:
+          type: integer
+          example: 1
+        role_name:
+          type: string
+          example: 'Admin'
+
+    ReferencePosition:
+      type: object
+      properties:
+        id_positions:
+          type: integer
+          example: 1
+        position_name:
+          type: string
+          example: 'Software Engineer'
+        id_programs:
+          type: integer
+          example: 1
+        program:
+          type: object
+          nullable: true
+          properties:
+            program_name:
+              type: string
+              example: 'Kampus Merdeka'
+
+    ReferenceDivision:
+      type: object
+      properties:
+        id_divisions:
+          type: integer
+          example: 1
+        division_name:
+          type: string
+          example: 'Engineering'
 
     Attendance:
       type: object
@@ -3365,36 +4122,6 @@ components:
           example: 5
           description: ID of admin/management who processed the booking
 
-    JobStatus:
-      type: object
-      properties:
-        name:
-          type: string
-          example: 'General Alpha Generation'
-        cron_schedule:
-          type: string
-          example: '45 23 * * *'
-        description:
-          type: string
-          example: 'Generates alpha attendance records for users without attendance'
-        last_execution:
-          type: string
-          format: date-time
-          nullable: true
-          example: '2025-07-04T23:45:00.000Z'
-        next_execution:
-          type: string
-          format: date-time
-          example: '2025-07-05T23:45:00.000Z'
-        status:
-          type: string
-          enum: [scheduled, running, completed, failed]
-          example: 'scheduled'
-        execution_count:
-          type: integer
-          example: 5
-          description: 'Number of times this job has been executed'
-
     WFARecommendation:
       type: object
       description: Work From Anywhere location recommendation with Fuzzy AHP scoring
@@ -3643,9 +4370,17 @@ components:
               success:
                 type: boolean
                 example: false
+              code:
+                type: string
+                example: 'E_FORBIDDEN'
               message:
                 type: string
-                example: 'Access forbidden - insufficient permissions'
+                example: 'Forbidden: Insufficient role'
+            required:
+              - success
+              - code
+              - message
+            additionalProperties: false
 
     NotFound:
       description: Resource not found
@@ -3705,6 +4440,50 @@ components:
               error:
                 type: string
                 example: 'Database connection failed'
+
+    OperationalSettingsIntegrityError:
+      description: Operational settings storage is incomplete or contains invalid persisted values
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              code:
+                type: string
+                example: 'E_OPERATIONAL_SETTINGS_INVALID'
+              message:
+                type: string
+                example: 'Operational settings are incomplete or invalid: geofenceRadiusDefaultM (missing)'
+              details:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field:
+                      type: string
+                      example: 'geofenceRadiusDefaultM'
+                    issue:
+                      type: string
+                      enum:
+                        - missing
+                        - invalid
+                    value:
+                      oneOf:
+                        - type: string
+                        - type: number
+                        - type: integer
+                  required:
+                    - field
+                    - issue
+            required:
+              - success
+              - code
+              - message
+              - details
+            additionalProperties: false
 
     ValidationError:
       description: Validation error with detailed field errors
@@ -3917,34 +4696,24 @@ tags:
     description: System health and status endpoints
   - name: Authentication
     description: User authentication and authorization
+  - name: Analysis
+    description: Dashboard-ready Fuzzy AHP analysis endpoints for management surfaces
   - name: Attendance
     description: Employee attendance tracking and management
-  - name: Advanced Attendance
-    description: Advanced attendance features like auto-checkout and smart predictions
   - name: User Management
     description: User account management (Admin/Management only)
   - name: WFA Bookings
     description: Work From Anywhere booking management
   - name: WFA System
     description: WFA recommendation engine using Fuzzy AHP
-  - name: Job Management
-    description: Cron job management and manual triggers (Admin only)
   - name: Reports & Analytics
     description: Summary reports and analytics for management
   - name: Discipline Management
     description: Employee discipline index calculation and management
+  - name: Settings
+    description: Operational settings management endpoints for Admin and Management
   - name: Reference Data
     description: Master data for roles, positions, divisions, etc.
-  - name: Development & Testing
-    description: Development and testing endpoints
-  - name: Reports & Analytics
-    description: Summary and report generation endpoints
-  - name: Discipline Management
-    description: Discipline index and management endpoints
-  - name: Advanced Attendance
-    description: Advanced attendance features like manual checkout and smart prediction
-  - name: Development & Testing
-    description: Development and testing utilities
 externalDocs:
   description: Find out more about Infinite Track Backend
   url: https://github.com/your-org/infinite-track-backend

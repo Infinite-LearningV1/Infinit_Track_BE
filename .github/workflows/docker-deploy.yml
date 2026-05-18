@@ -1,22 +1,25 @@
-name: Build, Push & Deploy
+name: Publish Backend Image
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
-  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/infinit-track-backend
+  NODE_VERSION: '18'
+  DOCKER_IMAGE: registry.digitalocean.com/infinit-track/infinit-track-backend
 
 jobs:
   test:
     name: Lint & Test
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - run: npm run lint
@@ -28,18 +31,23 @@ jobs:
           DB_NAME: test_db
           DB_USER: test_user
           DB_PASS: test_pass
+          CLOUDINARY_CLOUD_NAME: test_cloud
+          CLOUDINARY_API_KEY: test_key
+          CLOUDINARY_API_SECRET: test_secret
 
   build-push:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
+
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: digitalocean/action-doctl@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Login to DOCR
+        run: doctl registry login --expiry-seconds 1200
       - uses: docker/build-push-action@v5
         with:
           context: .
@@ -50,30 +58,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy to Kubernetes
-    runs-on: ubuntu-latest
-    needs: build-push
-    environment:
-      name: production
-      url: https://api.your-domain.com
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up kubeconfig
+      - name: Publish summary
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
-      - name: Apply Kubernetes manifests
-        run: kubectl apply -f k8s/
-
-      - name: Deploy to K8s
-        run: |
-          kubectl set image deployment/infinit-track-app \
-            app=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-            -n infinit-track
-          kubectl rollout status deployment/infinit-track-app \
-            -n infinit-track --timeout=300s
-      - name: Verify deployment
-        run: |
-          kubectl get pods -n infinit-track
-          kubectl get svc -n infinit-track
+          echo "## Backend Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Published immutable image: \`${DOCKER_IMAGE}:${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Published rolling tag: \`${DOCKER_IMAGE}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "Use the immutable SHA tag for droplet rollout." >> $GITHUB_STEP_SUMMARY

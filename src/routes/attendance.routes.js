@@ -17,7 +17,8 @@ import {
   manualSmartAutoCheckoutForDate,
   logLocationEvent,
   getSmartEngineConfig,
-  getEnhancedAutoCheckoutSettings
+  getEnhancedAutoCheckoutSettings,
+  getTodayLocations
 } from '../controllers/attendance.controller.js';
 import { verifyToken } from '../middlewares/authJwt.js';
 import roleGuard from '../middlewares/roleGuard.js';
@@ -38,12 +39,13 @@ router.post('/location-event', locationEventValidation, validate, logLocationEve
 
 // GET / - Get all attendances for admin/management with search and pagination
 router.get('/', roleGuard(['Admin', 'Management']), getAllAttendances);
+router.get('/today-locations', roleGuard(['Admin', 'Management']), getTodayLocations);
 
 router.post('/check-in', checkInValidation, validate, checkIn);
 router.post('/checkout/:id', checkOutValidation, validate, checkOut);
 router.get('/history', getAttendanceHistory);
 router.get('/status-today', getAttendanceStatus);
-router.get('/debug-checkin-time', debugCheckInTime); // Debug endpoint
+router.get('/debug-checkin-time', roleGuard(['Admin', 'Management']), debugCheckInTime);
 
 // Manual auto checkout endpoint (Admin only)
 router.post('/manual-auto-checkout', roleGuard(['Admin', 'Management']), manualAutoCheckout);

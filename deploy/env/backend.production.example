@@ -1,0 +1,49 @@
+# Runtime
+NODE_ENV=production
+PORT=3005
+TZ=Asia/Jakarta
+LOG_LEVEL=info
+
+# Public clients
+# Use the exact browser origin of the deployed frontend.
+CORS_ORIGIN=https://orca-app-58alv.ondigitalocean.app
+
+# DigitalOcean Managed MySQL
+# Use the connection details from cluster it-mysql-staging-sgp1.
+DB_HOST=replace-with-managed-mysql-host
+DB_PORT=25060
+DB_USER=replace-with-managed-mysql-user
+DB_PASS=replace-with-managed-mysql-password
+DB_NAME=replace-with-managed-mysql-database
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=true
+
+# JWT
+JWT_SECRET=replace-with-rotated-jwt-secret
+JWT_ACCESS_TTL_SECONDS=14400
+JWT_REFRESH_SECRET=replace-with-rotated-refresh-secret
+JWT_REFRESH_TTL_SECONDS=2592000
+JWT_REFRESH_INACTIVITY_WINDOW_SECONDS=172800
+
+# DigitalOcean Spaces
+SPACES_ENDPOINT=sgp1.digitaloceanspaces.com
+SPACES_REGION=sgp1
+SPACES_BUCKET=infinite-track-staging-sgp1
+SPACES_ACCESS_KEY_ID=replace-with-rotated-spaces-access-key
+SPACES_SECRET_ACCESS_KEY=replace-with-rotated-spaces-secret-key
+
+# Transitional Cloudinary support
+CLOUDINARY_CLOUD_NAME=replace-with-cloudinary-cloud-name-if-needed
+CLOUDINARY_API_KEY=replace-with-cloudinary-api-key-if-needed
+CLOUDINARY_API_SECRET=replace-with-cloudinary-api-secret-if-needed
+
+# Geoapify
+GEOAPIFY_API_KEY=replace-with-geoapify-key
+
+# Business logic
+GEOFENCE_RADIUS_DEFAULT_M=100
+AUTO_CHECKOUT_IDLE_MIN=10
+AUTO_CHECKOUT_TBUFFER_MIN=30
+LATE_CHECKOUT_TOLERANCE_MIN=15
+DEFAULT_SHIFT_END=17:00
+AHP_CR_THRESHOLD=0.10

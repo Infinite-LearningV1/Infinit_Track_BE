@@ -1,7 +1,8 @@
-import { body, validationResult } from 'express-validator';
+import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { validateHistoricalDateWindowQuery } from '../utils/historicalDateWindow.js';
 import { assertSafeUrl } from '../utils/url.js';
 
 // Remove the file system setup as we're switching to Cloudinary
@@ -518,4 +519,21 @@ export const locationEventValidation = [
 
       return true;
     })
+];
+
+export const dashboardAnalyticsValidation = [
+  query().custom((_, { req }) => {
+    const message = validateHistoricalDateWindowQuery({
+      period: req.query.period || '30d',
+      from: req.query.from || null,
+      to: req.query.to || null
+    });
+
+    if (message) {
+      throw new Error(message);
+    }
+
+    return true;
+  }),
+  validate
 ];

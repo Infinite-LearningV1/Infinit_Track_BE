@@ -13,7 +13,27 @@ import {
   sequelize
 } from '../models/index.js';
 import logger from '../utils/logger.js';
-import cloudinary from '../config/cloudinary.js';
+import { buildUserProfilePhotoKey, uploadBufferToSpaces, deleteSpacesObject } from '../config/spaces.js';
+
+const deleteLegacyCloudinaryPhoto = async (publicId) => {
+  try {
+    const { default: cloudinary } = await import('../config/cloudinary.js');
+    const destroyResult = await cloudinary.uploader.destroy(publicId);
+
+    if (destroyResult?.result === 'ok') {
+      logger.info(`Old photo deleted from Cloudinary: ${publicId}`);
+      return true;
+    }
+
+    logger.warn(
+      `Old photo was not deleted from Cloudinary ${publicId}: ${destroyResult?.result ?? 'unknown result'}`
+    );
+    return false;
+  } catch (deleteError) {
+    logger.warn(`Failed to delete old photo from Cloudinary ${publicId}: ${deleteError.message}`);
+    return false;
+  }
+};
 
 export const getProfile = async (req, res) => {
   try {
@@ -160,6 +180,8 @@ export const getAllUsers = async (req, res, next) => {
 
 // POST /users/:id/photo - Admin Upload Foto Wajah User
 export const uploadUserPhoto = async (req, res, next) => {
+  let uploadedSpacesKey = null;
+
   try {
     const { id } = req.params;
 
@@ -183,55 +205,43 @@ export const uploadUserPhoto = async (req, res, next) => {
     // Get old photo data for deletion
     let oldPublicId = null;
     let oldPhotoDeleted = false;
+    let oldPhoto = null;
 
     if (user.id_photos) {
-      const oldPhoto = await Photo.findByPk(user.id_photos);
+      oldPhoto = await Photo.findByPk(user.id_photos);
       if (oldPhoto && oldPhoto.public_id) {
         oldPublicId = oldPhoto.public_id;
       }
-    } // Upload to Cloudinary
-    const uploadToCloudinary = (fileBuffer) => {
-      return new Promise((resolve, reject) => {
-        // Debug logging for cloudinary config
-        logger.info('Cloudinary config check in controller:', {
-          cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'SET' : 'MISSING',
-          api_key: process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING',
-          api_secret: process.env.CLOUDINARY_API_SECRET ? 'SET' : 'MISSING'
-        });
+    }
 
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            resource_type: 'image',
-            folder: 'face_photos',
-            transformation: [{ width: 300, height: 300, crop: 'fill' }, { quality: 'auto' }]
-          },
-          (error, result) => {
-            if (error) return reject(error);
-            resolve(result);
-          }
-        );
-        uploadStream.end(fileBuffer);
-      });
-    };
-
-    const uploadResult = await uploadToCloudinary(req.file.buffer);
+    const storageKey = buildUserProfilePhotoKey(id, req.file.originalname);
+    const uploadResult = await uploadBufferToSpaces({
+      key: storageKey,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype
+    });
+    uploadedSpacesKey = uploadResult.key;
 
     // Create or update photo record
     let photo = await Photo.findOne({ where: { user_id: id } });
 
     if (photo) {
-      // Update existing photo
-      await photo.update({
-        photo_url: uploadResult.secure_url,
-        public_id: uploadResult.public_id,
+      const nextPhotoPayload = {
+        photo_url: uploadResult.url,
+        storage_provider: 'spaces',
+        storage_key: uploadResult.key,
         photo_updated_at: new Date()
-      });
+      };
+
+      await photo.update(nextPhotoPayload);
     } else {
       // Create new photo record
       photo = await Photo.create({
         user_id: id,
-        photo_url: uploadResult.secure_url,
-        public_id: uploadResult.public_id,
+        photo_url: uploadResult.url,
+        storage_provider: 'spaces',
+        storage_key: uploadResult.key,
+        public_id: null,
         photo_updated_at: new Date()
       });
 
@@ -241,21 +251,15 @@ export const uploadUserPhoto = async (req, res, next) => {
       });
     }
 
-    // Delete old photo from Cloudinary if exists
     if (oldPublicId) {
-      try {
-        await cloudinary.uploader.destroy(oldPublicId);
-        oldPhotoDeleted = true;
-        logger.info(`Old photo deleted from Cloudinary: ${oldPublicId}`);
-      } catch (deleteError) {
-        logger.warn(
-          `Failed to delete old photo from Cloudinary ${oldPublicId}: ${deleteError.message}`
-        );
-        oldPhotoDeleted = false;
+      oldPhotoDeleted = await deleteLegacyCloudinaryPhoto(oldPublicId);
+
+      if (oldPhotoDeleted && oldPhoto) {
+        await photo.update({ public_id: null });
       }
     }
 
-    logger.info(`Photo uploaded for user ${id}: ${uploadResult.secure_url}`);
+    logger.info(`Photo uploaded for user ${id}: ${uploadResult.url}`);
 
     res.json({
       success: true,
@@ -263,12 +267,22 @@ export const uploadUserPhoto = async (req, res, next) => {
       data: {
         user_id: parseInt(id, 10),
         photo_id: photo.id_photos,
-        photo: uploadResult.secure_url,
+        photo: uploadResult.url,
         photo_updated_at: photo.photo_updated_at,
         old_photo_deleted: oldPhotoDeleted
       }
     });
   } catch (error) {
+    if (uploadedSpacesKey) {
+      try {
+        await deleteSpacesObject(uploadedSpacesKey);
+      } catch (cleanupError) {
+        logger.warn(
+          `Failed to clean up orphaned Spaces object ${uploadedSpacesKey}: ${cleanupError.message}`
+        );
+      }
+    }
+
     logger.error(`Error uploading user photo: ${error.message}`, { stack: error.stack });
     next(error);
   }
@@ -496,6 +510,7 @@ export const deleteUser = async (req, res, next) => {
 // POST /users - Create New User (Admin and Management only)
 export const createUser = async (req, res, next) => {
   const transaction = await sequelize.transaction();
+  let uploadResult;
 
   try {
     const {
@@ -552,41 +567,9 @@ export const createUser = async (req, res, next) => {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10); // Temporarily disable foreign key checks to handle circular dependency
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Upload to Cloudinary first
-    const uploadToCloudinary = (fileBuffer) => {
-      return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            resource_type: 'image',
-            folder: 'face_photos',
-            transformation: [{ width: 300, height: 300, crop: 'fill' }, { quality: 'auto' }]
-          },
-          (error, result) => {
-            if (error) return reject(error);
-            resolve(result);
-          }
-        );
-        uploadStream.end(fileBuffer);
-      });
-    };
-
-    const uploadResult = await uploadToCloudinary(req.file.buffer);
-
-    // Create photo record first with temporary user_id
-    const photo = await Photo.create(
-      {
-        photo_url: uploadResult.secure_url,
-        public_id: uploadResult.public_id,
-        user_id: 1, // Temporary value, will be updated after user creation
-        photo_updated_at: new Date()
-      },
-      { transaction }
-    );
-
-    // Create user with photo reference
+    // Create user first, then write photo to Spaces with final user id key
     const newUser = await User.create(
       {
         full_name,
@@ -598,7 +581,7 @@ export const createUser = async (req, res, next) => {
         id_programs,
         id_position,
         id_divisions: id_divisions || null,
-        id_photos: photo.id_photos,
+        id_photos: null,
         created_by: req.user.id,
         created_at: new Date(),
         updated_at: new Date()
@@ -606,16 +589,31 @@ export const createUser = async (req, res, next) => {
       { transaction }
     );
 
-    // Update photo with correct user_id
-    await photo.update(
+    const storageKey = buildUserProfilePhotoKey(newUser.id_users, req.file.originalname);
+    uploadResult = await uploadBufferToSpaces({
+      key: storageKey,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype
+    });
+
+    const photo = await Photo.create(
       {
-        user_id: newUser.id_users
+        photo_url: uploadResult.url,
+        storage_provider: 'spaces',
+        storage_key: uploadResult.key,
+        public_id: null,
+        user_id: newUser.id_users,
+        photo_updated_at: new Date()
       },
       { transaction }
     );
 
-    // Re-enable foreign key checks
-    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
+    await newUser.update(
+      {
+        id_photos: photo.id_photos
+      },
+      { transaction }
+    );
 
     // Create WFH location
     await Location.create(
@@ -714,6 +712,14 @@ export const createUser = async (req, res, next) => {
       message: 'User created successfully'
     });
   } catch (error) {
+    if (uploadResult?.key) {
+      try {
+        await deleteSpacesObject(uploadResult.key);
+      } catch (cleanupError) {
+        logger.warn(`Failed to clean up Spaces object ${uploadResult.key}: ${cleanupError.message}`);
+      }
+    }
+
     await transaction.rollback();
     logger.error(`Error creating user: ${error.message}`, { stack: error.stack });
     next(error);

@@ -13,13 +13,6 @@ export default (allowedRoles) => {
     } // Get role name from JWT token - support both old and new format
     const userRole = req.user.role_name || req.user.role?.name;
 
-    // Debug logging untuk troubleshooting
-    console.log('🔍 Role Guard Debug Info:');
-    console.log('- req.user:', req.user);
-    console.log('- User Role from token:', userRole);
-    console.log('- Required Roles:', allowedRoles);
-    console.log('- Role check result:', allowedRoles.includes(userRole));
-
     if (!userRole || !allowedRoles.includes(userRole)) {
       logger.warn(
         `Role check failed - User role: "${userRole}", Required: ${allowedRoles.join(', ')}`
@@ -27,7 +20,7 @@ export default (allowedRoles) => {
       return res.status(403).json({
         success: false,
         code: 'E_FORBIDDEN',
-        message: `Forbidden: Insufficient role. User role: ${userRole}, Required roles: ${allowedRoles.join(', ')} [DEBUG: ${new Date().toISOString()}]`
+        message: 'Forbidden: Insufficient role'
       });
     }
 

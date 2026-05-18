@@ -1,8 +1,5 @@
 import { v2 as cloudinary } from 'cloudinary';
-import dotenv from 'dotenv';
-
-// Ensure environment variables are loaded
-dotenv.config();
+import './loadEnv.js';
 
 // Validate required environment variables
 const requiredEnvVars = {

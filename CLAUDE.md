@@ -38,7 +38,7 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — checkout → Node 18 → `np
 - `/api/users` → `user.controller.js` | `/api/bookings` → `booking.controller.js`
 - `/api/wfa` → `wfa.controller.js` | `/api/summary` → `summary.controller.js`
 - `/api/discipline` → `discipline.controller.js` | `/api` → `referenceData.controller.js`
-- `/health` — health check
+- `/livez` — process liveness | `/health` — dependency readiness
 
 **Database**: MySQL via Sequelize 6 (`src/config/database.js`, timezone `+07:00`). Models in `src/models/*.js`, associations in `src/models/index.js`.
 
@@ -51,7 +51,7 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — checkout → Node 18 → `np
 
 **Timezone**: All business logic uses **WIB (Asia/Jakarta, UTC+7)** — set in server.js, Sequelize config, and scheduled job runtime.
 
-**Deployment**: Repository-managed deployment configuration is defined in `.do/app*.yaml` rather than root-level `docker-compose.yml`/`Dockerfile` artifacts. Use `DB_HOST=localhost` for local development; in managed or containerized environments, set `DB_HOST` to the database service hostname provided by that platform.
+**Deployment**: Canonical backend runtime is the droplet-hosted Docker Compose stack that pulls `registry.digitalocean.com/infinit-track/infinit-track-backend` by immutable `BACKEND_IMAGE_TAG`, with host Nginx in front of the container and managed MySQL behind it. Treat `.do/app*.yaml` and `k8s/` as legacy or historical backend paths unless current runtime evidence explicitly says otherwise. Use `DB_HOST=localhost` for local development; on the canonical droplet runtime, set `DB_HOST` to the managed database hostname for that environment.
 
 ## Search & Research Routing
 

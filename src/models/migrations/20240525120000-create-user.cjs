@@ -1,13 +1,12 @@
-// 'use strict';
+'use strict';
 
-// /** @type {import('sequelize-cli').Migration} */
-// module.exports = {
-//   async up(queryInterface, Sequelize) {
-//     // This is a stub migration - tables already exist
-//     // No action needed
-//   },
+/** @type {import('sequelize-cli').Migration} */
+module.exports = {
+  async up() {
+    // Historical alignment stub: the users table already exists in the baseline schema.
+  },
 
-//   async down(queryInterface, Sequelize) {
-//     // This is a stub migration - no rollback needed
-//   }
-// };
+  async down() {
+    // No rollback needed for historical alignment stub.
+  }
+};

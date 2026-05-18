@@ -9,4 +9,3 @@ jest.spyOn(console, 'error').mockImplementation(() => {});
 
 // Provide stable environment defaults for FAHP
 process.env.FAHP_METHOD = process.env.FAHP_METHOD || 'extent';
-process.env.AHP_CR_THRESHOLD = process.env.AHP_CR_THRESHOLD || '0.10';

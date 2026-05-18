@@ -10,13 +10,16 @@
  *   node scripts/smoke-test.js <base-url>
  *
  * Example:
- *   node scripts/smoke-test.js https://staging-api.ondigitalocean.app
+ *   node scripts/smoke-test.js https://staging-api.example.internal
  */
 
 import axios from 'axios';
 
 const BASE_URL = process.argv[2] || process.env.BASE_URL;
 const TIMEOUT = 10000; // 10 seconds
+const EXPECTED_INVALID_LOGIN_STATUSES = new Set([400, 401, 422]);
+const LIVEZ_URL = `${BASE_URL}/livez`;
+const HEALTH_URL = `${BASE_URL}/health`;
 
 if (!BASE_URL) {
   console.error('❌ Error: BASE_URL not provided');
@@ -33,6 +36,14 @@ const results = {
   failed: 0,
   tests: []
 };
+
+function formatAxiosError(error) {
+  if (error.response) {
+    return `Status: ${error.response.status}, Response: ${JSON.stringify(error.response.data)}`;
+  }
+
+  return `Error: ${error.message}`;
+}
 
 /**
  * Test result logger
@@ -53,83 +64,159 @@ function logTest(name, passed, details = '') {
 }
 
 /**
- * Test 1: Health Endpoint
+ * Test 1: Liveness Endpoint
  */
-async function testHealth() {
+async function testLiveness() {
   try {
-    const response = await axios.get(`${BASE_URL}/health`, { timeout: TIMEOUT });
+    const response = await axios.get(LIVEZ_URL, { timeout: TIMEOUT });
 
     if (response.status === 200 && response.data.status === 'OK') {
       logTest(
-        'Health Endpoint',
+        'Liveness Endpoint',
         true,
         `Status: ${response.status}, Response: ${JSON.stringify(response.data)}`
       );
       return true;
     } else {
-      logTest('Health Endpoint', false, `Unexpected response: ${JSON.stringify(response.data)}`);
+      logTest('Liveness Endpoint', false, `Unexpected response: ${JSON.stringify(response.data)}`);
       return false;
     }
   } catch (error) {
-    logTest('Health Endpoint', false, `Error: ${error.message}`);
+    logTest('Liveness Endpoint', false, formatAxiosError(error));
     return false;
   }
 }
 
 /**
- * Test 2: API Documentation
+ * Test 2: Readiness Endpoint
+ */
+async function testReadiness() {
+  try {
+    const response = await axios.get(HEALTH_URL, {
+      timeout: TIMEOUT,
+      validateStatus: () => true
+    });
+
+    if (response.status === 200 && response.data.status === 'OK' && response.data.ready === true) {
+      logTest(
+        'Readiness Endpoint',
+        true,
+        `Status: ${response.status}, Response: ${JSON.stringify(response.data)}`
+      );
+      return true;
+    }
+
+    if (response.status === 503 && Array.isArray(response.data?.missing)) {
+      logTest(
+        'Readiness Endpoint',
+        false,
+        `Status: ${response.status}, Missing: ${response.data.missing.join(', ')}`
+      );
+      return false;
+    }
+
+    logTest(
+      'Readiness Endpoint',
+      false,
+      `Unexpected status ${response.status}, Response: ${JSON.stringify(response.data)}`
+    );
+    return false;
+  } catch (error) {
+    logTest('Readiness Endpoint', false, formatAxiosError(error));
+    return false;
+  }
+}
+
+/**
+ * Test 3: API Documentation Access Control
  */
 async function testDocs() {
-  try {
-    const response = await axios.get(`${BASE_URL}/docs/`, { timeout: TIMEOUT });
+  const testName = 'API Documentation Access Control';
+  const blockedStatuses = [401, 403];
 
-    if (response.status === 200) {
-      logTest('API Documentation', true, `Status: ${response.status}`);
+  try {
+    const response = await axios.get(`${BASE_URL}/docs/`, {
+      timeout: TIMEOUT,
+      validateStatus: () => true
+    });
+
+    if (blockedStatuses.includes(response.status)) {
+      logTest(testName, true, `Anonymous access blocked with ${response.status}`);
       return true;
-    } else {
-      logTest('API Documentation', false, `Status: ${response.status}`);
-      return false;
     }
+
+    logTest(testName, false, `Expected 401/403 for anonymous docs access, got ${response.status}`);
+    return false;
   } catch (error) {
-    logTest('API Documentation', false, `Error: ${error.message}`);
+    logTest(testName, false, formatAxiosError(error));
     return false;
   }
 }
 
 /**
- * Test 3: CORS Headers
+ * Test 4: CORS Headers
  */
 async function testCORS() {
   try {
-    const response = await axios.options(`${BASE_URL}/health`, {
+    const disallowedOrigin = 'https://example.com';
+    const response = await axios.options(`${BASE_URL}/api/auth/login`, {
       timeout: TIMEOUT,
+      validateStatus: () => true,
       headers: {
-        Origin: 'https://example.com',
-        'Access-Control-Request-Method': 'GET'
+        Origin: disallowedOrigin,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type'
       }
     });
 
     const corsHeader = response.headers['access-control-allow-origin'];
-    if (corsHeader) {
-      logTest('CORS Headers', true, `Allow-Origin: ${corsHeader}`);
+    const credentialsHeader = response.headers['access-control-allow-credentials'];
+    const methodsHeader = response.headers['access-control-allow-methods'];
+    const allowedHeaders = response.headers['access-control-allow-headers'];
+    const disallowedOriginRejected = corsHeader !== disallowedOrigin;
+    const credentialsConfigured = credentialsHeader === 'true';
+    const allowsPost = methodsHeader
+      ?.split(',')
+      .map((method) => method.trim().toUpperCase())
+      .includes('POST');
+    const allowsContentType = allowedHeaders
+      ?.split(',')
+      .map((header) => header.trim().toLowerCase())
+      .includes('content-type');
+
+    if (
+      [200, 204].includes(response.status) &&
+      disallowedOriginRejected &&
+      credentialsConfigured &&
+      allowsPost &&
+      allowsContentType
+    ) {
+      logTest(
+        'CORS Headers',
+        true,
+        `Requested-Origin: ${disallowedOrigin}, Allow-Origin: ${corsHeader || '-'}, Allow-Credentials: ${credentialsHeader}, Allow-Methods: ${methodsHeader}, Allow-Headers: ${allowedHeaders}`
+      );
       return true;
-    } else {
-      logTest('CORS Headers', false, 'No CORS headers found');
-      return false;
     }
+
+    logTest(
+      'CORS Headers',
+      false,
+      `Status: ${response.status}, Requested-Origin: ${disallowedOrigin}, Allow-Origin: ${corsHeader || '-'}, Allow-Credentials: ${credentialsHeader || '-'}, Allow-Methods: ${methodsHeader || '-'}, Allow-Headers: ${allowedHeaders || '-'}`
+    );
+    return false;
   } catch (error) {
-    // Some servers might not support OPTIONS, which is OK
-    logTest('CORS Headers', true, 'OPTIONS not supported (acceptable)');
-    return true;
+    logTest('CORS Headers', false, formatAxiosError(error));
+    return false;
   }
 }
 
 /**
- * Test 4: Security Headers
+ * Test 5: Security Headers
  */
 async function testSecurityHeaders() {
   try {
-    const response = await axios.get(`${BASE_URL}/health`, { timeout: TIMEOUT });
+    const response = await axios.get(LIVEZ_URL, { timeout: TIMEOUT });
 
     const headers = response.headers;
     const checks = {
@@ -147,13 +234,13 @@ async function testSecurityHeaders() {
     logTest('Security Headers', allPassed, details);
     return allPassed;
   } catch (error) {
-    logTest('Security Headers', false, `Error: ${error.message}`);
+    logTest('Security Headers', false, formatAxiosError(error));
     return false;
   }
 }
 
 /**
- * Test 5: Auth Endpoint (should reject without credentials)
+ * Test 6: Auth Endpoint (should reject without credentials)
  */
 async function testAuthEndpoint() {
   try {
@@ -171,13 +258,13 @@ async function testAuthEndpoint() {
       return false;
     }
   } catch (error) {
-    logTest('Auth Protection', false, `Error: ${error.message}`);
+    logTest('Auth Protection', false, formatAxiosError(error));
     return false;
   }
 }
 
 /**
- * Test 6: Login Endpoint Structure
+ * Test 7: Login Endpoint Structure
  */
 async function testLoginEndpoint() {
   try {
@@ -192,33 +279,33 @@ async function testLoginEndpoint() {
       }
     );
 
-    // Should return 400 or 401, not 500
-    if (response.status === 400 || response.status === 401) {
+    if (EXPECTED_INVALID_LOGIN_STATUSES.has(response.status)) {
       logTest(
         'Login Endpoint',
         true,
         `Returns ${response.status} for invalid credentials (correct)`
       );
       return true;
-    } else if (response.status === 500) {
-      logTest('Login Endpoint', false, 'Returns 500 error (database/server issue)');
-      return false;
-    } else {
-      logTest('Login Endpoint', true, `Returns ${response.status} (acceptable)`);
-      return true;
     }
+
+    logTest(
+      'Login Endpoint',
+      false,
+      `Expected 400/401/422 for invalid credentials, got ${response.status}, Response: ${JSON.stringify(response.data)}`
+    );
+    return false;
   } catch (error) {
-    logTest('Login Endpoint', false, `Error: ${error.message}`);
+    logTest('Login Endpoint', false, formatAxiosError(error));
     return false;
   }
 }
 
 /**
- * Test 7: Request ID in Response
+ * Test 8: Request ID in Response
  */
 async function testRequestId() {
   try {
-    const response = await axios.get(`${BASE_URL}/health`, { timeout: TIMEOUT });
+    const response = await axios.get(LIVEZ_URL, { timeout: TIMEOUT });
 
     const requestId = response.headers['x-request-id'];
     if (requestId) {
@@ -229,18 +316,18 @@ async function testRequestId() {
       return false;
     }
   } catch (error) {
-    logTest('Request ID Header', false, `Error: ${error.message}`);
+    logTest('Request ID Header', false, formatAxiosError(error));
     return false;
   }
 }
 
 /**
- * Test 8: Response Time
+ * Test 9: Response Time
  */
 async function testResponseTime() {
   try {
     const start = Date.now();
-    await axios.get(`${BASE_URL}/health`, { timeout: TIMEOUT });
+    await axios.get(LIVEZ_URL, { timeout: TIMEOUT });
     const duration = Date.now() - start;
 
     if (duration < 1000) {
@@ -254,7 +341,7 @@ async function testResponseTime() {
       return false;
     }
   } catch (error) {
-    logTest('Response Time', false, `Error: ${error.message}`);
+    logTest('Response Time', false, formatAxiosError(error));
     return false;
   }
 }
@@ -267,7 +354,8 @@ async function runTests() {
   console.log('Running Smoke Tests');
   console.log('═══════════════════════════════════════\n');
 
-  await testHealth();
+  await testLiveness();
+  await testReadiness();
   await testDocs();
   await testCORS();
   await testSecurityHeaders();

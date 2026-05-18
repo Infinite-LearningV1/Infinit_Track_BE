@@ -1,5 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
+import './loadEnv.js';
 
 // Validate critical environment variables
 const requiredEnvVars = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'];
@@ -9,11 +8,14 @@ if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
   throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
 }
 
+const env = process.env.NODE_ENV || 'development';
+const corsOrigin = process.env.CORS_ORIGIN || (env === 'production' ? '' : '*');
+
 export default {
   port: process.env.PORT || 3000,
-  env: process.env.NODE_ENV || 'development',
+  env,
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: corsOrigin,
     credentials: true
   },
   jwt: {
@@ -35,13 +37,10 @@ export default {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
-    dialect: 'mysql'
-  },
-  geofence: {
-    radiusDefaultM: parseInt(process.env.GEOFENCE_RADIUS_DEFAULT_M || '100', 10)
-  },
-  autoCheckout: {
-    idleMinutes: parseInt(process.env.AUTO_CHECKOUT_IDLE_MIN || '10', 10),
-    tBufferMinutes: parseInt(process.env.AUTO_CHECKOUT_TBUFFER_MIN || '30', 10)
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    dialect: 'mysql',
+    ssl: String(process.env.DB_SSL || 'false').toLowerCase() === 'true',
+    sslRejectUnauthorized:
+      String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() === 'true'
   }
 };

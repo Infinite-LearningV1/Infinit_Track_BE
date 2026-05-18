@@ -1,0 +1,239 @@
+import { jest } from '@jest/globals';
+
+const mockBuildDashboardAnalytics = jest.fn();
+
+jest.unstable_mockModule('../src/config/database.js', () => ({
+  default: {}
+}));
+
+jest.unstable_mockModule('../src/models/index.js', () => ({
+  Attendance: {},
+  User: {},
+  Role: {},
+  Location: {},
+  AttendanceCategory: {},
+  AttendanceStatus: {},
+  Settings: {},
+  Division: {}
+}));
+
+jest.unstable_mockModule('../src/utils/workHourFormatter.js', () => ({
+  formatWorkHour: jest.fn(),
+  calculateWorkHour: jest.fn(),
+  formatTimeOnly: jest.fn()
+}));
+
+jest.unstable_mockModule('../src/utils/logger.js', () => ({
+  default: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() }
+}));
+
+jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
+  default: {}
+}));
+
+jest.unstable_mockModule('../src/utils/dashboardAnalytics.js', () => ({
+  buildDashboardAnalytics: mockBuildDashboardAnalytics
+}));
+
+const buildRes = () => ({
+  status: jest.fn().mockReturnThis(),
+  json: jest.fn().mockReturnThis()
+});
+
+const responseShell = {
+  meta: {
+    generated_at: '2026-05-03T02:30:00.000Z',
+    timezone: 'Asia/Jakarta',
+    requested_window: {
+      period: 'custom',
+      from: '2026-04-01',
+      to: '2026-04-15'
+    },
+    executed_window: {
+      from: '2026-04-01',
+      to: '2026-04-15'
+    },
+    section_windows: {
+      executive_kpis: { from: '2026-04-01', to: '2026-04-15' },
+      historical_trend: { from: '2026-04-01', to: '2026-04-15' },
+      mode_mix: { from: '2026-04-01', to: '2026-04-15' },
+      fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-15' },
+      geofence_evidence_context: { from: '2026-04-01', to: '2026-04-15' }
+    },
+    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+  },
+  executive_kpis: {
+    attendance_rate: 0,
+    late_alpha_risk: 0,
+    avg_discipline: null,
+    needs_attention: 0,
+    raw_counts: {
+      total_attendance_records: 0,
+      total_present: 0,
+      total_alpha: 0,
+      total_late: 0,
+      total_on_time: 0,
+      total_wfo: 0,
+      total_wfh: 0,
+      total_wfa: 0,
+      discipline_users_analyzed: 0
+    }
+  },
+  historical_trend: {
+    points: []
+  },
+  mode_mix: {
+    totals: {
+      wfo: 0,
+      wfh: 0,
+      wfa: 0
+    },
+    percentages: {
+      wfo: 0,
+      wfh: 0,
+      wfa: 0
+    }
+  },
+  geofence_evidence_context: {
+    status: 'needs_data',
+    needs_data: true,
+    reason: 'NO_GEOFENCE_EVENTS',
+    authority: 'context_only',
+    final_attendance_authority: 'attendance_records',
+    window: { from: '2026-04-01', to: '2026-04-15' },
+    raw_counts: {
+      total_events: 0,
+      enter_events: 0,
+      exit_events: 0,
+      unique_users: 0
+    }
+  },
+  fuzzy_ahp_snapshot: {
+    discipline: {
+      status: 'no_data',
+      generated_at: '2026-05-03T02:30:00.000Z',
+      window: { from: '2026-04-01', to: '2026-04-15' },
+      weights: {},
+      consistency: null,
+      top_rank: null,
+      distribution: {}
+    },
+    wfa: {
+      status: 'no_data',
+      generated_at: '2026-05-03T02:30:00.000Z',
+      window: { from: '2026-04-01', to: '2026-04-15' },
+      weights: {},
+      consistency: null,
+      top_rank: null,
+      distribution: {}
+    },
+    smart_ac: {
+      status: 'no_data',
+      generated_at: '2026-05-03T02:30:00.000Z',
+      window: { from: '2026-04-01', to: '2026-04-15' },
+      weights: {},
+      consistency: null,
+      top_rank: null,
+      distribution: {}
+    }
+  },
+  insights: {
+    items: []
+  }
+};
+
+describe('summary dashboard analytics controller contract', () => {
+  beforeEach(() => {
+    mockBuildDashboardAnalytics.mockReset();
+  });
+
+  it('delegates validated query values to the dashboard analytics helper', async () => {
+    mockBuildDashboardAnalytics.mockResolvedValueOnce(responseShell);
+
+    const { getDashboardAnalytics } = await import('../src/controllers/summary.controller.js');
+    const req = {
+      query: {
+        period: 'custom',
+        from: '2026-04-01',
+        to: '2026-04-15'
+      }
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getDashboardAnalytics(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockBuildDashboardAnalytics).toHaveBeenCalledWith({
+      period: 'custom',
+      from: '2026-04-01',
+      to: '2026-04-15'
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      requested_window: responseShell.meta.requested_window,
+      executed_window: responseShell.meta.executed_window,
+      data: responseShell,
+      message: 'Dashboard analytics retrieved successfully'
+    });
+  });
+
+  it('uses controller defaults without duplicating validation', async () => {
+    mockBuildDashboardAnalytics.mockResolvedValueOnce({
+      ...responseShell,
+      meta: {
+        ...responseShell.meta,
+        requested_window: { period: '30d', from: null, to: null },
+        executed_window: { from: '2026-04-04', to: '2026-05-03' },
+        section_windows: {
+          executive_kpis: { from: '2026-04-04', to: '2026-05-03' },
+          historical_trend: { from: '2026-04-04', to: '2026-05-03' },
+          mode_mix: { from: '2026-04-04', to: '2026-05-03' },
+          fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' },
+          geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' }
+        },
+        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+      }
+    });
+
+    const { getDashboardAnalytics } = await import('../src/controllers/summary.controller.js');
+    const req = { query: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getDashboardAnalytics(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockBuildDashboardAnalytics).toHaveBeenCalledWith({
+      period: '30d',
+      from: null,
+      to: null
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        requested_window: { period: '30d', from: null, to: null },
+        executed_window: { from: '2026-04-04', to: '2026-05-03' },
+        message: 'Dashboard analytics retrieved successfully'
+      })
+    );
+  });
+
+  it('passes helper failures to the error handler', async () => {
+    const error = new Error('helper failed');
+    mockBuildDashboardAnalytics.mockRejectedValueOnce(error);
+
+    const { getDashboardAnalytics } = await import('../src/controllers/summary.controller.js');
+    const req = { query: { period: '7d' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getDashboardAnalytics(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(error);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
+  });
+});

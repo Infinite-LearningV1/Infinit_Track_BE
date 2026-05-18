@@ -1,0 +1,251 @@
+{
+  "name": "Infinite Track - Staging Live Gate",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.infinite-track.tech",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminEmail",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminPassword",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "employeeEmail",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "employeePassword",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "wrongPassword",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "internshipEmail",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "internshipPassword",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "managementEmail",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementPassword",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "employeeToken",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "internshipToken",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "managementToken",
+      "value": "",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "employeeWfhLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "employeeWfhLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "employeeWfhRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "internshipWfhLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "internshipWfhLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "internshipWfhRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "wfoLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "wfoLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "wfoLocationId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "existingBookingDate",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "newBookingDate",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "existingBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "existingManagementBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "newBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "existingAttendanceId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "newAttendanceId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "wfoAttendanceId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "wfhAttendanceId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "cleanupBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "unapprovedBookingId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "jakartaTodayDate",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementWfaLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementWfaLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "managementWfaRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminWfaLatitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminWfaLongitude",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "adminWfaRadius",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ]
+}

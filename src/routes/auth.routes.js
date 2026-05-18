@@ -8,6 +8,7 @@ import {
   register
 } from '../controllers/auth.controller.js';
 import { verifyToken } from '../middlewares/authJwt.js';
+import { loginRateLimit } from '../middlewares/security.js';
 import {
   loginValidation,
   userRegistrationValidation,
@@ -16,7 +17,7 @@ import {
 
 const router = express.Router();
 
-router.post('/login', loginValidation, validate, login);
+router.post('/login', loginRateLimit, loginValidation, validate, login);
 router.post('/register', userRegistrationValidation, register);
 router.post('/refresh', refresh);
 router.post('/logout', logout);

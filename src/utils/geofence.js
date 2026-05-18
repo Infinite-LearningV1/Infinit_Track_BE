@@ -84,7 +84,10 @@ export const formatUTCToJakartaTime = (dateTime) => {
  */
 export const getJakartaDateString = () => {
   const jakartaTime = getJakartaTime();
-  return jakartaTime.toISOString().split('T')[0];
+  const year = jakartaTime.getFullYear();
+  const month = String(jakartaTime.getMonth() + 1).padStart(2, '0');
+  const day = String(jakartaTime.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 /**

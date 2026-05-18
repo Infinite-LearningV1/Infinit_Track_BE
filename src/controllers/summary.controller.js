@@ -13,6 +13,12 @@ import {
 import logger from '../utils/logger.js';
 import { formatWorkHour, formatTimeOnly, calculateWorkHour } from '../utils/workHourFormatter.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
+import { buildDashboardAnalytics } from '../utils/dashboardAnalytics.js';
+import {
+  buildEffectiveWindow,
+  validateHistoricalDateWindowQuery
+} from '../utils/historicalDateWindow.js';
+import { buildUserAttendanceSummary } from '../utils/userAttendanceSummary.js';
 
 /**
  * Calculate user metrics for discipline index calculation
@@ -21,21 +27,10 @@ import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
  * @param {Date} endDate - End date for calculation
  * @returns {Object} User metrics object
  */
-const calculateUserMetrics = async (userId, startDate, endDate) => {
+const calculateUserMetrics = async (userId, startDate, endDate, settingsMap = null) => {
   try {
-    // Load required attendance settings (use DB-configured values; fallback defaults)
-    const settings = await Settings.findAll({
-      where: {
-        setting_key: {
-          [Op.in]: ['checkin.start_time']
-        }
-      }
-    });
-    const settingsMap = {};
-    settings.forEach((s) => {
-      settingsMap[s.setting_key] = s.setting_value;
-    });
-    const checkinStartTime = settingsMap['checkin.start_time'] || '08:00:00';
+    const effectiveSettingsMap = settingsMap || {};
+    const checkinStartTime = effectiveSettingsMap['checkin.start_time'] || '08:00:00';
 
     const startParts = checkinStartTime.split(':').map((v) => parseInt(v, 10) || 0);
     const startMinutes = (startParts[0] || 0) * 60 + (startParts[1] || 0);
@@ -157,80 +152,30 @@ const calculateUserMetrics = async (userId, startDate, endDate) => {
  */
 export const getSummaryReport = async (req, res, next) => {
   try {
-    const { period = 'daily', page = 1, limit = 10 } = req.query;
+    const { period = '30d', from = null, to = null, page = 1, limit = 10 } = req.query;
 
-    // Validasi parameter period
-    const validPeriods = ['daily', 'weekly', 'monthly', 'all'];
-    if (!validPeriods.includes(period)) {
+    const validationMessage = validateHistoricalDateWindowQuery({ period, from, to });
+    if (validationMessage) {
       return res.status(400).json({
         success: false,
         code: 'E_VALIDATION',
-        message: 'Parameter period harus berupa: daily, weekly, monthly, atau all'
+        message: validationMessage
       });
     }
 
-    // Hitung rentang tanggal berdasarkan period dengan timezone Asia/Jakarta
-    const today = new Date();
-    const jakartaOffset = 7 * 60; // UTC+7 dalam menit
-    const localTime = new Date(today.getTime() + jakartaOffset * 60000);
-
-    let startDate, endDate;
-
-    switch (period) {
-      case 'daily':
-        // Hari ini saja
-        startDate = new Date(localTime);
-        startDate.setUTCHours(0, 0, 0, 0);
-        endDate = new Date(localTime);
-        endDate.setUTCHours(23, 59, 59, 999);
-        break;
-      case 'weekly': {
-        // Minggu ini (Senin - Minggu)
-        const dayOfWeek = localTime.getUTCDay();
-        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 0, Monday = 1
-
-        startDate = new Date(localTime);
-        startDate.setUTCDate(localTime.getUTCDate() - daysToMonday);
-        startDate.setUTCHours(0, 0, 0, 0);
-
-        endDate = new Date(startDate);
-        endDate.setUTCDate(startDate.getUTCDate() + 6);
-        endDate.setUTCHours(23, 59, 59, 999);
-        break;
-      }
-      case 'monthly':
-        // Bulan ini
-        startDate = new Date(localTime.getUTCFullYear(), localTime.getUTCMonth(), 1);
-        endDate = new Date(localTime.getUTCFullYear(), localTime.getUTCMonth() + 1, 0);
-        endDate.setUTCHours(23, 59, 59, 999);
-        break;
-      case 'all':
-        // Semua data - tidak ada filter tanggal
-        startDate = null;
-        endDate = null;
-        break;
-      default:
-        startDate = new Date(localTime);
-        startDate.setUTCHours(0, 0, 0, 0);
-        endDate = new Date(localTime);
-        endDate.setUTCHours(23, 59, 59, 999);
-    }
-
-    // Format tanggal untuk query database (YYYY-MM-DD)
-    const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;
-    const endDateStr = endDate ? endDate.toISOString().split('T')[0] : null;
+    const effectiveWindow = buildEffectiveWindow({ period, from, to });
+    const { startDate, endDate, startDateStr, endDateStr } = effectiveWindow;
 
     logger.info(
       `Generating summary report with discipline analysis - Period: ${period}, Range: ${startDateStr || 'unlimited'} to ${endDateStr || 'unlimited'}`
     );
 
     // Buat where condition berdasarkan period
-    const whereClause = {};
-    if (period !== 'all' && startDateStr && endDateStr) {
-      whereClause.attendance_date = {
+    const whereClause = {
+      attendance_date: {
         [Op.between]: [startDateStr, endDateStr]
-      };
-    }
+      }
+    };
 
     // ==== QUERY UNTUK DATA SUMMARY (AGREGAT) ====
 
@@ -393,11 +338,28 @@ export const getSummaryReport = async (req, res, next) => {
       }
     });
 
+    const settingsMap = {};
+    try {
+      const settings = await Settings.findAll({
+        where: {
+          setting_key: {
+            [Op.in]: ['checkin.start_time']
+          }
+        }
+      });
+
+      settings.forEach((setting) => {
+        settingsMap[setting.setting_key] = setting.setting_value;
+      });
+    } catch (error) {
+      logger.error('Error preloading summary settings:', error);
+    }
+
     // Calculate discipline index for each user
     const userDisciplineMap = {};
     const disciplineCalculationPromises = Object.keys(uniqueUsers).map(async (userId) => {
       try {
-        const userMetrics = await calculateUserMetrics(parseInt(userId), startDate, endDate);
+        const userMetrics = await calculateUserMetrics(parseInt(userId, 10), startDate, endDate, settingsMap);
         const disciplineResult = await fuzzyAhpEngine.calculateDisciplineIndex(userMetrics);
 
         userDisciplineMap[userId] = {
@@ -561,6 +523,21 @@ export const getSummaryReport = async (req, res, next) => {
       has_prev_page: parseInt(page) > 1
     };
 
+    let userAttendanceSummary = [];
+    try {
+      userAttendanceSummary = await buildUserAttendanceSummary({
+        startDate: startDateStr,
+        endDate: endDateStr
+      });
+    } catch (error) {
+      logger.warn('Failed to build user attendance summary; continuing with raw report data only', {
+        error: error.message,
+        period,
+        startDate: startDateStr,
+        endDate: endDateStr
+      });
+    }
+
     // ==== ANALYTICS SUMMARY ====
     const analyticsUsersCount = Object.keys(userDisciplineMap).length;
     const avgDisciplineScore =
@@ -577,10 +554,12 @@ export const getSummaryReport = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
+      generated_at: new Date().toISOString(),
       summary: summary,
       report: {
         data: transformedData,
-        pagination: pagination
+        pagination: pagination,
+        user_attendance_summary: userAttendanceSummary
       },
       analytics: {
         discipline_analysis: {
@@ -591,16 +570,10 @@ export const getSummaryReport = async (req, res, next) => {
         }
       },
       period: period,
-      date_range:
-        period === 'all'
-          ? {
-              start_date: 'unlimited',
-              end_date: 'unlimited'
-            }
-          : {
-              start_date: startDateStr,
-              end_date: endDateStr
-            },
+      date_range: {
+        start_date: startDateStr,
+        end_date: endDateStr
+      },
       message: 'Summary report with discipline analysis generated successfully'
     });
   } catch (error) {
@@ -612,6 +585,24 @@ export const getSummaryReport = async (req, res, next) => {
   }
 };
 
+export const getDashboardAnalytics = async (req, res, next) => {
+  try {
+    const { period = '30d', from = null, to = null } = req.query;
+    const data = await buildDashboardAnalytics({ period, from, to });
+
+    return res.status(200).json({
+      success: true,
+      requested_window: data.meta?.requested_window ?? null,
+      executed_window: data.meta?.executed_window ?? null,
+      data,
+      message: 'Dashboard analytics retrieved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
-  getSummaryReport
+  getSummaryReport,
+  getDashboardAnalytics
 };

@@ -3,9 +3,8 @@ import fuzzyEngine from '../src/utils/fuzzyAhpEngine.js';
 
 describe('Discipline Index FAHP Logic', () => {
   beforeAll(() => {
-    // Ensure deterministic method and threshold for tests
+    // Ensure deterministic method for tests
     process.env.FAHP_METHOD = 'extent';
-    process.env.AHP_CR_THRESHOLD = '0.10';
   });
 
   beforeEach(() => {

@@ -6,6 +6,7 @@ module.exports = {
 		es2022: true
 	},
 	extends: ['eslint:recommended', 'plugin:import/recommended', 'prettier'],
+	ignorePatterns: ['node_modules/**', '.worktrees/**', '.claude/worktrees/**'],
 	parserOptions: {
 		ecmaVersion: 'latest',
 		sourceType: 'module'
