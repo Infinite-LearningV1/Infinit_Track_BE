@@ -1,7 +1,7 @@
 'use strict';
 
 /** @type {import('sequelize-cli').Migration} */
-const migration = {
+module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.sequelize.transaction(async (transaction) => {
       await queryInterface.createTable(
@@ -87,9 +87,3 @@ const migration = {
     await queryInterface.dropTable('auth_sessions');
   }
 };
-
-export default migration;
-
-if (typeof module !== 'undefined') {
-  module.exports = migration;
-}
