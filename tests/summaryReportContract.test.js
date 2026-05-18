@@ -135,8 +135,16 @@ describe('summary report controller contract', () => {
     mockBuildUserAttendanceSummary.mockResolvedValueOnce([mockedSummaryRow]);
   });
 
-  it('returns generated_at and full-window user attendance summary without changing report data or pagination', async () => {
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+  it('returns generated_at and bounded user attendance summary for a custom dashboard-style report window without changing report data or pagination', async () => {
+    const req = {
+      query: {
+        period: 'custom',
+        from: '2026-05-01',
+        to: '2026-05-07',
+        page: '1',
+        limit: '10'
+      }
+    };
     const res = buildRes();
     const next = jest.fn();
 
@@ -144,14 +152,18 @@ describe('summary report controller contract', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(mockBuildUserAttendanceSummary).toHaveBeenCalledWith({
-      period: 'daily',
-      startDate: expect.any(String),
-      endDate: expect.any(String)
+      startDate: '2026-05-01',
+      endDate: '2026-05-07'
     });
     expect(res.status).toHaveBeenCalledWith(200);
 
     const payload = res.json.mock.calls[0][0];
     expect(payload.generated_at).toEqual(expect.any(String));
+    expect(payload.period).toBe('custom');
+    expect(payload.date_range).toEqual({
+      start_date: '2026-05-01',
+      end_date: '2026-05-07'
+    });
     expect(payload.report.user_attendance_summary).toEqual([mockedSummaryRow]);
     expect(payload.report.data).toHaveLength(1);
     expect(payload.report.data[0]).toMatchObject({
@@ -174,7 +186,7 @@ describe('summary report controller contract', () => {
     mockBuildUserAttendanceSummary.mockReset();
     mockBuildUserAttendanceSummary.mockRejectedValueOnce(new Error('summary unavailable'));
 
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const req = { query: { period: '30d', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
 
@@ -193,6 +205,42 @@ describe('summary report controller contract', () => {
       items_per_page: 10,
       has_next_page: false,
       has_prev_page: false
+    });
+  });
+
+  it('rejects legacy report period values with the dashboard analytics period contract', async () => {
+    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAndCountAll).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter period harus berupa: 30d, current_month, atau custom'
+    });
+  });
+
+  it('rejects custom report periods without both date boundaries', async () => {
+    const req = { query: { period: 'custom', from: '2026-05-01', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAndCountAll).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter from dan to wajib diisi saat period=custom'
     });
   });
 });

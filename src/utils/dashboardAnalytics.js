@@ -4,19 +4,21 @@ import {
   Attendance,
   AttendanceCategory,
   AttendanceStatus,
-  Location,
-  LocationEvent,
-  User
+  LocationEvent
 } from '../models/index.js';
 import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
   buildWfaAnalysis
-} from '../controllers/analysis.controller.js';
-import { getJakartaDateString } from './geofence.js';
-import { parseIsoDateUtcStrict } from './isoDate.js';
-import { buildTodayLocationsSnapshot } from './todayLocationsSnapshot.js';
-import { formatTimeOnly } from './workHourFormatter.js';
+} from '../services/fuzzyAhpAnalysis.service.js';
+import {
+  addUtcDays,
+  buildEffectiveWindow,
+  buildJakartaDayStartUtc,
+  buildRequestedWindow,
+  enumerateDateRange,
+  formatDateOnly
+} from './historicalDateWindow.js';
 
 const STATUS_ALPHA = new Set(['alpa', 'alpha']);
 const STATUS_LATE = new Set(['terlambat', 'late']);
@@ -30,12 +32,6 @@ const CATEGORY_MAP = {
   'work from anywhere': 'wfa'
 };
 
-const buildRequestedWindow = ({ period, from, to }) => ({
-  period,
-  from,
-  to
-});
-
 const buildExecutedWindow = (effectiveWindow) => ({
   from: effectiveWindow.startDateStr,
   to: effectiveWindow.endDateStr
@@ -46,11 +42,7 @@ const buildSectionWindows = (effectiveWindow) => ({
   historical_trend: buildExecutedWindow(effectiveWindow),
   mode_mix: buildExecutedWindow(effectiveWindow),
   fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow),
-  geofence_evidence_context: buildExecutedWindow(effectiveWindow),
-  map_context: buildExecutedWindow(effectiveWindow),
-  today_locations: {
-    mode: 'jakarta_today'
-  }
+  geofence_evidence_context: buildExecutedWindow(effectiveWindow)
 });
 
 const buildEmptySnapshotCard = (effectiveWindow, generatedAt) => ({
@@ -62,26 +54,6 @@ const buildEmptySnapshotCard = (effectiveWindow, generatedAt) => ({
   top_rank: null,
   distribution: {}
 });
-
-const formatDateOnly = (date) => date.toISOString().split('T')[0];
-
-const parseDateOnlyUtc = (value) => {
-  const date = parseIsoDateUtcStrict(value);
-
-  if (!date) {
-    throw new Error(`Invalid ISO date: ${value}`);
-  }
-
-  return date;
-};
-
-const addUtcDays = (date, days) => {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-};
-
-const buildJakartaDayStartUtc = (dateStr) => new Date(`${dateStr}T00:00:00+07:00`);
 
 const roundToTwo = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -123,49 +95,6 @@ const incrementAttendanceCounters = (counters, { isAlpha, isLate, isEarly }) => 
   }
 };
 
-const buildEffectiveWindow = ({ period, from, to }) => {
-  const todayDate = getJakartaDateString();
-  const todayUtc = parseDateOnlyUtc(todayDate);
-
-  if (period === 'custom' && from && to) {
-    const startDate = parseDateOnlyUtc(from);
-    const endDate = parseDateOnlyUtc(to);
-
-    return {
-      startDate,
-      endDate,
-      startDateStr: from,
-      endDateStr: to
-    };
-  }
-
-  if (period === 'current_month') {
-    const startDate = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), 1));
-    return {
-      startDate,
-      endDate: todayUtc,
-      startDateStr: formatDateOnly(startDate),
-      endDateStr: todayDate
-    };
-  }
-
-  const startDate = addUtcDays(todayUtc, -29);
-  return {
-    startDate,
-    endDate: todayUtc,
-    startDateStr: formatDateOnly(startDate),
-    endDateStr: todayDate
-  };
-};
-
-const enumerateDateRange = (startDate, endDate) => {
-  const points = [];
-  for (let cursor = new Date(startDate); cursor.getTime() <= endDate.getTime(); cursor = addUtcDays(cursor, 1)) {
-    points.push(formatDateOnly(cursor));
-  }
-  return points;
-};
-
 const buildWeightsObject = (weights) => {
   if (!weights?.criteria || !weights?.values) {
     return {};
@@ -200,7 +129,7 @@ const buildSnapshotCard = ({ analysis, effectiveWindow, generatedAt, allowedIds 
     generated_at: generatedAt,
     window: buildExecutedWindow(effectiveWindow),
     weights: buildWeightsObject(analysis?.weights),
-    consistency: analysis?.consistency || null,
+    consistency: analysis?.consistency ?? null,
     top_rank: {
       id: topRank.id,
       name: topRank.name,
@@ -230,8 +159,12 @@ const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
     }
   }
 
+  const hasEvents = locationEvents.length > 0;
+
   return {
-    status: locationEvents.length > 0 ? 'available' : 'no_events',
+    status: hasEvents ? 'available' : 'needs_data',
+    needs_data: !hasEvents,
+    reason: hasEvents ? null : 'NO_GEOFENCE_EVENTS',
     authority: 'context_only',
     final_attendance_authority: 'attendance_records',
     window: buildExecutedWindow(effectiveWindow),
@@ -244,126 +177,7 @@ const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
   };
 };
 
-const MAP_CONTEXT_MODE_BY_CATEGORY = {
-  wfo: 'WFO',
-  wfh: 'WFH',
-  wfa: 'WFA'
-};
-
-const MAP_CONTEXT_STATUS_BY_ATTENDANCE_STATUS = {
-  alpa: 'alpha',
-  alpha: 'alpha',
-  terlambat: 'late',
-  late: 'late',
-  early: 'early',
-  'lebih awal': 'early'
-};
-
-const trimToString = (value) => {
-  if (typeof value !== 'string') {
-    return '';
-  }
-
-  return value.trim();
-};
-
-const toNumericValue = (value) => {
-  if (value == null) {
-    return null;
-  }
-
-  const numeric = Number.parseFloat(value);
-  return Number.isFinite(numeric) ? numeric : null;
-};
-
-const buildMapContextPoint = (attendance) => {
-  const normalizedCategory = normalizeCategoryName(attendance.attendance_category?.category_name);
-  const mode = normalizedCategory ? MAP_CONTEXT_MODE_BY_CATEGORY[normalizedCategory] : null;
-  const lat = toNumericValue(attendance.location?.latitude);
-  const lng = toNumericValue(attendance.location?.longitude);
-  const radius = toNumericValue(attendance.location?.radius);
-
-  if (attendance.id_attendance == null || attendance.user_id == null || !mode || lat == null || lng == null || radius == null) {
-    return null;
-  }
-
-  const userName = trimToString(attendance.user?.full_name) || 'Unknown User';
-  const normalizedStatusName = normalizeStatusName(attendance.status?.attendance_status_name);
-  const status = MAP_CONTEXT_STATUS_BY_ATTENDANCE_STATUS[normalizedStatusName] || 'on_time';
-  const notesDescription = trimToString(attendance.notes);
-  const locationDescription = trimToString(attendance.location?.description);
-
-  return {
-    id: `attendance:${attendance.id_attendance}`,
-    record_type: 'attendance_snapshot',
-    attendance_id: attendance.id_attendance,
-    user_id: attendance.user_id,
-    user_name: userName,
-    mode,
-    status,
-    label: `${userName} - ${mode} - ${attendance.attendance_date}`,
-    lat,
-    lng,
-    radius_m: radius,
-    attendance_date: attendance.attendance_date,
-    time_in: attendance.time_in ? formatTimeOnly(attendance.time_in) : null,
-    time_out: attendance.time_out ? formatTimeOnly(attendance.time_out) : null,
-    location_source: 'attendance.location',
-    coordinate_quality: 'exact',
-    description: notesDescription || locationDescription || ''
-  };
-};
-
-const buildMapContext = ({ effectiveWindow, attendanceRows, geofenceContext }) => {
-  const points = [];
-  const summary = {
-    total_points: 0,
-    wfo_points: 0,
-    wfh_points: 0,
-    wfa_points: 0
-  };
-  let totalRenderableRows = 0;
-
-  for (const attendance of attendanceRows) {
-    if (!STATUS_ALPHA.has(normalizeStatusName(attendance.status?.attendance_status_name))) {
-      totalRenderableRows += 1;
-    }
-
-    const point = buildMapContextPoint(attendance);
-    if (!point) {
-      continue;
-    }
-
-    points.push(point);
-    summary.total_points += 1;
-
-    if (point.mode === 'WFO') summary.wfo_points += 1;
-    if (point.mode === 'WFH') summary.wfh_points += 1;
-    if (point.mode === 'WFA') summary.wfa_points += 1;
-  }
-
-  const totalRows = attendanceRows.length;
-  const totalPoints = summary.total_points;
-
-  let status = 'ready';
-  if (totalRows === 0 || totalPoints === 0) {
-    status = 'no_data';
-  } else if (totalPoints < totalRenderableRows) {
-    status = 'partial_data';
-  }
-
-  return {
-    status,
-    authority: 'context_only',
-    source: 'attendance_snapshot',
-    window: buildExecutedWindow(effectiveWindow),
-    summary,
-    points,
-    geofence_context: geofenceContext
-  };
-};
-
-const buildInsights = ({ executiveKpis, modeMix, todayLocations }) => {
+const buildInsights = ({ executiveKpis, modeMix }) => {
   const items = [];
   const rawCounts = executiveKpis.raw_counts;
 
@@ -398,20 +212,6 @@ const buildInsights = ({ executiveKpis, modeMix, todayLocations }) => {
     });
   }
 
-  if (todayLocations.total_users === 0) {
-    return { items };
-  }
-
-  const wfhOrWfaUsers = todayLocations.locations.filter((item) => item.status === 'WFH' || item.status === 'WFA').length;
-  if (wfhOrWfaUsers === todayLocations.total_users) {
-    items.push({
-      type: 'location_coverage_low',
-      title: 'No office-based check-ins today',
-      message: 'Today location snapshot only shows WFH or WFA check-ins.',
-      severity: 'low'
-    });
-  }
-
   return { items };
 };
 
@@ -423,7 +223,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
   const geofenceStartInclusive = buildJakartaDayStartUtc(effectiveWindow.startDateStr);
   const geofenceEndExclusive = buildJakartaDayStartUtc(formatDateOnly(addUtcDays(effectiveWindow.endDate, 1)));
 
-  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis, todayLocations] =
+  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] =
     await Promise.all([
       Attendance.findAll({
         where: {
@@ -431,17 +231,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
             [Op.between]: [effectiveWindow.startDateStr, effectiveWindow.endDateStr]
           }
         },
-        attributes: [
-          'id_attendance',
-          'attendance_date',
-          'user_id',
-          'status_id',
-          'category_id',
-          'location_id',
-          'time_in',
-          'time_out',
-          'notes'
-        ],
+        attributes: ['attendance_date', 'user_id'],
         include: [
           {
             model: AttendanceStatus,
@@ -452,24 +242,9 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
             model: AttendanceCategory,
             as: 'attendance_category',
             attributes: ['category_name']
-          },
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id_users', 'full_name'],
-            required: false
-          },
-          {
-            model: Location,
-            as: 'location',
-            attributes: ['location_id', 'latitude', 'longitude', 'radius', 'description'],
-            required: false
           }
         ],
-        order: [
-          ['attendance_date', 'ASC'],
-          ['id_attendance', 'ASC']
-        ]
+        order: [['attendance_date', 'ASC']]
       }),
       LocationEvent.findAll({
         where: {
@@ -492,8 +267,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       buildSmartAcAnalysis({
         startAt: effectiveWindow.startDate,
         endAt: effectiveWindow.endDate
-      }),
-      buildTodayLocationsSnapshot()
+      })
     ]);
 
   const historicalMap = historicalDates.reduce((acc, date) => {
@@ -610,11 +384,6 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
     effectiveWindow,
     locationEvents
   });
-  const mapContext = buildMapContext({
-    effectiveWindow,
-    attendanceRows,
-    geofenceContext: geofenceEvidenceContext
-  });
 
   return {
     meta: {
@@ -623,7 +392,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       requested_window: requestedWindow,
       executed_window: executedWindow,
       section_windows: buildSectionWindows(effectiveWindow),
-      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'Location', 'LocationEvent', 'User']
+      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
     },
     executive_kpis: executiveKpis,
     historical_trend: {
@@ -633,17 +402,14 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       totals: modeTotals,
       percentages
     },
-    today_locations: todayLocations,
     geofence_evidence_context: geofenceEvidenceContext,
-    map_context: mapContext,
     fuzzy_ahp_snapshot: fuzzySnapshot,
     insights: buildInsights({
       executiveKpis,
       modeMix: {
         totals: modeTotals,
         percentages
-      },
-      todayLocations
+      }
     })
   };
 };
