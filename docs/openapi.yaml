@@ -13,10 +13,13 @@ info:
     - Comprehensive reporting and analytics
 
     ## Authentication
-    This API uses JWT (JSON Web Token) for authentication. Include the token in the Authorization header:
-    ```
-    Authorization: Bearer <your_jwt_token>
-    ```
+    This API uses a stateless access token plus a stateful refresh session.
+
+    Protected endpoints accept the access token through either:
+    - `Authorization: Bearer <access_token>`
+    - HTTP-only `token` cookie for browser-based flows
+
+    Browser login sets HTTP-only `token` and `refresh_token` cookies while also returning the access token in `data.token`. Non-browser clients can receive a `refresh_token` in JSON and submit it to `/api/auth/refresh`.
 
     ## Timezone
     All timestamps are handled in WIB (Jakarta timezone, UTC+7) for consistency.
@@ -41,6 +44,7 @@ servers:
 
 security:
   - bearerAuth: []
+  - cookieAuth: []
 
 paths:
   # Health Check
@@ -73,52 +77,31 @@ paths:
       tags:
         - Authentication
       summary: User login
-      description: Authenticate user with email and password
+      description: |
+        Authenticate user credentials, create a refresh-backed session, and issue an access token.
+
+        Browser clients receive HTTP-only `token` and `refresh_token` cookies, and the response body still includes the access token in `data.token`.
+        Non-browser clients receive the access token in `data.token` and the refresh token in `data.refresh_token`.
       security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - email
-                - password
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: 'user@company.com'
-                password:
-                  type: string
-                  format: password
-                  example: 'password123'
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Login successful
+          description: Login successful and session created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Login successful'
-                  data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                      token:
-                        type: string
-                        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                oneOf:
+                  - $ref: '#/components/schemas/LoginWebResponse'
+                  - $ref: '#/components/schemas/LoginNonWebResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/AuthLoginError'
+        '500':
+          $ref: '#/components/responses/AuthLoginServerError'
 
   /api/auth/register:
     post:
@@ -183,50 +166,99 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: |
+        Rotate the active refresh session and issue a new access token.
+
+        Browser clients can supply the refresh credential through the HTTP-only `refresh_token` cookie.
+        Non-browser clients can supply it in the JSON body as `refresh_token`.
+        Refresh succeeds only while the persisted refresh session is still active.
+        The refresh session is rejected when the refresh JWT is invalid, when the session was revoked, when the persisted session `expires_at` has passed, or when there has been no successful login/refresh activity for longer than `JWT_REFRESH_INACTIVITY_WINDOW_SECONDS` (48 hours in the current deployment contract).
+        Once the refresh session is expired or inactive, clients must perform a full login again.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Refresh successful
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RefreshWebResponse'
+                  - $ref: '#/components/schemas/RefreshNonWebResponse'
+        '401':
+          description: Refresh rejected because the token or refresh session is invalid
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RefreshInvalidError'
+                  - $ref: '#/components/schemas/RefreshRevokedError'
+                  - $ref: '#/components/schemas/RefreshExpiredError'
+        '500':
+          $ref: '#/components/responses/AuthInternalServerError'
+
   /api/auth/logout:
     post:
       tags:
         - Authentication
-      summary: User logout
-      description: Logout current user and invalidate token
+      summary: Logout current session
+      description: |
+        Clear the `token` and `refresh_token` cookies and revoke the current refresh session when it can be identified.
+
+        Session identification can come from the authenticated access token (`Authorization: Bearer <access_token>` or `token` cookie) or from the refresh token (`refresh_token` cookie or body field for non-browser clients).
+        Invalid or expired JWT credentials do not block cookie clearing; this endpoint stays idempotent and only revokes a server-side session when one can still be resolved.
+        Revoking the refresh session blocks future refresh attempts, but it does not retroactively invalidate a still-valid access token because protected routes currently verify access JWTs statelessly until their own expiry.
+        Session-store failures after a session has been identified return the generic auth 500 response. Unexpected token-verification failures are delegated to the shared error handler.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
       responses:
         '200':
           description: Logout successful
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Logout successful'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: '#/components/schemas/LogoutResponse'
+        '500':
+          $ref: '#/components/responses/AuthInternalServerError'
 
   /api/auth/me:
     get:
       tags:
         - Authentication
       summary: Get current user
-      description: Get information about the currently authenticated user
+      description: |
+        Get the authenticated user profile resolved from the current access token and database record.
+
+        Protected-route authentication is currently stateless at the access-token layer, so a refresh session that has already been revoked does not block a still-valid access token until that access JWT expires.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: User information retrieved successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AuthProfileResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AuthenticatedUserNotFound'
 
   # Attendance Endpoints
   /api/attendance:
@@ -2600,9 +2632,374 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT token for authentication. Include 'Bearer ' prefix.
+      description: Access token passed as `Authorization: Bearer <token>`.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+      description: Access token stored in the HTTP-only `token` cookie for browser flows.
 
   schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: 'user@company.com'
+        password:
+          type: string
+          format: password
+          example: 'password123'
+
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Required for non-browser refresh flows. Browser clients can rely on the HTTP-only `refresh_token` cookie instead.
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    AuthProfile:
+      type: object
+      required:
+        - id
+        - full_name
+        - email
+      properties:
+        id:
+          type: integer
+          example: 5
+        full_name:
+          type: string
+          example: 'User Example'
+        email:
+          type: string
+          format: email
+          example: 'user@example.com'
+        role_name:
+          type: string
+          nullable: true
+          example: 'Admin'
+        position_name:
+          type: string
+          nullable: true
+          example: 'Software Engineer'
+        program_name:
+          type: string
+          nullable: true
+          example: 'Informatics'
+        division_name:
+          type: string
+          nullable: true
+          example: 'Engineering'
+        nip_nim:
+          type: string
+          nullable: true
+          example: 'EMP-001'
+        phone:
+          type: string
+          nullable: true
+          example: '08123'
+        photo:
+          type: string
+          nullable: true
+          example: 'https://cloudinary.com/photo.jpg'
+        photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2025-07-01T10:00:00.000Z'
+        location:
+          type: object
+          nullable: true
+          properties:
+            latitude:
+              type: number
+              format: float
+              example: -6.2
+            longitude:
+              type: number
+              format: float
+              example: 106.816666
+            radius:
+              type: number
+              format: float
+              example: 100
+            description:
+              type: string
+              nullable: true
+              example: 'WFH default location'
+            category_name:
+              type: string
+              nullable: true
+              example: 'WFH'
+
+    AuthLoginWebData:
+      allOf:
+        - $ref: '#/components/schemas/AuthProfile'
+        - type: object
+          required:
+            - token
+          properties:
+            token:
+              type: string
+              description: Access token for authenticated requests.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    AuthLoginNonWebData:
+      allOf:
+        - $ref: '#/components/schemas/AuthLoginWebData'
+        - type: object
+          required:
+            - refresh_token
+          properties:
+            refresh_token:
+              type: string
+              description: Refresh token returned to non-browser clients.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    LoginWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthLoginWebData'
+        message:
+          type: string
+          example: 'Login berhasil'
+
+    LoginNonWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthLoginNonWebData'
+        message:
+          type: string
+          example: 'Login berhasil'
+
+    RefreshWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - access_token
+          properties:
+            access_token:
+              type: string
+              example: 'new-access-token'
+        message:
+          type: string
+          example: 'Refresh successful'
+
+    RefreshNonWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - access_token
+            - refresh_token
+          properties:
+            access_token:
+              type: string
+              example: 'new-access-token'
+            refresh_token:
+              type: string
+              example: 'new-refresh-token'
+        message:
+          type: string
+          example: 'Refresh successful'
+
+    LogoutResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: 'Logout successful'
+
+    AuthProfileResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthProfile'
+        message:
+          type: string
+          example: 'User profile fetched successfully'
+
+    AccessTokenUnauthorizedError:
+      type: object
+      description: Message-only unauthorized response returned when access-token validation fails before the refreshable expiry contract applies.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          enum:
+            - 'No token provided'
+            - 'Invalid authorization header. Use: Bearer <token>'
+            - 'Invalid token'
+            - 'Unable to resolve authenticated user role'
+          example: 'Invalid token'
+
+    AccessTokenExpiredError:
+      type: object
+      description: Returned when a protected route receives an expired access JWT. Clients may attempt `/api/auth/refresh` if the refresh session is still active.
+      required:
+        - success
+        - code
+        - message
+        - details
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_ACCESS_TOKEN_EXPIRED'
+        message:
+          type: string
+          example: 'Access token expired'
+        details:
+          type: object
+          required:
+            - refreshable
+          properties:
+            refreshable:
+              type: boolean
+              example: true
+
+    RefreshInvalidError:
+      type: object
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_REFRESH_INVALID'
+        message:
+          type: string
+          example: 'Refresh token invalid'
+
+    RefreshRevokedError:
+      type: object
+      description: Returned when the persisted refresh session was already revoked, including after an explicit logout.
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_REFRESH_REVOKED'
+        message:
+          type: string
+          example: 'Refresh session revoked'
+
+    RefreshExpiredError:
+      type: object
+      description: Returned when the refresh JWT expired, the persisted refresh session absolute expiry passed, or the inactivity window elapsed. Clients must log in again.
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_REFRESH_EXPIRED'
+        message:
+          type: string
+          example: 'Refresh session expired'
+
+    AuthLoginErrorBody:
+      type: object
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'E_LOGIN'
+        message:
+          type: string
+          example: 'Email tidak terdaftar'
+
+    AuthenticatedUserNotFoundError:
+      type: object
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'E_USER_NOT_FOUND'
+        message:
+          type: string
+          example: 'User tidak ditemukan'
+
     User:
       type: object
       properties:
@@ -3192,19 +3589,49 @@ components:
                       type: string
                       example: 'Invalid email format'
 
-    Unauthorized:
-      description: Unauthorized - Invalid or missing authentication token
+    AuthLoginError:
+      description: Login failed because validation failed or the credentials were rejected
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthLoginErrorBody'
+
+    AuthLoginServerError:
+      description: Login failed because of an unexpected server error
       content:
         application/json:
           schema:
             type: object
+            required:
+              - success
+              - code
+              - message
             properties:
               success:
                 type: boolean
                 example: false
+              code:
+                type: string
+                example: 'E_LOGIN'
               message:
                 type: string
-                example: 'Unauthorized access'
+                example: 'Terjadi kesalahan pada server'
+
+    AuthenticatedUserNotFound:
+      description: Authenticated user could not be found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthenticatedUserNotFoundError'
+
+    Unauthorized:
+      description: Unauthorized - access token missing, malformed, invalid, unresolved, or expired. Non-expiry failures return a message-only body; expiry returns `AUTH_ACCESS_TOKEN_EXPIRED` with `details.refreshable=true`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/AccessTokenUnauthorizedError'
+              - $ref: '#/components/schemas/AccessTokenExpiredError'
 
     Forbidden:
       description: Forbidden - Insufficient permissions
@@ -3247,6 +3674,20 @@ components:
               message:
                 type: string
                 example: 'Resource already exists'
+
+    AuthInternalServerError:
+      description: Internal server error returned by auth endpoints that intentionally do not expose internal failure details
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+                example: 'Internal server error'
 
     InternalServerError:
       description: Internal server error
