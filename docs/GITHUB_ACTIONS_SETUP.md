@@ -40,8 +40,36 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 ### Repository Secrets
 
 1. `DIGITALOCEAN_ACCESS_TOKEN`
-   - Used by: DOCR publish workflow and staging droplet rollout
+   - Used by: DOCR publish workflow, staging droplet rollout, and production droplet rollout
    - Needed for: `doctl registry login` and remote droplet `docker login`
+2. `STAGING_SSH_PRIVATE_KEY`
+   - Used by: staging droplet rollout
+   - Needed for: SSH access from GitHub Actions into the staging droplet host
+3. `PRODUCTION_SSH_PRIVATE_KEY`
+   - Used by: production droplet rollout
+   - Needed for: SSH access from GitHub Actions into the production droplet host
+
+### GitHub Environment Variables
+
+#### Staging environment variables
+- `STAGING_SSH_HOST`
+- `STAGING_SSH_USER`
+- `STAGING_DEPLOY_PATH`
+- `STAGING_PUBLIC_DOMAIN`
+- `STAGING_PUBLIC_BASE_URL`
+- `STAGING_EXPECTED_IP`
+
+`deploy-staging.yml` validates all of the staging variables above before remote rollout starts.
+
+#### Production environment variables
+- `PRODUCTION_SSH_HOST`
+- `PRODUCTION_SSH_USER`
+- `PRODUCTION_DEPLOY_PATH`
+- `PRODUCTION_PUBLIC_DOMAIN`
+- `PRODUCTION_PUBLIC_BASE_URL`
+- `PRODUCTION_EXPECTED_IP`
+
+`deploy-production.yml` validates all of the production variables above before remote rollout starts.
 
 ### No longer active for backend deploy truth
 These may still exist historically, but are not part of the active backend image publication path:
