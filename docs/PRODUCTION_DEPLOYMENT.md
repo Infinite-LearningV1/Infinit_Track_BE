@@ -48,7 +48,8 @@ They are not part of the supported active backend deploy path and should be trea
 - boundary between artifact publishing and runtime deployment
 
 ### What this document does not claim
-- that GitHub Actions already deploys the runtime to the droplet
+- that the publish-only workflow (`docker-deploy.yml`) deploys the runtime to the droplet by itself
+- that production rollout is already automated in the same way the staging droplet workflow is
 - that Kubernetes is an active deployment path
 
 ## Deployment Readiness Checklist

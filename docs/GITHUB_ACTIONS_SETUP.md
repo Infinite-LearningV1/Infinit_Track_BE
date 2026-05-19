@@ -22,7 +22,7 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 - **Trigger:** manual dispatch only
 - **Purpose:** build backend Docker image and push it to DOCR
 - **Output:** image tags in `registry.digitalocean.com/infinit-track/infinit-track-backend`
-- **Guardrail:** publish is intentional and operator-triggered; the workflow validates `DIGITALOCEAN_ACCESS_TOKEN` before doing anything else
+- **Guardrail:** publish is intentional and operator-triggered; the publish job validates `DIGITALOCEAN_ACCESS_TOKEN` before any DOCR login or image push step runs
 - **Required secret:** `DIGITALOCEAN_ACCESS_TOKEN`
 
 ### 3. Staging droplet rollout (`deploy-staging.yml`)
@@ -57,4 +57,4 @@ These may still exist historically, but are not part of the active backend image
 - `develop`: normal integration work
 - `master`: final release-ready branch and image publication trigger
 
-Current image publication workflow is intentionally bound to `master` so the release branch is the same branch that produces the published artifact.
+Current image publication workflow is manual-dispatch only, so the operator intentionally chooses the release-ready commit or branch to publish from.
