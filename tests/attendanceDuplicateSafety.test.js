@@ -349,7 +349,6 @@ describe('checkIn duplicate-safe behavior', () => {
     expect(res.status).toHaveBeenCalledWith(201);
     expect(commit).toHaveBeenCalled();
   });
-
   it('passes rollback failure to next when pre-check duplicate rollback rejects', async () => {
     const rollbackError = new Error('rollback failed');
     const rollback = jest.fn().mockRejectedValueOnce(rollbackError);
