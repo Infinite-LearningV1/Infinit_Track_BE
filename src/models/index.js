@@ -16,6 +16,7 @@ import Settings from './settings.model.js';
 import Booking from './booking.model.js';
 import BookingStatus from './bookingStatus.model.js';
 import LocationEvent from './locationEvent.model.js';
+import AuthSession from './authSession.model.js';
 
 // Jalankan relasi SETELAH define semua model
 User.belongsTo(Role, { foreignKey: 'id_roles', as: 'role' });
@@ -40,6 +41,18 @@ Division.hasMany(User, { foreignKey: 'id_divisions', as: 'users' });
 
 // Photo relations
 Photo.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+// AuthSession relations
+User.hasMany(AuthSession, {
+  foreignKey: 'user_id',
+  sourceKey: 'id_users',
+  as: 'auth_sessions'
+});
+AuthSession.belongsTo(User, {
+  foreignKey: 'user_id',
+  targetKey: 'id_users',
+  as: 'user'
+});
 
 // Attendance relations
 Attendance.belongsTo(User, {
@@ -123,5 +136,6 @@ export {
   Settings,
   Booking,
   BookingStatus,
-  LocationEvent
+  LocationEvent,
+  AuthSession
 };

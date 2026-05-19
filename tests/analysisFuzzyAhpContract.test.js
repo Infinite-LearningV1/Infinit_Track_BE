@@ -76,6 +76,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Program: {},
   Position: {},
   Photo: {},
+  AuthSession: {},
   sequelize: {}
 }));
 

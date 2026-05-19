@@ -146,7 +146,6 @@ async function loadWfaControllerWithMocks({ axiosGet, logger, settingsValue = nu
     loggerMock
   };
 }
-
 describe('backend runtime config contract', () => {
   const envBackup = { ...process.env };
 
@@ -206,7 +205,6 @@ describe('backend runtime config contract', () => {
     expect(config.staging.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
     expect(config.production.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
   });
-
   test('reads explicit access refresh and inactivity auth config from environment', async () => {
     process.env.JWT_SECRET = 'legacy-secret';
     process.env.JWT_REFRESH_SECRET = 'refresh-secret';

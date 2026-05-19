@@ -50,7 +50,8 @@ describe('Spaces upload rollback contract', () => {
       Program: {},
       Position: {},
       Division: {},
-      AttendanceCategory: {}
+      AttendanceCategory: {},
+      AuthSession: {}
     }));
 
     jest.unstable_mockModule('../src/models/location.js', () => ({

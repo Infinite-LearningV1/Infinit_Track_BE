@@ -161,21 +161,18 @@ describe('authJwt token precedence', () => {
     expect(res.json).not.toHaveBeenCalled();
   });
 
-  it('passes unexpected post-verification failures to the error handler instead of reporting an invalid token', async () => {
-    const unexpectedError = new Error('cookie writer unavailable');
-    const expiringToken = jwt.sign(
+  it('keeps protected-route verification stateless after successful decoding', async () => {
+    const token = jwt.sign(
       { id: 4, email: 'expiring@example.com', role_name: 'Management' },
       TEST_JWT_SECRET,
-      { expiresIn: '1s' }
+      { expiresIn: '1h' }
     );
     const req = {
-      headers: { authorization: `Bearer ${expiringToken}` },
+      headers: { authorization: `Bearer ${token}` },
       cookies: {}
     };
     const res = {
-      cookie: jest.fn(() => {
-        throw unexpectedError;
-      }),
+      cookie: jest.fn(),
       status: jest.fn().mockReturnThis(),
       json: jest.fn()
     };
@@ -183,7 +180,15 @@ describe('authJwt token precedence', () => {
 
     await verifyToken(req, res, next);
 
-    expect(next).toHaveBeenCalledWith(unexpectedError);
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user).toEqual(
+      expect.objectContaining({
+        id: 4,
+        email: 'expiring@example.com',
+        role_name: 'Management'
+      })
+    );
+    expect(res.cookie).not.toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).not.toHaveBeenCalled();
   });

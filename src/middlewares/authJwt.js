@@ -4,14 +4,16 @@ import config from '../config/index.js';
 import { User, Role } from '../models/index.js';
 import logger from '../utils/logger.js';
 
+const isJwtError = (error, expectedName) => error?.name === expectedName;
+
 export const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  let token = req.cookies.token;
+  let token = req.cookies?.token;
 
   if (authHeader) {
     const [scheme, value, extra] = authHeader.trim().split(/\s+/);
 
-    if (scheme.toLowerCase() !== 'bearer' || !value || extra) {
+    if (scheme?.toLowerCase() !== 'bearer' || !value || extra) {
       return res.status(401).json({ message: 'Invalid authorization header. Use: Bearer <token>' });
     }
 
@@ -26,11 +28,16 @@ export const verifyToken = async (req, res, next) => {
   try {
     decoded = jwt.verify(token, config.jwt.secret);
   } catch (error) {
-    if (
-      error instanceof jwt.JsonWebTokenError ||
-      error instanceof jwt.TokenExpiredError ||
-      error instanceof jwt.NotBeforeError
-    ) {
+    if (isJwtError(error, 'TokenExpiredError')) {
+      return res.status(401).json({
+        success: false,
+        code: 'AUTH_ACCESS_TOKEN_EXPIRED',
+        message: 'Access token expired',
+        details: { refreshable: true }
+      });
+    }
+
+    if (isJwtError(error, 'JsonWebTokenError') || isJwtError(error, 'NotBeforeError')) {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
@@ -43,7 +50,6 @@ export const verifyToken = async (req, res, next) => {
   }
 
   try {
-    // If role_name is missing from token, fetch it from database
     if (!decoded.role_name && decoded.id) {
       try {
         const userWithRole = await User.findByPk(decoded.id, {
@@ -80,24 +86,6 @@ export const verifyToken = async (req, res, next) => {
     }
 
     req.user = decoded;
-
-    // Sliding TTL - issue new token if less than 2 hours remaining
-    const now = Math.floor(Date.now() / 1000);
-    if (decoded.exp - now < 2 * 60 * 60) {
-      const newToken = jwt.sign(
-        {
-          id: decoded.id,
-          email: decoded.email,
-          full_name: decoded.full_name,
-          role_name: decoded.role_name,
-          photo: decoded.photo
-        },
-        config.jwt.secret,
-        { expiresIn: config.jwt.ttl }
-      );
-      res.cookie('token', newToken, { httpOnly: true });
-    }
-
     next();
   } catch (error) {
     next(error);
