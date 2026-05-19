@@ -45,6 +45,8 @@ describe('migration chain contract', () => {
     const cloudinary = readMigrationFile('20240619000000-update-photos-for-cloudinary.cjs');
     const uniqueAttendance = readMigrationFile('20260403000000-add-unique-constraint-attendance.cjs');
     const photoMetadata = readMigrationFile('20260422000000-add-photo-storage-metadata.cjs');
+    const attendanceDateIndex = readMigrationFile('20260423010000-add-attendance-date-index.cjs');
+    const operationalSettings = readMigrationFile('20260424000000-bootstrap-operational-settings.cjs');
     const authSessions = readMigrationFile('20260511000000-create-auth-sessions.cjs');
 
     expect(cloudinary).toContain('module.exports');
@@ -53,6 +55,10 @@ describe('migration chain contract', () => {
     expect(uniqueAttendance).not.toContain('export default');
     expect(photoMetadata).toContain('module.exports');
     expect(photoMetadata).not.toContain('export default');
+    expect(attendanceDateIndex).toContain('module.exports');
+    expect(attendanceDateIndex).not.toContain('export default');
+    expect(operationalSettings).toContain('module.exports');
+    expect(operationalSettings).not.toContain('export default');
     expect(authSessions).toContain('module.exports');
     expect(authSessions).not.toContain('export default');
   });

@@ -2,7 +2,15 @@
 
 ## Overview
 
-File `.do/app.yaml` dan `.do/app-production.yaml` disimpan sebagai artefak legacy/historical untuk referensi konfigurasi backend lama. Jalur deploy backend yang aktif bukan lagi App Platform.
+File `.do/app.yaml` dan `.do/app-production.yaml` disimpan sebagai artefak historical untuk backend App Platform; backend canonical saat ini bukan lagi App Platform dan file-file ini bukan deployment truth aktif.
+
+Active backend deployment truth saat ini adalah:
+
+- `.github/workflows/ci.yml` untuk validation gate
+- `.github/workflows/docker-deploy.yml` untuk publish image ke DOCR
+- droplet-hosted Docker Compose sebagai runtime aktif
+
+Gunakan dokumen ini hanya jika jalur App Platform memang sengaja diaktifkan kembali dan diverifikasi ulang.
 
 Canonical runtime backend saat ini adalah:
 

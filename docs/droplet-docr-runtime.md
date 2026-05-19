@@ -3,6 +3,8 @@
 ## Runtime source of truth
 Backend canonical runtime berjalan dari image DOCR yang dipull oleh Docker Compose di droplet, dengan host Nginx di depan container dan managed MySQL di belakang runtime.
 
+Compose file adalah bagian dari image-based runtime procedure. Local host-run development tetap mengikuti workflow native MySQL di `README.md` / `CLAUDE.md`, jadi compose runtime ini bukan pengganti host-published local development setup.
+
 ## Image contract
 - Repository: `registry.digitalocean.com/infinit-track/infinit-track-backend`
 - Runtime tag source: `BACKEND_IMAGE_TAG`

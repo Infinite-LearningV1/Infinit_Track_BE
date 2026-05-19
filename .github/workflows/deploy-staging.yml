@@ -1,4 +1,4 @@
-name: Deploy to Staging
+name: Deploy to Staging Droplet
 
 on:
   push:
@@ -157,7 +157,7 @@ jobs:
         run: |
           echo "## 🚀 Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Immutable image published: \\`${DOCKER_IMAGE}:${GITHUB_SHA}\\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Immutable image published: \`${DOCKER_IMAGE}:${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
           echo "✅ Droplet runtime updated via Docker Compose" >> $GITHUB_STEP_SUMMARY
           echo "✅ Migrations executed on staging runtime" >> $GITHUB_STEP_SUMMARY
           echo "✅ Remote readiness verification passed" >> $GITHUB_STEP_SUMMARY
