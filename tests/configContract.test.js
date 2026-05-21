@@ -320,8 +320,38 @@ describe('backend runtime config contract', () => {
     const productionTest = readScript('test-production.sh');
     const dropletVerify = readScript('deploy/scripts/verify-droplet-api.sh');
 
-    expect(smokeTest).toContain('/livez');
-    expect(smokeTest).toContain('/health');
+    const smokeTestEndpoints = [
+      '/livez',
+      '/health',
+      '/docs/',
+      '/docs/openapi.yaml',
+      '/api/auth/register',
+      '/api/auth/me',
+      '/api/bookings/history',
+      '/api/wfa/recommendations',
+      '/api/summary/reports'
+    ];
+
+    for (const endpoint of smokeTestEndpoints) {
+      expect(smokeTest).toContain(endpoint);
+    }
+
+    const dropletVerifyEndpoints = [
+      '/docs/',
+      '/docs/openapi.yaml',
+      '/api/auth/register',
+      '/api/auth/me',
+      '/api/bookings/history',
+      '/api/wfa/recommendations',
+      '/api/summary/reports'
+    ];
+
+    for (const endpoint of dropletVerifyEndpoints) {
+      expect(dropletVerify).toContain(endpoint);
+    }
+    expect(dropletVerify).toContain('PUBLIC_API_BASE_URL');
+    expect(dropletVerify).toContain('check_blocked_endpoint');
+    expect(dropletVerify).toContain('check_removed_post_route');
     expect(smokeTest).toContain("const disallowedOrigin = 'https://example.com';");
     expect(smokeTest).toContain('const disallowedOriginRejected = corsHeader !== disallowedOrigin;');
     expect(smokeTest).toContain("const credentialsConfigured = credentialsHeader === 'true';");
