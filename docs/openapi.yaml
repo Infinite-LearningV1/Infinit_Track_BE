@@ -13,13 +13,19 @@ info:
     - Comprehensive reporting and analytics
 
     ## Authentication
-    This API uses a stateless access token plus a stateful refresh session.
+    This API uses a JWT access credential backed by a stateful `auth_sessions` record.
 
     Protected endpoints accept the access token through either:
     - `Authorization: Bearer <access_token>`
     - HTTP-only `token` cookie for browser-based flows
 
-    Browser login sets HTTP-only `token` and `refresh_token` cookies while also returning the access token in `data.token`. Non-browser clients can receive a `refresh_token` in JSON and submit it to `/api/auth/refresh`.
+    Protected routes treat the access token as valid only while the linked `auth_sessions` row remains active.
+
+    Browser login sets HTTP-only `token` and `refresh_token` cookies while also returning the access token in `data.token` and the primary `data.auth.access_token` field. Non-browser clients receive the access token in `data.token`, the refresh token in `data.refresh_token`, and both tokens under `data.auth`.
+
+    Clients can explicitly force login transport behavior with `X-Client-Type: web` or `X-Client-Type: mobile`; `X-Client-Type: android` remains a backward-compatible native alias. When the header is absent, the backend falls back to User-Agent heuristics.
+
+    A successful login atomically replaces any previous active session for the same user and resolved client type before issuing credentials. The backend serializes same-user replacement attempts and keeps sessions for other client types active.
 
     ## Timezone
     All timestamps are handled in WIB (Jakarta timezone, UTC+7) for consistency.
@@ -149,11 +155,21 @@ paths:
         - Authentication
       summary: User login
       description: |
-        Authenticate user credentials, create a refresh-backed session, and issue an access token.
+        Authenticate user credentials, atomically revoke any previous active session for the same user and resolved client type, create a refresh-backed replacement session, and issue new credentials.
 
-        Browser clients receive HTTP-only `token` and `refresh_token` cookies, and the response body still includes the access token in `data.token`.
-        Non-browser clients receive the access token in `data.token` and the refresh token in `data.refresh_token`.
+        `X-Client-Type: web` forces browser cookie transport. `X-Client-Type: mobile` forces native JSON transport, while `X-Client-Type: android` remains a backward-compatible native alias. When the header is absent, the backend falls back to User-Agent heuristics and treats Bearer-only clients as native.
+
+        Browser clients receive HTTP-only `token` and `refresh_token` cookies. The response body includes the access token in both the backward-compatible `data.token` field and the primary `data.auth.access_token` field.
+        Non-browser clients receive the access token in `data.token`, the refresh token in `data.refresh_token`, and both credentials under the primary `data.auth` object.
       security: []
+      parameters:
+        - in: header
+          name: X-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, android, mobile]
+          description: Optional explicit client transport hint for login. `web` forces cookie transport, while `android` and `mobile` force native JSON transport.
       requestBody:
         required: true
         content:
@@ -204,8 +220,11 @@ paths:
         Browser clients can supply the refresh credential through the HTTP-only `refresh_token` cookie.
         Non-browser clients can supply it in the JSON body as `refresh_token`.
         Refresh succeeds only while the persisted refresh session is still active.
-        The refresh session is rejected when the refresh JWT is invalid, when the session was revoked, when the persisted session `expires_at` has passed, or when there has been no successful login/refresh activity for longer than `JWT_REFRESH_INACTIVITY_WINDOW_SECONDS` (48 hours in the current deployment contract).
-        Once the refresh session is expired or inactive, clients must perform a full login again.
+
+        The refresh transport follows the stored session type established at login: web sessions rotate cookies and return only `access_token` in JSON, while native sessions return both `access_token` and `refresh_token` in JSON.
+
+        The refresh session is rejected when the refresh JWT is malformed, when the session was revoked, when the persisted session `expires_at` has passed, or when there has been no successful login/refresh activity for longer than `JWT_REFRESH_INACTIVITY_WINDOW_SECONDS` (48 hours in the current deployment contract).
+        Expired refresh JWTs and inactive persisted sessions both return `AUTH_SESSION_INACTIVE` and require a full login.
       security: []
       requestBody:
         required: false
@@ -223,14 +242,14 @@ paths:
                   - $ref: '#/components/schemas/RefreshWebResponse'
                   - $ref: '#/components/schemas/RefreshNonWebResponse'
         '401':
-          description: Refresh rejected because the token or refresh session is invalid
+          description: Refresh rejected because the token is invalid, the session was revoked, or the session is no longer active
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/RefreshInvalidError'
                   - $ref: '#/components/schemas/RefreshRevokedError'
-                  - $ref: '#/components/schemas/RefreshExpiredError'
+                  - $ref: '#/components/schemas/RefreshSessionInactiveError'
         '500':
           $ref: '#/components/responses/AuthInternalServerError'
 
@@ -244,7 +263,7 @@ paths:
 
         Session identification can come from the authenticated access token (`Authorization: Bearer <access_token>` or `token` cookie) or from the refresh token (`refresh_token` cookie or body field for non-browser clients).
         Invalid or expired JWT credentials do not block cookie clearing; this endpoint stays idempotent and only revokes a server-side session when one can still be resolved.
-        Revoking the refresh session blocks future refresh attempts, but it does not retroactively invalidate a still-valid access token because protected routes currently verify access JWTs statelessly until their own expiry.
+        Revoking the refresh session blocks future refresh attempts and also causes protected routes to reject the same access JWT once middleware re-checks the linked `auth_sessions` row.
         Session-store failures after a session has been identified return the generic auth 500 response. Unexpected token-verification failures are delegated to the shared error handler.
       security: []
       requestBody:
@@ -271,7 +290,7 @@ paths:
       description: |
         Get the authenticated user profile resolved from the current access token and database record.
 
-        Protected-route authentication is currently stateless at the access-token layer, so a refresh session that has already been revoked does not block a still-valid access token until that access JWT expires.
+        Protected-route authentication requires both a valid access JWT and an active linked `auth_sessions` row. A revoked session causes this route to reject the access credential even before the JWT expiry time.
       security:
         - bearerAuth: []
         - cookieAuth: []
@@ -3131,17 +3150,42 @@ components:
               nullable: true
               example: 'WFH'
 
+    AuthWebTokenBundle:
+      type: object
+      required:
+        - access_token
+      properties:
+        access_token:
+          type: string
+          description: Primary access token field for the current authenticated session.
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    AuthNativeTokenBundle:
+      allOf:
+        - $ref: '#/components/schemas/AuthWebTokenBundle'
+        - type: object
+          required:
+            - refresh_token
+          properties:
+            refresh_token:
+              type: string
+              description: Primary refresh token field for native/non-browser clients.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
     AuthLoginWebData:
       allOf:
         - $ref: '#/components/schemas/AuthProfile'
         - type: object
           required:
             - token
+            - auth
           properties:
             token:
               type: string
-              description: Access token for authenticated requests.
+              description: Backward-compatible access token field for authenticated requests.
               example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            auth:
+              $ref: '#/components/schemas/AuthWebTokenBundle'
 
     AuthLoginNonWebData:
       allOf:
@@ -3149,11 +3193,14 @@ components:
         - type: object
           required:
             - refresh_token
+            - auth
           properties:
             refresh_token:
               type: string
-              description: Refresh token returned to non-browser clients.
+              description: Backward-compatible refresh token field returned to non-browser clients.
               example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            auth:
+              $ref: '#/components/schemas/AuthNativeTokenBundle'
 
     LoginWebResponse:
       type: object
@@ -3201,10 +3248,14 @@ components:
           type: object
           required:
             - access_token
+            - auth
           properties:
             access_token:
               type: string
+              description: Backward-compatible access token field.
               example: 'new-access-token'
+            auth:
+              $ref: '#/components/schemas/AuthWebTokenBundle'
         message:
           type: string
           example: 'Refresh successful'
@@ -3224,13 +3275,18 @@ components:
           required:
             - access_token
             - refresh_token
+            - auth
           properties:
             access_token:
               type: string
+              description: Backward-compatible access token field.
               example: 'new-access-token'
             refresh_token:
               type: string
+              description: Backward-compatible refresh token field.
               example: 'new-refresh-token'
+            auth:
+              $ref: '#/components/schemas/AuthNativeTokenBundle'
         message:
           type: string
           example: 'Refresh successful'
@@ -3318,7 +3374,7 @@ components:
           example: false
         code:
           type: string
-          example: 'AUTH_REFRESH_INVALID'
+          example: 'AUTH_REFRESH_TOKEN_INVALID'
         message:
           type: string
           example: 'Refresh token invalid'
@@ -3336,12 +3392,12 @@ components:
           example: false
         code:
           type: string
-          example: 'AUTH_REFRESH_REVOKED'
+          example: 'AUTH_REFRESH_TOKEN_REVOKED'
         message:
           type: string
           example: 'Refresh session revoked'
 
-    RefreshExpiredError:
+    RefreshSessionInactiveError:
       type: object
       description: Returned when the refresh JWT expired, the persisted refresh session absolute expiry passed, or the inactivity window elapsed. Clients must log in again.
       required:
@@ -3354,7 +3410,7 @@ components:
           example: false
         code:
           type: string
-          example: 'AUTH_REFRESH_EXPIRED'
+          example: 'AUTH_SESSION_INACTIVE'
         message:
           type: string
           example: 'Refresh session expired'

@@ -165,13 +165,17 @@ describe('Auth refresh contract', () => {
       success: true,
       data: {
         access_token: 'new-access-token',
-        refresh_token: 'new-refresh-token'
+        refresh_token: 'new-refresh-token',
+        auth: {
+          access_token: 'new-access-token',
+          refresh_token: 'new-refresh-token'
+        }
       },
       message: 'Refresh successful'
     });
   });
 
-  it('returns AUTH_REFRESH_INVALID when the refresh JWT is malformed', async () => {
+  it('returns AUTH_REFRESH_TOKEN_INVALID when the refresh JWT is malformed', async () => {
     const invalidError = new Error('jwt malformed');
     invalidError.name = 'JsonWebTokenError';
     mockVerify.mockImplementation(() => {
@@ -197,13 +201,13 @@ describe('Auth refresh contract', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      code: 'AUTH_REFRESH_INVALID',
+      code: 'AUTH_REFRESH_TOKEN_INVALID',
       message: 'Refresh token invalid'
     });
     expect(mockLogger.warn).toHaveBeenCalledWith('Refresh rejected: jwt malformed');
   });
 
-  it('returns AUTH_REFRESH_EXPIRED when the refresh JWT is expired', async () => {
+  it('returns AUTH_SESSION_INACTIVE when the refresh JWT is expired', async () => {
     const expiredError = new Error('jwt expired');
     expiredError.name = 'TokenExpiredError';
     mockVerify.mockImplementation(() => {
@@ -229,13 +233,13 @@ describe('Auth refresh contract', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      code: 'AUTH_REFRESH_EXPIRED',
+      code: 'AUTH_SESSION_INACTIVE',
       message: 'Refresh session expired'
     });
     expect(mockLogger.warn).toHaveBeenCalledWith('Refresh expired: jwt expired');
   });
 
-  it('returns AUTH_REFRESH_REVOKED when the refresh session is already revoked', async () => {
+  it('returns AUTH_REFRESH_TOKEN_REVOKED when the refresh session is already revoked', async () => {
     mockVerify.mockReturnValue({
       session_id: 77,
       jti: 'refresh-jti-old',
@@ -268,12 +272,12 @@ describe('Auth refresh contract', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      code: 'AUTH_REFRESH_REVOKED',
+      code: 'AUTH_REFRESH_TOKEN_REVOKED',
       message: 'Refresh session revoked'
     });
   });
 
-  it('returns AUTH_REFRESH_EXPIRED when the refresh session is inactive for longer than the inactivity window', async () => {
+  it('returns AUTH_SESSION_INACTIVE when the refresh session is inactive for longer than the inactivity window', async () => {
     mockVerify.mockReturnValue({
       session_id: 77,
       jti: 'refresh-jti-old',
@@ -314,12 +318,12 @@ describe('Auth refresh contract', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      code: 'AUTH_REFRESH_EXPIRED',
+      code: 'AUTH_SESSION_INACTIVE',
       message: 'Refresh session expired'
     });
   });
 
-  it('returns AUTH_REFRESH_INVALID when concurrent rotation already consumed the same refresh jti', async () => {
+  it('returns AUTH_REFRESH_TOKEN_INVALID when concurrent rotation already consumed the same refresh jti', async () => {
     mockVerify.mockReturnValue({
       session_id: 77,
       jti: 'refresh-jti-old',
@@ -370,7 +374,7 @@ describe('Auth refresh contract', () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      code: 'AUTH_REFRESH_INVALID',
+      code: 'AUTH_REFRESH_TOKEN_INVALID',
       message: 'Refresh token invalid'
     });
     expect(mockLogger.warn).toHaveBeenCalledWith(

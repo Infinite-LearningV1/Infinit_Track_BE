@@ -103,7 +103,7 @@ export const login = async (req, res) => {
       );
     }
 
-const roleName = await resolveRoleName(user);
+    const roleName = await resolveRoleName(user);
     const photoUrl = user.photo_file ? user.photo_file.photo_url : null;
     const tokenUserState = {
       id: user.id_users,
@@ -135,28 +135,48 @@ const roleName = await resolveRoleName(user);
         : null
     };
 
-    const currentTime = new Date();
-    const refreshJti = randomUUID();
-    const session = await AuthSession.create({
-      user_id: user.id_users,
-      refresh_jti: refreshJti,
-      client_type: clientType,
-      user_agent: userAgent || null,
-      last_activity_at: currentTime,
-      expires_at: new Date(currentTime.getTime() + config.jwt.refreshTtl * 1000)
-    });
+    const transaction = await sequelize.transaction();
+    let accessToken;
+    let refreshToken;
 
-    const { accessToken, refreshToken } = buildSessionTokens(
-      tokenUserState,
-      session.session_id,
-      refreshJti
-    );
+    try {
+      await lockUserForSessionReplacement(user.id_users, transaction);
+      await revokeActiveSessionsForClient(user.id_users, clientType, { transaction });
+
+      const { refreshJti, session } = await createAuthSession(
+        user.id_users,
+        clientType,
+        userAgent,
+        { transaction }
+      );
+      ({ accessToken, refreshToken } = buildSessionTokens(
+        tokenUserState,
+        session.session_id,
+        refreshJti
+      ));
+
+      await transaction.commit();
+    } catch (error) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        logger.error(`Login session replacement rollback failed: ${rollbackError.message}`, {
+          stack: rollbackError.stack,
+          original_error: error.message,
+          user_id: user.id_users,
+          client_type: clientType
+        });
+      }
+
+      throw error;
+    }
 
     if (clientType === 'web') {
       setSessionCookies(res, accessToken, refreshToken);
     }
 
     responseData.token = accessToken;
+    responseData.auth = buildAuthResponse(accessToken, refreshToken, clientType);
     if (clientType !== 'web') {
       responseData.refresh_token = refreshToken;
     }
@@ -197,10 +217,23 @@ function resolveAccessToken(req) {
 }
 
 function resolveClientType(req) {
+  const explicitClientType = req.headers?.['x-client-type']?.toString().trim().toLowerCase();
   const userAgent = req.get('User-Agent') || '';
   const authHeader = req.headers?.authorization || '';
   const browserUserAgentPattern = /(Mozilla\/|AppleWebKit\/|Chrome\/|Safari\/|Firefox\/|Edg\/)/i;
   const nativeUserAgentPattern = /(okhttp|dalvik|cfnetwork)/i;
+
+  if (explicitClientType === 'web') {
+    return 'web';
+  }
+
+  if (explicitClientType === 'mobile') {
+    return 'mobile';
+  }
+
+  if (explicitClientType === 'android') {
+    return 'android';
+  }
 
   if (browserUserAgentPattern.test(userAgent)) {
     return 'web';
@@ -257,6 +290,67 @@ function buildSessionTokens(userState, sessionId, refreshJti) {
     refreshToken: jwt.sign(refreshPayload, config.jwt.refreshSecret, {
       expiresIn: config.jwt.refreshTtl
     })
+  };
+}
+
+function buildRefreshExpiryDate(currentTime) {
+  return new Date(currentTime.getTime() + config.jwt.refreshTtl * 1000);
+}
+
+function buildAuthResponse(accessToken, refreshToken, clientType) {
+  const auth = {
+    access_token: accessToken
+  };
+
+  if (clientType !== 'web') {
+    auth.refresh_token = refreshToken;
+  }
+
+  return auth;
+}
+
+async function lockUserForSessionReplacement(userId, transaction) {
+  return User.findByPk(userId, {
+    lock: transaction.LOCK.UPDATE,
+    transaction
+  });
+}
+
+async function revokeActiveSessionsForClient(userId, clientType, options = {}) {
+  return AuthSession.update(
+    {
+      revoked_at: new Date(),
+      revocation_reason: 'replaced_by_new_login'
+    },
+    {
+      where: {
+        user_id: userId,
+        client_type: clientType,
+        revoked_at: null
+      },
+      ...(options.transaction ? { transaction: options.transaction } : {})
+    }
+  );
+}
+
+async function createAuthSession(userId, clientType, userAgent, options = {}) {
+  const currentTime = options.currentTime || new Date();
+  const payload = {
+    user_id: userId,
+    refresh_jti: options.refreshJti || randomUUID(),
+    client_type: clientType,
+    user_agent: userAgent || null,
+    last_activity_at: currentTime,
+    expires_at: buildRefreshExpiryDate(currentTime)
+  };
+
+  const session = options.transaction
+    ? await AuthSession.create(payload, { transaction: options.transaction })
+    : await AuthSession.create(payload);
+
+  return {
+    refreshJti: session.refresh_jti,
+    session
   };
 }
 
@@ -364,15 +458,15 @@ function isSessionInactive(lastActivityAt, inactivityWindowSeconds) {
 function sendInvalidRefreshResponse(res) {
   return res.status(401).json({
     success: false,
-    code: 'AUTH_REFRESH_INVALID',
+    code: 'AUTH_REFRESH_TOKEN_INVALID',
     message: 'Refresh token invalid'
   });
 }
 
-function sendExpiredRefreshResponse(res) {
+function sendInactiveSessionResponse(res) {
   return res.status(401).json({
     success: false,
-    code: 'AUTH_REFRESH_EXPIRED',
+    code: 'AUTH_SESSION_INACTIVE',
     message: 'Refresh session expired'
   });
 }
@@ -406,7 +500,7 @@ export const refresh = async (req, res) => {
     if (session.revoked_at) {
       return res.status(401).json({
         success: false,
-        code: 'AUTH_REFRESH_REVOKED',
+        code: 'AUTH_REFRESH_TOKEN_REVOKED',
         message: 'Refresh session revoked'
       });
     }
@@ -420,7 +514,7 @@ export const refresh = async (req, res) => {
         revocation_reason: 'expired'
       });
 
-      return sendExpiredRefreshResponse(res);
+      return sendInactiveSessionResponse(res);
     }
 
     const tokenUserState = await loadSessionTokenUserState(session.user_id);
@@ -472,7 +566,8 @@ export const refresh = async (req, res) => {
       return res.json({
         success: true,
         data: {
-          access_token: accessToken
+          access_token: accessToken,
+          auth: buildAuthResponse(accessToken, nextRefreshToken, 'web')
         },
         message: 'Refresh successful'
       });
@@ -482,14 +577,15 @@ export const refresh = async (req, res) => {
       success: true,
       data: {
         access_token: accessToken,
-        refresh_token: nextRefreshToken
+        refresh_token: nextRefreshToken,
+        auth: buildAuthResponse(accessToken, nextRefreshToken, session.client_type)
       },
       message: 'Refresh successful'
     });
   } catch (error) {
     if (isJwtExpiredError(error)) {
       logger.warn(`Refresh expired: ${error.message}`);
-      return sendExpiredRefreshResponse(res);
+      return sendInactiveSessionResponse(res);
     }
 
     if (isJwtVerificationError(error)) {
@@ -586,6 +682,8 @@ export const register = async (req, res) => {
       radius,
       description
     } = req.body;
+    const userAgent = req.get('User-Agent') || '';
+    const clientType = resolveClientType(req);
 
     // Validate required fields
     if (!id_roles) {
@@ -721,22 +819,30 @@ export const register = async (req, res) => {
       { transaction }
     );
 
-    // Commit transaksi
-    await transaction.commit(); // Generate JWT token for the new user
-    const payload = {
+    const roleName = userWithRole.role?.role_name || null;
+    const tokenUserState = {
       id: user.id_users,
       email: user.email,
       full_name: user.full_name,
-      role_name: userWithRole.role?.role_name || null,
+      role_name: roleName,
       photo: uploadResult.url
     };
-
-    const token = jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.ttl
+    const { refreshJti, session } = await createAuthSession(user.id_users, clientType, userAgent, {
+      transaction
     });
+    const { accessToken, refreshToken } = buildSessionTokens(
+      tokenUserState,
+      session.session_id,
+      refreshJti
+    );
 
-    // Set token in cookies
-    res.cookie('token', token, { httpOnly: true }); // Response sukses dengan data user dan lokasi
+    // Commit transaksi
+    await transaction.commit();
+
+    if (clientType === 'web') {
+      setSessionCookies(res, accessToken, refreshToken);
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -744,9 +850,10 @@ export const register = async (req, res) => {
           id: userWithRole.id_users,
           full_name: userWithRole.full_name,
           email: userWithRole.email,
-          role_name: userWithRole.role?.role_name || null,
-          token: token
+          role_name: roleName,
+          token: accessToken
         },
+        ...(clientType !== 'web' ? { refresh_token: refreshToken } : {}),
         location: {
           location_id: location.location_id,
           latitude: location.latitude,
