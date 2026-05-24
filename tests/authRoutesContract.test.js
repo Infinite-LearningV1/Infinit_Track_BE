@@ -38,7 +38,6 @@ jest.unstable_mockModule('../src/controllers/auth.controller.js', () => ({
   login: mockLogin,
   logout: mockLogout,
   refresh: mockRefresh,
-  register: jest.fn(),
   getCurrentUser: jest.fn()
 }));
 
@@ -51,7 +50,6 @@ jest.unstable_mockModule('../src/middlewares/security.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
-  userRegistrationValidation: [],
   loginValidation: [],
   validate: jest.fn((req, res, next) => next())
 }));
@@ -65,6 +63,13 @@ app.use('/api/auth', authRoutes);
 describe('Auth route contract', () => {
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('does not expose public self-registration from the auth surface', async () => {
+    const res = await request(app).post('/api/auth/register');
+
+    expect(res.status).toBe(404);
+    expect(mockVerifyToken).not.toHaveBeenCalled();
   });
 
   it('runs dedicated login throttling before the login handler', async () => {
