@@ -95,7 +95,10 @@ describe('Spaces upload rollback contract', () => {
       .fn()
       .mockReturnValue('users/77/profile/register-photo.jpg');
     const hash = jest.fn().mockResolvedValue('hashed');
-    const sign = jest.fn().mockReturnValue('jwt-token');
+    const sign = jest
+      .fn()
+      .mockReturnValueOnce('register-access-token')
+      .mockReturnValueOnce('register-refresh-token');
 
     jest.unstable_mockModule('../src/config/database.js', () => ({
       default: { transaction: jest.fn().mockResolvedValue(transaction) }
@@ -177,10 +180,14 @@ describe('Spaces upload rollback contract', () => {
       'test-secret',
       { expiresIn: 900 }
     );
-    expect(res.cookie).toHaveBeenCalledWith('token', 'jwt-token', expect.objectContaining({ httpOnly: true }));
+    expect(res.cookie).toHaveBeenCalledWith(
+      'token',
+      'register-access-token',
+      expect.objectContaining({ httpOnly: true })
+    );
     expect(res.cookie).toHaveBeenCalledWith(
       'refresh_token',
-      'jwt-token',
+      'register-refresh-token',
       expect.objectContaining({ httpOnly: true })
     );
     expect(res.status).toHaveBeenCalledWith(201);
