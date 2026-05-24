@@ -1,10 +1,45 @@
 import jwt from 'jsonwebtoken';
 
 import config from '../config/index.js';
-import { User, Role } from '../models/index.js';
+import { User, Role, AuthSession } from '../models/index.js';
 import logger from '../utils/logger.js';
 
-const isJwtError = (error, expectedName) => error?.name === expectedName;
+function isJwtError(error, expectedName) {
+  return error?.name === expectedName;
+}
+
+function isSessionInactive(lastActivityAt, inactivityWindowSeconds) {
+  if (!lastActivityAt) {
+    return true;
+  }
+
+  return Date.now() - new Date(lastActivityAt).getTime() > inactivityWindowSeconds * 1000;
+}
+
+function isSessionExpired(expiresAt) {
+  return new Date(expiresAt).getTime() <= Date.now();
+}
+
+async function isSessionActive(decoded) {
+  if (!decoded?.session_id || !decoded?.id) {
+    return false;
+  }
+
+  const session = await AuthSession.findByPk(decoded.session_id);
+
+  if (!session || session.user_id !== decoded.id || session.revoked_at) {
+    return false;
+  }
+
+  if (
+    isSessionInactive(session.last_activity_at, config.jwt.refreshInactivityWindowSeconds) ||
+    isSessionExpired(session.expires_at)
+  ) {
+    return false;
+  }
+
+  return true;
+}
 
 export const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -50,6 +85,12 @@ export const verifyToken = async (req, res, next) => {
   }
 
   try {
+    const sessionIsActive = await isSessionActive(decoded);
+
+    if (!sessionIsActive) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
     if (!decoded.role_name && decoded.id) {
       try {
         const userWithRole = await User.findByPk(decoded.id, {

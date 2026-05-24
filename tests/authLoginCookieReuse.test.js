@@ -40,8 +40,22 @@ jest.unstable_mockModule('bcryptjs', () => ({
   }
 }));
 
+const mockUserFindOne = jest.fn(async () => mockUser);
+const mockUserFindByPk = jest.fn(async () => mockUser);
+const mockTransaction = {
+  LOCK: {
+    UPDATE: 'UPDATE'
+  },
+  commit: jest.fn(async () => undefined),
+  rollback: jest.fn(async () => undefined)
+};
+const mockSequelizeTransaction = jest.fn(async () => mockTransaction);
 const mockAuthSession = {
-  create: jest.fn(async () => ({ session_id: 42 }))
+  create: jest.fn(async (payload) => ({
+    session_id: 42,
+    refresh_jti: payload.refresh_jti
+  })),
+  update: jest.fn(async () => [0])
 };
 
 jest.unstable_mockModule('../src/config/index.js', () => ({
@@ -59,7 +73,8 @@ jest.unstable_mockModule('../src/config/index.js', () => ({
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
   User: {
-    findOne: jest.fn(async () => mockUser)
+    findOne: mockUserFindOne,
+    findByPk: mockUserFindByPk
   },
   Photo: {},
   Role: {
@@ -73,7 +88,9 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
-  default: {}
+  default: {
+    transaction: mockSequelizeTransaction
+  }
 }));
 
 jest.unstable_mockModule('../src/models/location.js', () => ({
@@ -98,28 +115,40 @@ jest.unstable_mockModule('../src/config/spaces.js', () => ({
 
 const { login } = await import('../src/controllers/auth.controller.js');
 
+function createRequest() {
+  return {
+    body: {
+      email: 'management@example.com',
+      password: 'correct-password'
+    },
+    cookies: {
+      token: employeeCookieToken
+    },
+    headers: {},
+    get: jest.fn(() => 'Mozilla/5.0')
+  };
+}
+
+function createResponse() {
+  return {
+    cookie: jest.fn(),
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn()
+  };
+}
+
 describe('auth login cookie token reuse', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
   it('does not reuse a valid cookie token that belongs to a different authenticated user', async () => {
-    const req = {
-      body: {
-        email: 'management@example.com',
-        password: 'correct-password'
-      },
-      cookies: {
-        token: employeeCookieToken
-      },
-      headers: {},
-      get: jest.fn(() => 'Mozilla/5.0')
-    };
-    const res = {
-      cookie: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = createRequest();
+    const res = createResponse();
 
     await login(req, res);
 
@@ -163,22 +192,8 @@ describe('auth login cookie token reuse', () => {
       throw new jwt.NotBeforeError('jwt not active', new Date());
     });
 
-    const req = {
-      body: {
-        email: 'management@example.com',
-        password: 'correct-password'
-      },
-      cookies: {
-        token: employeeCookieToken
-      },
-      headers: {},
-      get: jest.fn(() => 'Mozilla/5.0')
-    };
-    const res = {
-      cookie: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = createRequest();
+    const res = createResponse();
 
     await login(req, res);
 
@@ -187,7 +202,8 @@ describe('auth login cookie token reuse', () => {
       expect.objectContaining({
         user_id: 2,
         client_type: 'web'
-      })
+      }),
+      { transaction: mockTransaction }
     );
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
@@ -206,22 +222,8 @@ describe('auth login cookie token reuse', () => {
       throw new Error('jwt library unavailable');
     });
 
-    const req = {
-      body: {
-        email: 'management@example.com',
-        password: 'correct-password'
-      },
-      cookies: {
-        token: employeeCookieToken
-      },
-      headers: {},
-      get: jest.fn(() => 'Mozilla/5.0')
-    };
-    const res = {
-      cookie: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = createRequest();
+    const res = createResponse();
 
     await login(req, res);
 

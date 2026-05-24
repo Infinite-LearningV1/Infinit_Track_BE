@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 
 const TEST_JWT_SECRET = 'test-secret';
+const mockUserFindByPk = jest.fn();
+const mockAuthSessionFindByPk = jest.fn();
 
 jest.unstable_mockModule('../src/config/index.js', () => ({
   default: {
@@ -21,9 +23,28 @@ jest.unstable_mockModule('../src/config/index.js', () => ({
   }
 }));
 
+jest.unstable_mockModule('../src/models/index.js', () => ({
+  User: {
+    findByPk: mockUserFindByPk
+  },
+  Role: {},
+  AuthSession: {
+    findByPk: mockAuthSessionFindByPk
+  }
+}));
+
 const { verifyToken } = await import('../src/middlewares/authJwt.js');
-const { User } = await import('../src/models/index.js');
 const { default: logger } = await import('../src/utils/logger.js');
+
+function buildActiveSession(sessionId, userId) {
+  return {
+    session_id: sessionId,
+    user_id: userId,
+    revoked_at: null,
+    last_activity_at: new Date(),
+    expires_at: new Date(Date.now() + 60_000)
+  };
+}
 
 const app = express();
 app.use((req, _res, next) => {
@@ -42,18 +63,39 @@ app.get('/protected', verifyToken, (req, res) => {
 });
 
 describe('authJwt token precedence', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const activeSessions = {
+      101: buildActiveSession(101, 1),
+      102: buildActiveSession(102, 2),
+      103: buildActiveSession(103, 3),
+      104: buildActiveSession(104, 4),
+      105: buildActiveSession(105, 5)
+    };
+
+    mockAuthSessionFindByPk.mockImplementation(async (sessionId) => activeSessions[sessionId] ?? null);
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
+  const signAccessToken = (payload) => jwt.sign(payload, TEST_JWT_SECRET, { expiresIn: '1h' });
+
   const employeeCookieToken = () =>
-    jwt.sign({ id: 1, email: 'employee@example.com', role_name: 'Employee' }, TEST_JWT_SECRET, {
-      expiresIn: '1h'
+    signAccessToken({
+      id: 1,
+      email: 'employee@example.com',
+      role_name: 'Employee',
+      session_id: 101
     });
 
   const managementBearerToken = () =>
-    jwt.sign({ id: 2, email: 'management@example.com', role_name: 'Management' }, TEST_JWT_SECRET, {
-      expiresIn: '1h'
+    signAccessToken({
+      id: 2,
+      email: 'management@example.com',
+      role_name: 'Management',
+      session_id: 102
     });
 
   it('uses the Authorization Bearer token when a cookie token is also present', async () => {
@@ -101,9 +143,11 @@ describe('authJwt token precedence', () => {
 
   it('rejects a valid token without role_name when role hydration fails', async () => {
     const loggerError = jest.spyOn(logger, 'error').mockImplementation(() => {});
-    jest.spyOn(User, 'findByPk').mockRejectedValueOnce(new Error('database unavailable'));
-    const tokenWithoutRoleName = jwt.sign({ id: 3, email: 'legacy@example.com' }, TEST_JWT_SECRET, {
-      expiresIn: '1h'
+    mockUserFindByPk.mockRejectedValueOnce(new Error('database unavailable'));
+    const tokenWithoutRoleName = signAccessToken({
+      id: 3,
+      email: 'legacy@example.com',
+      session_id: 103
     });
 
     const res = await request(app)
@@ -120,9 +164,11 @@ describe('authJwt token precedence', () => {
 
   it('rejects a valid token without role_name when no role can be hydrated', async () => {
     const loggerError = jest.spyOn(logger, 'error').mockImplementation(() => {});
-    jest.spyOn(User, 'findByPk').mockResolvedValueOnce({ role: null });
-    const tokenWithoutRoleName = jwt.sign({ id: 5, email: 'norole@example.com' }, TEST_JWT_SECRET, {
-      expiresIn: '1h'
+    mockUserFindByPk.mockResolvedValueOnce({ role: null });
+    const tokenWithoutRoleName = signAccessToken({
+      id: 5,
+      email: 'norole@example.com',
+      session_id: 105
     });
 
     const res = await request(app)
@@ -161,12 +207,13 @@ describe('authJwt token precedence', () => {
     expect(res.json).not.toHaveBeenCalled();
   });
 
-  it('keeps protected-route verification stateless after successful decoding', async () => {
-    const token = jwt.sign(
-      { id: 4, email: 'expiring@example.com', role_name: 'Management' },
-      TEST_JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+  it('keeps protected-route verification stateful after successful decoding', async () => {
+    const token = signAccessToken({
+      id: 4,
+      email: 'expiring@example.com',
+      role_name: 'Management',
+      session_id: 104
+    });
     const req = {
       headers: { authorization: `Bearer ${token}` },
       cookies: {}
@@ -180,6 +227,7 @@ describe('authJwt token precedence', () => {
 
     await verifyToken(req, res, next);
 
+    expect(mockAuthSessionFindByPk).toHaveBeenCalledWith(104);
     expect(next).toHaveBeenCalledWith();
     expect(req.user).toEqual(
       expect.objectContaining({

@@ -25,8 +25,7 @@ export const requestLogger = (req, res, next) => {
   // Capture request start time
   const startTime = Date.now();
 
-  // Log incoming request
-  logger.info({
+  logger.info('HTTP request started', {
     type: 'request',
     requestId,
     method: req.method,
@@ -34,7 +33,7 @@ export const requestLogger = (req, res, next) => {
     query: req.query,
     ip: req.ip || req.connection.remoteAddress,
     userAgent: req.headers['user-agent'],
-    userId: req.user?.id || null // Will be null before auth
+    userId: req.user?.id || null
   });
 
   // Capture response using event listeners
@@ -44,8 +43,7 @@ export const requestLogger = (req, res, next) => {
 
     const duration = Date.now() - startTime;
 
-    // Log response
-    logger.info({
+    logger.info('HTTP request completed', {
       type: 'response',
       requestId,
       method: req.method,
@@ -62,7 +60,7 @@ export const requestLogger = (req, res, next) => {
   res.on('error', (error) => {
     const duration = Date.now() - startTime;
 
-    logger.error({
+    logger.error('HTTP request failed during response stream', {
       type: 'response_error',
       requestId,
       method: req.method,
@@ -88,16 +86,16 @@ export const createRequestLogger = (req) => {
 
   return {
     info: (message, meta = {}) => {
-      logger.info({ ...meta, message, requestId });
+      logger.info(message, { ...meta, requestId });
     },
     warn: (message, meta = {}) => {
-      logger.warn({ ...meta, message, requestId });
+      logger.warn(message, { ...meta, requestId });
     },
     error: (message, meta = {}) => {
-      logger.error({ ...meta, message, requestId });
+      logger.error(message, { ...meta, requestId });
     },
     debug: (message, meta = {}) => {
-      logger.debug({ ...meta, message, requestId });
+      logger.debug(message, { ...meta, requestId });
     }
   };
 };
