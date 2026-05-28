@@ -79,40 +79,86 @@ export const additionalSecurity = (req, res, next) => {
  * For production, consider using express-rate-limit package
  */
 const requestCounts = new Map();
+const loginAttemptCounts = new Map();
+
+function getRequestSource(req) {
+  return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
+}
+
+function pruneExpiredEntries(store, now) {
+  for (const [key, record] of store) {
+    if (now > record.resetTime) {
+      store.delete(key);
+    }
+  }
+}
+
+function checkRateLimit(store, key, { windowMs, maxRequests }) {
+  const now = Date.now();
+  pruneExpiredEntries(store, now);
+
+  const record = store.get(key);
+
+  if (!record) {
+    store.set(key, { count: 1, resetTime: now + windowMs });
+    return { allowed: true };
+  }
+
+  if (record.count >= maxRequests) {
+    return {
+      allowed: false,
+      retryAfter: Math.ceil((record.resetTime - now) / 1000)
+    };
+  }
+
+  record.count += 1;
+  return { allowed: true };
+}
 
 export const basicRateLimit = (req, res, next) => {
-  // Only apply rate limiting in production
   if (config.env !== 'production') {
     return next();
   }
-  
-  const ip = req.ip || req.connection.remoteAddress;
-  const now = Date.now();
-  const windowMs = 15 * 60 * 1000; // 15 minutes
-  const maxRequests = 1000; // Max 1000 requests per 15 minutes per IP
-  
-  if (!requestCounts.has(ip)) {
-    requestCounts.set(ip, { count: 1, resetTime: now + windowMs });
-    return next();
-  }
-  
-  const record = requestCounts.get(ip);
-  
-  if (now > record.resetTime) {
-    // Reset window
-    requestCounts.set(ip, { count: 1, resetTime: now + windowMs });
-    return next();
-  }
-  
-  if (record.count >= maxRequests) {
+
+  const result = checkRateLimit(requestCounts, getRequestSource(req), {
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 1000
+  });
+
+  if (!result.allowed) {
     return res.status(429).json({
       success: false,
       message: 'Too many requests, please try again later',
-      retryAfter: Math.ceil((record.resetTime - now) / 1000)
+      retryAfter: result.retryAfter
     });
   }
-  
-  record.count++;
+
+  next();
+};
+
+export const loginRateLimit = (req, res, next) => {
+  if (config.env !== 'production') {
+    return next();
+  }
+
+  const email = String(req.body?.email || '')
+    .trim()
+    .toLowerCase();
+  const rateLimitKey = email ? `${getRequestSource(req)}:${email}` : getRequestSource(req);
+  const result = checkRateLimit(loginAttemptCounts, rateLimitKey, {
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 10
+  });
+
+  if (!result.allowed) {
+    return res.status(429).json({
+      success: false,
+      code: 'AUTH_RATE_LIMITED',
+      message: 'Too many login attempts, please try again later',
+      retryAfter: result.retryAfter
+    });
+  }
+
   next();
 };
 
@@ -122,14 +168,17 @@ export const basicRateLimit = (req, res, next) => {
  */
 export const validateCorsOrigin = () => {
   const origin = config.cors.origin;
-  
-  if (config.env === 'production' && origin === '*') {
-    console.warn('⚠️  WARNING: CORS origin is set to "*" in production!');
-    console.warn('   This is a security risk. Set CORS_ORIGIN environment variable.');
+
+  if (config.env !== 'production') {
+    return;
   }
-  
-  if (config.env === 'production') {
-    console.log(`✓ CORS configured for: ${origin}`);
+
+  if (!origin || origin === '*') {
+    throw new Error(
+      'CORS_ORIGIN must be set explicitly in production; wildcard or empty origins are not allowed.'
+    );
   }
+
+  console.log(`✓ CORS configured for: ${origin}`);
 };
 

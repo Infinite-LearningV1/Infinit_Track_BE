@@ -38,6 +38,7 @@ describe('OpenAPI mounted route inventory contract', () => {
 
   test('excludes debug, test, internal ops, and legacy endpoints from public OpenAPI', () => {
     const excludedPaths = [
+      '/api/auth/register',
       '/api/wfa/debug-geoapify',
       '/api/wfa/recommendations-test',
       '/api/wfa/test-ahp',

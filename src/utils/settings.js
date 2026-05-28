@@ -158,14 +158,7 @@ export const getOperationalSettingsStrict = async (transaction = null) => {
   return normalizeOperationalSettings(settingsByField);
 };
 
-/**
- * Helper function to get attendance settings from database
- * @param {Array} settingKeys - Array of setting keys to retrieve
- * @param {Transaction} transaction - Optional database transaction
- * @returns {Object} Settings object with key-value pairs
- */
 export const getAttendanceSettings = async (settingKeys = [], transaction = null) => {
-  // Default setting keys if none provided
   const defaultKeys = [
     'attendance.checkin.start_time',
     'attendance.checkin.end_time',
@@ -186,13 +179,11 @@ export const getAttendanceSettings = async (settingKeys = [], transaction = null
     transaction
   });
 
-  // Convert settings array to object for easy access
   const settingsMap = {};
   settings.forEach((setting) => {
     settingsMap[setting.setting_key] = setting.setting_value;
   });
 
-  // Set default values if settings not found
   return {
     checkinStartTime: settingsMap['attendance.checkin.start_time'] || '08:00:00',
     checkinEndTime: settingsMap['attendance.checkin.end_time'] || '18:00:00',
@@ -203,15 +194,11 @@ export const getAttendanceSettings = async (settingKeys = [], transaction = null
   };
 };
 
-/**
- * Helper function to get Jakarta timezone date
- * @returns {Object} Object containing localTime and todayDate
- */
 export const getJakartaTime = () => {
   const today = new Date();
-  const jakartaOffset = 7 * 60; // UTC+7 dalam menit
+  const jakartaOffset = 7 * 60;
   const localTime = new Date(today.getTime() + jakartaOffset * 60000);
-  const todayDate = localTime.toISOString().split('T')[0]; // YYYY-MM-DD format
+  const todayDate = localTime.toISOString().split('T')[0];
 
   return {
     localTime,
@@ -219,23 +206,11 @@ export const getJakartaTime = () => {
   };
 };
 
-/**
- * Helper function to convert time string to minutes
- * @param {string} timeString - Time in format "HH:MM:SS" or "HH:MM"
- * @returns {number} Total minutes
- */
 export const timeToMinutes = (timeString) => {
   const [hours, minutes] = timeString.split(':').map(Number);
   return hours * 60 + minutes;
 };
 
-/**
- * Helper function to check if current time is within working hours
- * @param {Date} currentTime - Current time
- * @param {string} startTime - Start time in format "HH:MM:SS"
- * @param {string} endTime - End time in format "HH:MM:SS"
- * @returns {boolean} True if within working hours
- */
 export const isWithinWorkingHours = (currentTime, startTime, endTime) => {
   const currentHour = currentTime.getHours();
   const currentMinute = currentTime.getMinutes();
@@ -247,12 +222,6 @@ export const isWithinWorkingHours = (currentTime, startTime, endTime) => {
   return currentTimeMinutes >= startMinutes && currentTimeMinutes <= endMinutes;
 };
 
-/**
- * Helper function to determine attendance status (ontime vs late)
- * @param {Date} currentTime - Current time
- * @param {string} lateTime - Late time threshold in format "HH:MM:SS"
- * @returns {number} Status ID (1 = ontime, 2 = late)
- */
 export const determineAttendanceStatus = (currentTime, lateTime) => {
   const currentHour = currentTime.getHours();
   const currentMinute = currentTime.getMinutes();
@@ -260,5 +229,5 @@ export const determineAttendanceStatus = (currentTime, lateTime) => {
 
   const lateTimeMinutes = timeToMinutes(lateTime);
 
-  return currentTimeMinutes > lateTimeMinutes ? 2 : 1; // 2 = late, 1 = ontime
+  return currentTimeMinutes > lateTimeMinutes ? 2 : 1;
 };

@@ -1,7 +1,10 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { createRequire } from 'module';
 import { jest } from '@jest/globals';
+
+const repoRoot = process.cwd();
 
 function setRequiredBaseEnv() {
   process.env.DB_HOST = 'db.example.internal';
@@ -16,29 +19,48 @@ async function loadRuntimeConfig() {
   return config;
 }
 
+const productionCorsValidationError =
+  'CORS_ORIGIN must be set explicitly in production; wildcard or empty origins are not allowed.';
+
+async function loadSecurityModule() {
+  return import('../src/middlewares/security.js');
+}
+
+async function loadProductionCorsValidation(origin) {
+  process.env.NODE_ENV = 'production';
+  process.env.JWT_SECRET = 'test-secret';
+  process.env.CORS_ORIGIN = origin;
+  setRequiredBaseEnv();
+
+  const config = await loadRuntimeConfig();
+  const { validateCorsOrigin } = await loadSecurityModule();
+
+  return { config, validateCorsOrigin };
+}
+
 function readDockerCompose() {
-  return fs.readFileSync(path.resolve(process.cwd(), 'docker-compose.yml'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, 'docker-compose.yml'), 'utf8');
 }
 
 function readDockerfile() {
-  return fs.readFileSync(path.resolve(process.cwd(), 'Dockerfile'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, 'Dockerfile'), 'utf8');
 }
 
 function readK8sDeployment() {
-  return fs.readFileSync(path.resolve(process.cwd(), 'k8s/app-deployment.yaml'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, 'k8s/app-deployment.yaml'), 'utf8');
 }
 
 function readScript(relativePath) {
-  return fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, relativePath), 'utf8');
 }
 
 function migrationFiles() {
-  return fs.readdirSync(path.resolve(process.cwd(), 'src/models/migrations')).sort();
+  return fs.readdirSync(path.resolve(repoRoot, 'src/models/migrations')).sort();
 }
 
 function loadCliConfig() {
   const require = createRequire(import.meta.url);
-  const configPath = path.resolve(process.cwd(), 'src/config/database-cli.cjs');
+  const configPath = path.resolve(repoRoot, 'src/config/database-cli.cjs');
 
   delete require.cache[configPath];
 
@@ -46,23 +68,23 @@ function loadCliConfig() {
 }
 
 function readDoDeploySpec(fileName) {
-  return fs.readFileSync(path.resolve(process.cwd(), '.do', fileName), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, '.do', fileName), 'utf8');
 }
 
 function readDoReadme() {
-  return fs.readFileSync(path.resolve(process.cwd(), '.do/README.md'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, '.do/README.md'), 'utf8');
 }
 
 function readRootReadme() {
-  return fs.readFileSync(path.resolve(process.cwd(), 'README.md'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, 'README.md'), 'utf8');
 }
 
 function readClaudeInstructions() {
-  return fs.readFileSync(path.resolve(process.cwd(), 'CLAUDE.md'), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, 'CLAUDE.md'), 'utf8');
 }
 
 function readWorkflow(relativePath) {
-  return fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, relativePath), 'utf8');
 }
 
 function buildRes() {
@@ -124,7 +146,6 @@ async function loadWfaControllerWithMocks({ axiosGet, logger, settingsValue = nu
     loggerMock
   };
 }
-
 describe('backend runtime config contract', () => {
   const envBackup = { ...process.env };
 
@@ -151,6 +172,26 @@ describe('backend runtime config contract', () => {
     expect(config.db.sslRejectUnauthorized).toBe(false);
   });
 
+  test('fails closed when production credentialed CORS origin resolves empty', async () => {
+    const { config, validateCorsOrigin } = await loadProductionCorsValidation('');
+
+    expect(config.cors.origin).toBe('');
+    expect(() => validateCorsOrigin()).toThrow(productionCorsValidationError);
+  });
+
+  test('fails closed when production CORS origin is left as wildcard', async () => {
+    const { validateCorsOrigin } = await loadProductionCorsValidation('*');
+
+    expect(() => validateCorsOrigin()).toThrow(productionCorsValidationError);
+  });
+
+  test('accepts explicit production CORS origin for credentialed requests', async () => {
+    const { config, validateCorsOrigin } = await loadProductionCorsValidation('https://app.example.com');
+
+    expect(config.cors.origin).toBe('https://app.example.com');
+    expect(() => validateCorsOrigin()).not.toThrow();
+  });
+
   test('reads DB_PORT and SSL settings into sequelize-cli config for managed database migrations', () => {
     process.env.DB_PORT = '25060';
     process.env.DB_SSL = 'true';
@@ -164,7 +205,6 @@ describe('backend runtime config contract', () => {
     expect(config.staging.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
     expect(config.production.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
   });
-
   test('reads explicit access refresh and inactivity auth config from environment', async () => {
     process.env.JWT_SECRET = 'legacy-secret';
     process.env.JWT_REFRESH_SECRET = 'refresh-secret';
@@ -180,6 +220,50 @@ describe('backend runtime config contract', () => {
     expect(config.jwt.accessTtl).toBe(900);
     expect(config.jwt.refreshTtl).toBe(2592000);
     expect(config.jwt.refreshInactivityWindowSeconds).toBe(172800);
+  });
+
+  test('loads sequelize-cli env from a parent repo .env when invoked inside a worktree', () => {
+    const cwdBackup = process.cwd();
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-env-'));
+
+    try {
+      const fakeRepoRoot = path.join(tempRoot, 'repo-root');
+      const worktreeDir = path.join(fakeRepoRoot, '.worktrees', 'feature-branch');
+
+      fs.mkdirSync(worktreeDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeRepoRoot, '.env'),
+        [
+          'DB_HOST=parent-host',
+          'DB_NAME=parent-db',
+          'DB_USER=parent-user',
+          'DB_PASS=parent-pass',
+          'DB_PORT=25060',
+          'DB_SSL=true',
+          'DB_SSL_REJECT_UNAUTHORIZED=false'
+        ].join('\n') + '\n',
+        'utf8'
+      );
+
+      delete process.env.DB_HOST;
+      delete process.env.DB_NAME;
+      delete process.env.DB_USER;
+      delete process.env.DB_PASS;
+      delete process.env.DB_PORT;
+      delete process.env.DB_SSL;
+      delete process.env.DB_SSL_REJECT_UNAUTHORIZED;
+
+      process.chdir(worktreeDir);
+      const config = loadCliConfig();
+
+      expect(config.production.host).toBe('parent-host');
+      expect(config.production.database).toBe('parent-db');
+      expect(config.production.port).toBe(25060);
+      expect(config.production.dialectOptions.ssl).toEqual({ rejectUnauthorized: false });
+    } finally {
+      process.chdir(cwdBackup);
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   test('does not expose operational attendance settings as env-backed runtime config', async () => {
@@ -236,12 +320,46 @@ describe('backend runtime config contract', () => {
     const productionTest = readScript('test-production.sh');
     const dropletVerify = readScript('deploy/scripts/verify-droplet-api.sh');
 
-    expect(smokeTest).toContain('/livez');
-    expect(smokeTest).toContain('/health');
-    expect(smokeTest).toContain('const originAllowed = corsHeader === requestedOrigin;');
-    expect(smokeTest).toContain("const credentialsAllowed = credentialsHeader === 'true';");
+    const smokeTestEndpoints = [
+      '/livez',
+      '/health',
+      '/docs/',
+      '/docs/openapi.yaml',
+      '/api/auth/register',
+      '/api/auth/me',
+      '/api/bookings/history',
+      '/api/wfa/recommendations',
+      '/api/summary/reports'
+    ];
+
+    for (const endpoint of smokeTestEndpoints) {
+      expect(smokeTest).toContain(endpoint);
+    }
+
+    const dropletVerifyEndpoints = [
+      '/docs/',
+      '/docs/openapi.yaml',
+      '/api/auth/register',
+      '/api/auth/me',
+      '/api/bookings/history',
+      '/api/wfa/recommendations',
+      '/api/summary/reports'
+    ];
+
+    for (const endpoint of dropletVerifyEndpoints) {
+      expect(dropletVerify).toContain(endpoint);
+    }
+    expect(dropletVerify).toContain('PUBLIC_API_BASE_URL');
+    expect(dropletVerify).toContain('check_blocked_endpoint');
+    expect(dropletVerify).toContain('check_removed_post_route');
+    expect(smokeTest).toContain("const disallowedOrigin = 'https://example.com';");
+    expect(smokeTest).toContain('const disallowedOriginRejected = corsHeader !== disallowedOrigin;');
+    expect(smokeTest).toContain("const credentialsConfigured = credentialsHeader === 'true';");
     expect(smokeTest).toContain('Allow-Credentials');
     expect(smokeTest).not.toContain("corsHeader === '*'");
+    expect(productionTest).toContain('Testing API documentation access control');
+    expect(productionTest).toContain('API documentation blocks anonymous access with HTTP $response');
+    expect(productionTest).toContain('Expected API documentation to block anonymous access with HTTP 401/403');
     expect(healthCheck).toContain('/livez');
     expect(healthCheck).toContain('/health');
     expect(healthCheck).toContain('http://localhost:${PORT:-3005}');
@@ -276,7 +394,7 @@ describe('backend runtime config contract', () => {
     expect(productionTest).not.toContain('pm2');
     expect(dropletVerify).toContain('/livez');
     expect(dropletVerify).toContain('/health');
-    expect(dropletVerify).toContain("check_json_endpoint");
+    expect(dropletVerify).toContain('check_json_endpoint');
     expect(dropletVerify).toContain('python3 is required for JSON readiness verification');
     expect(dropletVerify).toContain('socket.getaddrinfo');
     expect(dropletVerify).toContain('DNS_FAIL lookup failed');
@@ -359,13 +477,14 @@ describe('backend runtime config contract', () => {
     expect(stagingWorkflow).toContain('registry.digitalocean.com/infinit-track/infinit-track-backend');
     expect(stagingWorkflow).toContain('docker compose pull app');
     expect(stagingWorkflow).toContain('docker compose up -d --force-recreate app');
-    expect(stagingWorkflow).toContain("docker compose exec -T app npm run migrate");
+    expect(stagingWorkflow).toContain('docker compose exec -T app npm run migrate');
     expect(stagingWorkflow).toContain('./deploy/scripts/verify-droplet-api.sh');
     expect(stagingWorkflow).toContain('npm run smoke-test "$STAGING_PUBLIC_BASE_URL"');
     expect(stagingWorkflow).toContain('STAGING_PUBLIC_BASE_URL');
     expect(stagingWorkflow).toContain('STAGING_PUBLIC_DOMAIN');
     expect(stagingWorkflow).toContain('STAGING_EXPECTED_IP');
     expect(stagingWorkflow).toContain('Missing required staging runtime variable');
+    expect(stagingWorkflow).toContain('authenticated Admin/Management only');
     expect(stagingWorkflow).not.toContain('https://api.infinite-track.tech');
     expect(stagingWorkflow).not.toContain('continue-on-error: true');
     expect(stagingWorkflow).not.toContain('doctl apps create-deployment');
@@ -375,11 +494,12 @@ describe('backend runtime config contract', () => {
     expect(productionWorkflow).toContain('registry.digitalocean.com/infinit-track/infinit-track-backend');
     expect(productionWorkflow).toContain('docker compose pull app');
     expect(productionWorkflow).toContain('docker compose up -d --force-recreate app');
-    expect(productionWorkflow).toContain("docker compose exec -T app npm run migrate");
+    expect(productionWorkflow).toContain('docker compose exec -T app npm run migrate');
     expect(productionWorkflow).toContain('./deploy/scripts/verify-droplet-api.sh');
     expect(productionWorkflow).toContain('npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"');
     expect(productionWorkflow).toContain('Type "deploy-to-production" to confirm');
     expect(productionWorkflow).toContain('PRODUCTION_PUBLIC_BASE_URL');
+    expect(productionWorkflow).toContain('authenticated Admin/Management only');
     expect(productionWorkflow).not.toContain('doctl apps create-deployment');
     expect(productionWorkflow).not.toContain('yourdomain.com');
     expect(productionWorkflow).not.toContain('ondigitalocean.app');
@@ -388,10 +508,20 @@ describe('backend runtime config contract', () => {
     expect(dockerDeployWorkflow).toContain('Build & Push Docker Image');
     expect(dockerDeployWorkflow).toContain('registry.digitalocean.com/infinit-track/infinit-track-backend');
     expect(dockerDeployWorkflow).toContain('Use the immutable SHA tag for droplet rollout.');
+    expect(dockerDeployWorkflow).toContain('Validate DigitalOcean token secret');
+    expect(dockerDeployWorkflow).toContain('DIGITALOCEAN_ACCESS_TOKEN repository secret is required');
+    expect(dockerDeployWorkflow).toContain('digitalocean/action-doctl@v2');
+    expect(dockerDeployWorkflow).toContain('docker/build-push-action@v5');
     expect(dockerDeployWorkflow).not.toContain('Deploy to Kubernetes');
     expect(dockerDeployWorkflow).not.toContain('kubectl apply -f k8s/');
     expect(dockerDeployWorkflow).not.toContain('KUBECONFIG');
     expect(dockerDeployWorkflow).not.toContain('api.your-domain.com');
+    const dockerPublishSection = dockerDeployWorkflow.slice(
+      dockerDeployWorkflow.indexOf('name: Build & Push Docker Image')
+    );
+    expect(dockerPublishSection.indexOf('Validate DigitalOcean token secret')).toBeLessThan(
+      dockerPublishSection.indexOf('Checkout code')
+    );
   });
 
   test('uses CommonJS migration filenames for sequelize-cli compatibility', () => {
@@ -410,7 +540,7 @@ describe('backend runtime config contract', () => {
     expect(files).not.toContain('20260424000000-bootstrap-operational-settings.js');
 
     for (const file of files.filter((name) => name.endsWith('.cjs'))) {
-      const content = fs.readFileSync(path.resolve(process.cwd(), 'src/models/migrations', file), 'utf8');
+      const content = fs.readFileSync(path.resolve(repoRoot, 'src/models/migrations', file), 'utf8');
       expect(content).not.toContain('export default');
     }
   });
@@ -526,7 +656,7 @@ describe('backend runtime config contract', () => {
 
   test('redacts Geoapify API key in booking suitability diagnostics', () => {
     const bookingController = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/controllers/booking.controller.js'),
+      path.resolve(repoRoot, 'src/controllers/booking.controller.js'),
       'utf8'
     );
 
@@ -536,8 +666,9 @@ describe('backend runtime config contract', () => {
   });
 
   test('documents BACKEND_IMAGE_TAG in env example for operators', () => {
-    const envExample = fs.readFileSync(path.resolve(process.cwd(), '.env.example'), 'utf8');
+    const envExample = fs.readFileSync(path.resolve(repoRoot, '.env.example'), 'utf8');
 
     expect(envExample).toContain('BACKEND_IMAGE_TAG=latest');
+    expect(envExample).toContain('DB_PORT=3306');
   });
 });

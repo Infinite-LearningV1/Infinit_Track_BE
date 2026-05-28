@@ -11,6 +11,15 @@ const mockVerifyToken = jest.fn((req, res, _next) => {
   });
 });
 
+const mockLoginRateLimit = jest.fn((req, _res, next) => next());
+
+const mockLogin = jest.fn((req, res) => {
+  res.status(401).json({
+    success: false,
+    message: 'Invalid credentials'
+  });
+});
+
 const mockLogout = jest.fn((req, res) => {
   res.status(200).json({
     success: true,
@@ -18,11 +27,17 @@ const mockLogout = jest.fn((req, res) => {
   });
 });
 
+const mockRefresh = jest.fn((req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Refresh successful'
+  });
+});
+
 jest.unstable_mockModule('../src/controllers/auth.controller.js', () => ({
-  login: jest.fn(),
+  login: mockLogin,
   logout: mockLogout,
-  refresh: jest.fn(),
-  register: jest.fn(),
+  refresh: mockRefresh,
   getCurrentUser: jest.fn()
 }));
 
@@ -30,8 +45,11 @@ jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
   verifyToken: mockVerifyToken
 }));
 
+jest.unstable_mockModule('../src/middlewares/security.js', () => ({
+  loginRateLimit: mockLoginRateLimit
+}));
+
 jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
-  userRegistrationValidation: [],
   loginValidation: [],
   validate: jest.fn((req, res, next) => next())
 }));
@@ -47,13 +65,41 @@ describe('Auth route contract', () => {
     jest.clearAllMocks();
   });
 
-  it('requires verifyToken before logout', async () => {
+  it('does not expose public self-registration from the auth surface', async () => {
+    const res = await request(app).post('/api/auth/register');
+
+    expect(res.status).toBe(404);
+    expect(mockVerifyToken).not.toHaveBeenCalled();
+  });
+
+  it('runs dedicated login throttling before the login handler', async () => {
+    const res = await request(app).post('/api/auth/login').send({
+      email: 'user@example.com',
+      password: 'wrong-password'
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockLoginRateLimit).toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalled();
+  });
+
+  it('exposes refresh without verifyToken gate', async () => {
+    const res = await request(app).post('/api/auth/refresh').send({
+      refresh_token: 'refresh-token-value'
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockVerifyToken).not.toHaveBeenCalled();
+  });
+
+  it('exposes logout without verifyToken gate', async () => {
     const res = await request(app).post('/api/auth/logout').send({
       refresh_token: 'refresh-token-value'
     });
 
-    expect(res.status).toBe(401);
-    expect(mockVerifyToken).toHaveBeenCalled();
-    expect(mockLogout).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockVerifyToken).not.toHaveBeenCalled();
   });
 });

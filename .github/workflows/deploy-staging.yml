@@ -1,4 +1,4 @@
-name: Deploy to Staging
+name: Deploy to Staging Droplet
 
 on:
   push:
@@ -140,13 +140,13 @@ jobs:
             set -euo pipefail
             cd '$STAGING_DEPLOY_PATH'
             echo '${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}' | docker login registry.digitalocean.com -u doctl --password-stdin
-            export BACKEND_IMAGE='$DOCKER_IMAGE'
-            export BACKEND_IMAGE_TAG='${GITHUB_SHA}'
+            export BACKEND_IMAGE="${DOCKER_IMAGE}"
+            export BACKEND_IMAGE_TAG="${GITHUB_SHA}"
             docker compose pull app
             docker compose up -d --force-recreate app
             docker compose exec -T app npm run migrate
             chmod +x ./deploy/scripts/verify-droplet-api.sh
-            DOMAIN='$STAGING_PUBLIC_DOMAIN' EXPECTED_IP='$STAGING_EXPECTED_IP' ./deploy/scripts/verify-droplet-api.sh
+            DOMAIN="${STAGING_PUBLIC_DOMAIN}" EXPECTED_IP="${STAGING_EXPECTED_IP}" ./deploy/scripts/verify-droplet-api.sh
             docker compose exec -T app npm run migrate:status
           "
 
@@ -157,7 +157,7 @@ jobs:
         run: |
           echo "## 🚀 Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Immutable image published: \\`${DOCKER_IMAGE}:${GITHUB_SHA}\\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Immutable image published: \`${DOCKER_IMAGE}:${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
           echo "✅ Droplet runtime updated via Docker Compose" >> $GITHUB_STEP_SUMMARY
           echo "✅ Migrations executed on staging runtime" >> $GITHUB_STEP_SUMMARY
           echo "✅ Remote readiness verification passed" >> $GITHUB_STEP_SUMMARY
@@ -166,7 +166,7 @@ jobs:
           echo "**Canonical host:** ${STAGING_PUBLIC_BASE_URL}" >> $GITHUB_STEP_SUMMARY
           echo "**Health endpoint:** ${STAGING_PUBLIC_BASE_URL}/health" >> $GITHUB_STEP_SUMMARY
           echo "**Liveness endpoint:** ${STAGING_PUBLIC_BASE_URL}/livez" >> $GITHUB_STEP_SUMMARY
-          echo "**API docs:** ${STAGING_PUBLIC_BASE_URL}/docs" >> $GITHUB_STEP_SUMMARY
+          echo "**API docs:** ${STAGING_PUBLIC_BASE_URL}/docs (authenticated Admin/Management only)" >> $GITHUB_STEP_SUMMARY
 
   notify-failure:
     name: Notify on Failure

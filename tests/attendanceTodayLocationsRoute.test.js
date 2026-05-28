@@ -28,12 +28,19 @@ const mockGetTodayLocations = jest.fn((req, res) => {
   });
 });
 
+const mockDebugCheckInTime = jest.fn((req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Debug check-in time endpoint reached'
+  });
+});
+
 jest.unstable_mockModule('../src/controllers/attendance.controller.js', () => ({
   getAttendanceHistory: jest.fn(),
   getAttendanceStatus: jest.fn(),
   checkIn: jest.fn(),
   checkOut: jest.fn(),
-  debugCheckInTime: jest.fn(),
+  debugCheckInTime: mockDebugCheckInTime,
   deleteAttendance: jest.fn(),
   getAllAttendances: jest.fn(),
   manualAutoCheckout: jest.fn(),
@@ -113,5 +120,14 @@ describe('attendance today locations route', () => {
 
     expect(res.status).toBe(403);
     expect(mockGetTodayLocations).not.toHaveBeenCalled();
+  });
+
+  it('keeps debug check-in route restricted to admin or management callers', async () => {
+    allowRole = false;
+
+    const res = await request(app).get('/api/attendance/debug-checkin-time');
+
+    expect(res.status).toBe(403);
+    expect(mockDebugCheckInTime).not.toHaveBeenCalled();
   });
 });

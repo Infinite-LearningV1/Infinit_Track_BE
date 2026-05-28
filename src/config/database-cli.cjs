@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-function resolveEnvPath(startDir = process.cwd()) {
+const resolveEnvPath = (startDir = process.cwd()) => {
   for (
     let currentDir = path.resolve(startDir), parentDir = '';
     currentDir !== parentDir;
@@ -16,7 +16,7 @@ function resolveEnvPath(startDir = process.cwd()) {
   }
 
   return undefined;
-}
+};
 
 const envPath = resolveEnvPath();
 
@@ -36,7 +36,12 @@ module.exports = {
     dialect: 'mysql',
     migrationStorageTableName: 'sequelizemeta',
     dialectOptions: {
-      charset: 'utf8mb4'
+      charset: 'utf8mb4',
+      ssl: sslEnabled
+        ? {
+            rejectUnauthorized: sslRejectUnauthorized
+          }
+        : false
     }
   },
   staging: {

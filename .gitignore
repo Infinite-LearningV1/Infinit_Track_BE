@@ -39,8 +39,10 @@ coverage/
 *.tmp
 *.temp
 postman/.tmp-*.json
-docs/
+docs/*
 !docs/openapi.yaml
+!docs/GITHUB_ACTIONS_SETUP.md
+!docs/PRODUCTION_DEPLOYMENT.md
 .blackboxrules
 
 /memory-bank

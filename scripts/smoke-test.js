@@ -17,6 +17,7 @@ import axios from 'axios';
 
 const BASE_URL = process.argv[2] || process.env.BASE_URL;
 const TIMEOUT = 10000; // 10 seconds
+const ANONYMOUS_BLOCKED_STATUSES = new Set([401, 403]);
 const EXPECTED_INVALID_LOGIN_STATUSES = new Set([400, 401, 422]);
 const LIVEZ_URL = `${BASE_URL}/livez`;
 const HEALTH_URL = `${BASE_URL}/health`;
@@ -43,6 +44,20 @@ function formatAxiosError(error) {
   }
 
   return `Error: ${error.message}`;
+}
+
+function isAnonymousAccessBlocked(status) {
+  return ANONYMOUS_BLOCKED_STATUSES.has(status);
+}
+
+async function requestWithAnyStatus(method, path, options = {}) {
+  return axios({
+    method,
+    url: `${BASE_URL}${path}`,
+    timeout: TIMEOUT,
+    validateStatus: () => true,
+    ...options
+  });
 }
 
 /**
@@ -128,21 +143,46 @@ async function testReadiness() {
 }
 
 /**
- * Test 3: API Documentation
+ * Test 3: API Documentation Access Control
  */
 async function testDocs() {
-  try {
-    const response = await axios.get(`${BASE_URL}/docs/`, { timeout: TIMEOUT });
+  const testName = 'API Documentation Access Control';
 
-    if (response.status === 200) {
-      logTest('API Documentation', true, `Status: ${response.status}`);
+  try {
+    const response = await requestWithAnyStatus('get', '/docs/');
+
+    if (isAnonymousAccessBlocked(response.status)) {
+      logTest(testName, true, `Anonymous access blocked with ${response.status}`);
       return true;
-    } else {
-      logTest('API Documentation', false, `Status: ${response.status}`);
-      return false;
     }
+
+    logTest(testName, false, `Expected 401/403 for anonymous docs access, got ${response.status}`);
+    return false;
   } catch (error) {
-    logTest('API Documentation', false, formatAxiosError(error));
+    logTest(testName, false, formatAxiosError(error));
+    return false;
+  }
+}
+
+async function testRawOpenApiContract() {
+  const testName = 'Raw OpenAPI Contract Access Control';
+
+  try {
+    const response = await requestWithAnyStatus('get', '/docs/openapi.yaml');
+
+    if (isAnonymousAccessBlocked(response.status)) {
+      logTest(testName, true, `Anonymous raw spec access blocked with ${response.status}`);
+      return true;
+    }
+
+    logTest(
+      testName,
+      false,
+      `Expected 401/403 for anonymous raw spec access, got ${response.status}`
+    );
+    return false;
+  } catch (error) {
+    logTest(testName, false, formatAxiosError(error));
     return false;
   }
 }
@@ -152,12 +192,12 @@ async function testDocs() {
  */
 async function testCORS() {
   try {
-    const requestedOrigin = 'https://example.com';
+    const disallowedOrigin = 'https://example.com';
     const response = await axios.options(`${BASE_URL}/api/auth/login`, {
       timeout: TIMEOUT,
       validateStatus: () => true,
       headers: {
-        Origin: requestedOrigin,
+        Origin: disallowedOrigin,
         'Access-Control-Request-Method': 'POST',
         'Access-Control-Request-Headers': 'Content-Type'
       }
@@ -167,8 +207,8 @@ async function testCORS() {
     const credentialsHeader = response.headers['access-control-allow-credentials'];
     const methodsHeader = response.headers['access-control-allow-methods'];
     const allowedHeaders = response.headers['access-control-allow-headers'];
-    const originAllowed = corsHeader === requestedOrigin;
-    const credentialsAllowed = credentialsHeader === 'true';
+    const disallowedOriginRejected = corsHeader !== disallowedOrigin;
+    const credentialsConfigured = credentialsHeader === 'true';
     const allowsPost = methodsHeader
       ?.split(',')
       .map((method) => method.trim().toUpperCase())
@@ -180,15 +220,15 @@ async function testCORS() {
 
     if (
       [200, 204].includes(response.status) &&
-      originAllowed &&
-      credentialsAllowed &&
+      disallowedOriginRejected &&
+      credentialsConfigured &&
       allowsPost &&
       allowsContentType
     ) {
       logTest(
         'CORS Headers',
         true,
-        `Allow-Origin: ${corsHeader}, Allow-Credentials: ${credentialsHeader}, Allow-Methods: ${methodsHeader}, Allow-Headers: ${allowedHeaders}`
+        `Requested-Origin: ${disallowedOrigin}, Allow-Origin: ${corsHeader || '-'}, Allow-Credentials: ${credentialsHeader}, Allow-Methods: ${methodsHeader}, Allow-Headers: ${allowedHeaders}`
       );
       return true;
     }
@@ -196,7 +236,7 @@ async function testCORS() {
     logTest(
       'CORS Headers',
       false,
-      `Status: ${response.status}, Allow-Origin: ${corsHeader || '-'}, Requested-Origin: ${requestedOrigin}, Allow-Credentials: ${credentialsHeader || '-'}, Allow-Methods: ${methodsHeader || '-'}, Allow-Headers: ${allowedHeaders || '-'}`
+      `Status: ${response.status}, Requested-Origin: ${disallowedOrigin}, Allow-Origin: ${corsHeader || '-'}, Allow-Credentials: ${credentialsHeader || '-'}, Allow-Methods: ${methodsHeader || '-'}, Allow-Headers: ${allowedHeaders || '-'}`
     );
     return false;
   } catch (error) {
@@ -238,21 +278,72 @@ async function testSecurityHeaders() {
  */
 async function testAuthEndpoint() {
   try {
-    // Try to access protected endpoint without auth
-    const response = await axios.get(`${BASE_URL}/api/users/profile`, {
-      timeout: TIMEOUT,
-      validateStatus: () => true // Accept any status code
-    });
+    const response = await requestWithAnyStatus('get', '/api/auth/me');
 
-    if (response.status === 401 || response.status === 403) {
+    if (isAnonymousAccessBlocked(response.status)) {
       logTest('Auth Protection', true, `Protected endpoint correctly returns ${response.status}`);
       return true;
-    } else {
-      logTest('Auth Protection', false, `Expected 401/403, got ${response.status}`);
-      return false;
     }
+
+    logTest('Auth Protection', false, `Expected 401/403, got ${response.status}`);
+    return false;
   } catch (error) {
     logTest('Auth Protection', false, formatAxiosError(error));
+    return false;
+  }
+}
+
+async function testProtectedRouteInventory() {
+  const protectedEndpoints = [
+    ['/api/auth/me', 'Auth Me Endpoint'],
+    ['/api/bookings/history', 'Bookings History Endpoint'],
+    ['/api/wfa/recommendations', 'WFA Recommendations Endpoint'],
+    ['/api/summary/reports', 'Summary Reports Endpoint']
+  ];
+
+  let passed = true;
+
+  for (const [path, label] of protectedEndpoints) {
+    try {
+      const response = await requestWithAnyStatus('get', path);
+      const endpointPassed = isAnonymousAccessBlocked(response.status);
+
+      logTest(
+        `${label} Auth Protection`,
+        endpointPassed,
+        endpointPassed
+          ? `Anonymous access blocked with ${response.status}`
+          : `Expected 401/403, got ${response.status}`
+      );
+
+      passed = passed && endpointPassed;
+    } catch (error) {
+      logTest(`${label} Auth Protection`, false, formatAxiosError(error));
+      passed = false;
+    }
+  }
+
+  return passed;
+}
+
+async function testPublicRegisterClosed() {
+  const testName = 'Public Auth Register Surface Closed';
+
+  try {
+    const response = await requestWithAnyStatus('post', '/api/auth/register', {
+      headers: { 'Content-Type': 'application/json' },
+      data: {}
+    });
+
+    if (response.status === 404) {
+      logTest(testName, true, 'Anonymous register route is not mounted');
+      return true;
+    }
+
+    logTest(testName, false, `Expected 404 for removed register route, got ${response.status}`);
+    return false;
+  } catch (error) {
+    logTest(testName, false, formatAxiosError(error));
     return false;
   }
 }
@@ -351,9 +442,12 @@ async function runTests() {
   await testLiveness();
   await testReadiness();
   await testDocs();
+  await testRawOpenApiContract();
   await testCORS();
   await testSecurityHeaders();
   await testAuthEndpoint();
+  await testProtectedRouteInventory();
+  await testPublicRegisterClosed();
   await testLoginEndpoint();
   await testRequestId();
   await testResponseTime();
