@@ -524,9 +524,9 @@ export const locationEventValidation = [
 export const dashboardAnalyticsValidation = [
   query().custom((_, { req }) => {
     const message = validateHistoricalDateWindowQuery({
-      period: req.query.period || '30d',
-      from: req.query.from || null,
-      to: req.query.to || null
+      period: req.query.period ?? '30d',
+      from: req.query.from ?? null,
+      to: req.query.to ?? null
     });
 
     if (message) {

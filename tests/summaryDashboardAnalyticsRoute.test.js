@@ -192,6 +192,17 @@ describe('summary routes', () => {
     expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
   });
 
+  it('returns 400 E_VALIDATION when period is explicitly empty', async () => {
+    const res = await request(app).get('/api/summary/dashboard-analytics?period=');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'E_VALIDATION'
+    });
+    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
+  });
+
   it('returns 400 E_VALIDATION when from uses a non-ISO date format', async () => {
     const res = await request(app).get(
       '/api/summary/dashboard-analytics?period=custom&from=05-01-2026&to=2026-05-31'

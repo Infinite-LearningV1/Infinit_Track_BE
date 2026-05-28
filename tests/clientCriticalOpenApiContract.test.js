@@ -107,9 +107,23 @@ describe('client-critical OpenAPI contract', () => {
   });
 
   test('documents attendance today-locations snapshot metadata in the public OpenAPI contract', () => {
-    const todayLocationsSchema = schemaAt(openapi.paths['/api/attendance/today-locations'].get);
+    const todayLocationsOperation = openapi.paths['/api/attendance/today-locations'].get;
+    const todayLocationsSchema = schemaAt(todayLocationsOperation);
     const dataSchema = todayLocationsSchema.properties.data;
 
+    expect(todayLocationsOperation.parameters).toContainEqual(
+      expect.objectContaining({
+        in: 'query',
+        name: 'limit',
+        schema: expect.objectContaining({ type: 'integer', minimum: 1 })
+      })
+    );
+    expect(todayLocationsOperation.parameters).not.toContainEqual(
+      expect.objectContaining({ name: 'period' })
+    );
+    expect(todayLocationsOperation.parameters).not.toContainEqual(expect.objectContaining({ name: 'from' }));
+    expect(todayLocationsOperation.parameters).not.toContainEqual(expect.objectContaining({ name: 'to' }));
+    expect(todayLocationsOperation.responses).toHaveProperty('400');
     expect(dataSchema.properties).toMatchObject({
       date: { type: 'string', format: 'date' },
       timezone: { type: 'string', example: 'Asia/Jakarta' },
@@ -121,9 +135,26 @@ describe('client-critical OpenAPI contract', () => {
         type: 'boolean',
         example: false
       },
+      authority: {
+        type: 'string',
+        example: 'context_only'
+      },
+      final_attendance_authority: {
+        type: 'string',
+        example: 'attendance_records'
+      },
       total_users: { type: 'integer' },
+      truncated: { type: 'boolean' },
+      truncated_at: {
+        type: 'integer',
+        nullable: true
+      },
       locations: { type: 'array' }
     });
+  });
+
+  test('does not document canceled summary dashboard-map endpoint', () => {
+    expect(openapi.paths).not.toHaveProperty('/api/summary/dashboard-map');
   });
 
   test('documents booking creation request payload in the public OpenAPI contract', () => {
