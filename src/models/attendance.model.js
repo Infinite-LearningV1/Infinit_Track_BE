@@ -82,7 +82,18 @@ const Attendance = sequelize.define(
   },
   {
     tableName: 'attendance',
-    timestamps: false // karena menggunakan created_at dan updated_at custom
+    timestamps: false, // karena menggunakan created_at dan updated_at custom
+    indexes: [
+      {
+        name: 'idx_attendance_date',
+        fields: ['attendance_date']
+      },
+      {
+        name: 'uq_attendance_user_date',
+        fields: ['user_id', 'attendance_date'],
+        unique: true
+      }
+    ]
   }
 );
 

@@ -1,4 +1,26 @@
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const dotenv = require('dotenv');
+
+function resolveEnvPath(startDir = process.cwd()) {
+  for (
+    let currentDir = path.resolve(startDir), parentDir = '';
+    currentDir !== parentDir;
+    parentDir = currentDir, currentDir = path.dirname(currentDir)
+  ) {
+    const candidate = path.join(currentDir, '.env');
+
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+const envPath = resolveEnvPath();
+
+dotenv.config(envPath ? { path: envPath } : undefined);
 
 const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
 const sslEnabled = process.env.DB_SSL === 'true';

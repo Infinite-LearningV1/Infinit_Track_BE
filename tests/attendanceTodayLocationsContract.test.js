@@ -1,6 +1,9 @@
 import { jest } from '@jest/globals';
+import { Op } from 'sequelize';
 
 const mockAttendanceFindAll = jest.fn();
+const mockAttendanceCount = jest.fn();
+const mockLocationFindOne = jest.fn();
 const mockFormatTimeOnly = jest.fn(() => '08:15');
 const mockGetJakartaDateString = jest.fn(() => '2026-04-22');
 
@@ -9,9 +12,9 @@ jest.unstable_mockModule('../src/config/database.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
-  Attendance: { findAll: mockAttendanceFindAll },
+  Attendance: { count: mockAttendanceCount, findAll: mockAttendanceFindAll },
   Booking: { findOne: jest.fn() },
-  Location: { findOne: jest.fn() },
+  Location: { findOne: mockLocationFindOne },
   Settings: { findAll: jest.fn(), findOne: jest.fn() },
   AttendanceCategory: {},
   AttendanceStatus: {},
@@ -83,29 +86,58 @@ const buildRes = () => ({
   json: jest.fn().mockReturnThis()
 });
 
+const buildAttendanceRow = ({
+  userId,
+  fullName,
+  categoryName = 'Work From Office',
+  latitude = '-0.8917',
+  longitude = '119.8707',
+  photoUrl = null,
+  timeIn = new Date('2026-04-22T08:15:00+07:00')
+}) => ({
+  user: {
+    id_users: userId,
+    full_name: fullName,
+    photo_file: photoUrl ? { photo_url: photoUrl } : null
+  },
+  location: { latitude, longitude },
+  attendance_category: { category_name: categoryName },
+  time_in: timeIn
+});
+
 describe('attendance today locations handler', () => {
+  const originalHeroMapMaxUsers = process.env.HERO_MAP_MAX_USERS;
+
   beforeEach(() => {
     mockAttendanceFindAll.mockReset();
+    mockAttendanceCount.mockReset();
+    mockAttendanceCount.mockResolvedValue(0);
+    mockLocationFindOne.mockReset();
     mockFormatTimeOnly.mockClear();
     mockGetJakartaDateString.mockClear();
+    delete process.env.HERO_MAP_MAX_USERS;
   });
 
-  it('returns hero map payload for mapped users checked in today', async () => {
+  afterAll(() => {
+    if (originalHeroMapMaxUsers == null) {
+      delete process.env.HERO_MAP_MAX_USERS;
+    } else {
+      process.env.HERO_MAP_MAX_USERS = originalHeroMapMaxUsers;
+    }
+  });
+
+  it('returns hero map payload for mapped users checked in today as context-only evidence', async () => {
+    mockAttendanceCount.mockResolvedValueOnce(1);
     mockAttendanceFindAll.mockResolvedValueOnce([
-      {
-        user: {
-          id_users: 7,
-          full_name: 'Febri',
-          photo_file: { photo_url: 'https://cdn.example.com/photos/febri.jpg' }
-        },
-        location: { latitude: '-0.8917', longitude: '119.8707' },
-        attendance_category: { category_name: 'Work From Office' },
-        time_in: new Date('2026-04-22T08:15:00+07:00')
-      }
+      buildAttendanceRow({
+        userId: 7,
+        fullName: 'Febri',
+        photoUrl: 'https://cdn.example.com/photos/febri.jpg'
+      })
     ]);
 
     const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
-    const req = { user: { id: 1, role_name: 'Admin' } };
+    const req = { user: { id: 1, role_name: 'Admin' }, query: {} };
     const res = buildRes();
     const next = jest.fn();
 
@@ -122,7 +154,11 @@ describe('attendance today locations handler', () => {
           timezone: 'Asia/Jakarta',
           snapshot_type: 'attendance_checkin_snapshot',
           is_live_tracking: false,
+          authority: 'context_only',
+          final_attendance_authority: 'attendance_records',
           total_users: 1,
+          truncated: false,
+          truncated_at: null,
           locations: [
             expect.objectContaining({
               user_id: 7,
@@ -143,7 +179,7 @@ describe('attendance today locations handler', () => {
     mockAttendanceFindAll.mockResolvedValueOnce([]);
 
     const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
-    const req = { user: { id: 1, role_name: 'Admin' } };
+    const req = { user: { id: 1, role_name: 'Admin' }, query: {} };
     const res = buildRes();
     const next = jest.fn();
 
@@ -157,7 +193,11 @@ describe('attendance today locations handler', () => {
         data: expect.objectContaining({
           snapshot_type: 'attendance_checkin_snapshot',
           is_live_tracking: false,
+          authority: 'context_only',
+          final_attendance_authority: 'attendance_records',
           total_users: 0,
+          truncated: false,
+          truncated_at: null,
           locations: []
         })
       })
@@ -165,41 +205,15 @@ describe('attendance today locations handler', () => {
   });
 
   it('excludes rows with invalid coordinates or unsupported category values', async () => {
+    mockAttendanceCount.mockResolvedValueOnce(1);
     mockAttendanceFindAll.mockResolvedValueOnce([
-      {
-        user: {
-          id_users: 7,
-          full_name: 'Febri',
-          photo_file: null
-        },
-        location: { latitude: null, longitude: '119.8707' },
-        attendance_category: { category_name: 'WFO' },
-        time_in: new Date('2026-04-22T08:15:00+07:00')
-      },
-      {
-        user: {
-          id_users: 8,
-          full_name: 'Diana',
-          photo_file: null
-        },
-        location: { latitude: '-0.9000', longitude: '119.8800' },
-        attendance_category: { category_name: 'WFH' },
-        time_in: new Date('2026-04-22T08:30:00+07:00')
-      },
-      {
-        user: {
-          id_users: 9,
-          full_name: 'Rudi',
-          photo_file: null
-        },
-        location: { latitude: '-0.9100', longitude: '119.8900' },
-        attendance_category: { category_name: 'Unknown' },
-        time_in: new Date('2026-04-22T08:45:00+07:00')
-      }
+      buildAttendanceRow({ userId: 7, fullName: 'Febri', latitude: null }),
+      buildAttendanceRow({ userId: 8, fullName: 'Diana', categoryName: 'WFH' }),
+      buildAttendanceRow({ userId: 9, fullName: 'Rudi', categoryName: 'Unknown' })
     ]);
 
     const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
-    const req = { user: { id: 1, role_name: 'Admin' } };
+    const req = { user: { id: 1, role_name: 'Admin' }, query: {} };
     const res = buildRes();
     const next = jest.fn();
 
@@ -221,6 +235,137 @@ describe('attendance today locations handler', () => {
             })
           ]
         })
+      })
+    );
+  });
+
+  it('truncates response locations using the optional query limit without changing today-only semantics', async () => {
+    mockAttendanceCount.mockResolvedValueOnce(2);
+    mockAttendanceFindAll.mockResolvedValueOnce([
+      buildAttendanceRow({ userId: 7, fullName: 'Febri' })
+    ]);
+
+    const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
+    const req = {
+      user: { id: 1, role_name: 'Admin' },
+      query: { limit: '1', period: 'custom', from: '2026-04-01', to: '2026-04-30' }
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getTodayLocations(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 1,
+        where: expect.objectContaining({ attendance_date: '2026-04-22' })
+      })
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          date: '2026-04-22',
+          total_users: 2,
+          truncated: true,
+          truncated_at: 1,
+          locations: [expect.objectContaining({ user_id: 7 })]
+        })
+      })
+    );
+  });
+
+  it('uses HERO_MAP_MAX_USERS as the default query and response hard cap', async () => {
+    process.env.HERO_MAP_MAX_USERS = '1';
+    mockAttendanceCount.mockResolvedValueOnce(2);
+    mockAttendanceFindAll.mockResolvedValueOnce([
+      buildAttendanceRow({ userId: 7, fullName: 'Febri' })
+    ]);
+
+    const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 1, role_name: 'Admin' }, query: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getTodayLocations(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          total_users: 2,
+          truncated: true,
+          truncated_at: 1,
+          locations: [expect.objectContaining({ user_id: 7 })]
+        })
+      })
+    );
+  });
+
+  it.each(['0', '-1', '1.5', '10abc', 'abc', ''])('rejects invalid limit value %p', async (limit) => {
+    const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 1, role_name: 'Admin' }, query: { limit } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getTodayLocations(req, res, next);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
+    expect(mockAttendanceCount).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 400,
+        message: 'limit must be a positive integer'
+      })
+    );
+  });
+
+  it('keeps related user photo, location, and category data eager-loaded for the main query', async () => {
+    mockAttendanceFindAll.mockResolvedValueOnce([]);
+
+    const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 1, role_name: 'Admin' }, query: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getTodayLocations(req, res, next);
+
+    expect(mockAttendanceFindAll).toHaveBeenCalledTimes(1);
+    expect(mockLocationFindOne).not.toHaveBeenCalled();
+
+    const [findAllOptions] = mockAttendanceFindAll.mock.calls[0];
+    const userInclude = findAllOptions.include.find((include) => include.as === 'user');
+    const locationInclude = findAllOptions.include.find((include) => include.as === 'location');
+    const attendanceCategoryInclude = findAllOptions.include.find((include) => include.as === 'attendance_category');
+
+    expect(userInclude).toEqual(
+      expect.objectContaining({
+        as: 'user',
+        include: [expect.objectContaining({ as: 'photo_file', required: false })]
+      })
+    );
+    expect(locationInclude).toEqual(
+      expect.objectContaining({
+        as: 'location',
+        required: true,
+        where: {
+          latitude: { [Op.not]: null },
+          longitude: { [Op.not]: null }
+        }
+      })
+    );
+    expect(attendanceCategoryInclude).toEqual(
+      expect.objectContaining({
+        as: 'attendance_category',
+        required: true,
+        where: {
+          category_name: {
+            [Op.in]: expect.arrayContaining(['WFO', 'WFH', 'WFA'])
+          }
+        }
       })
     );
   });

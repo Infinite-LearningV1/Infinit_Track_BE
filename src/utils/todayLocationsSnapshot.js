@@ -4,6 +4,8 @@ import { Attendance, AttendanceCategory, Location, Photo, User } from '../models
 import { getJakartaDateString } from './geofence.js';
 import { formatTimeOnly } from './workHourFormatter.js';
 
+const DEFAULT_HERO_MAP_MAX_USERS = 500;
+
 const HERO_MAP_STATUS_BY_CATEGORY = {
   WFO: 'WFO',
   WFH: 'WFH',
@@ -13,14 +15,82 @@ const HERO_MAP_STATUS_BY_CATEGORY = {
   'Work From Anywhere': 'WFA'
 };
 
-export const buildTodayLocationsSnapshot = async ({ date = getJakartaDateString() } = {}) => {
+const createBadRequest = (message) => {
+  const error = new Error(message);
+  error.status = 400;
+
+  return error;
+};
+
+const parsePositiveInteger = (value) => {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+    return null;
+  }
+
+  return Number.parseInt(value, 10);
+};
+
+const parseLimit = (limit) => {
+  if (limit == null) {
+    return null;
+  }
+
+  if (typeof limit !== 'string' || !/^[1-9]\d*$/.test(limit)) {
+    throw createBadRequest('limit must be a positive integer');
+  }
+
+  return Number.parseInt(limit, 10);
+};
+
+const resolveMaxUsers = (limit) => {
+  const envMaxUsers = parsePositiveInteger(process.env.HERO_MAP_MAX_USERS) ?? DEFAULT_HERO_MAP_MAX_USERS;
+  const requestedLimit = parseLimit(limit);
+
+  return requestedLimit == null ? envMaxUsers : Math.min(requestedLimit, envMaxUsers);
+};
+
+const buildAttendanceWhere = (date) => ({
+  attendance_date: date,
+  time_in: {
+    [Op.not]: null
+  }
+});
+
+const buildLocationInclude = () => ({
+  model: Location,
+  as: 'location',
+  attributes: ['latitude', 'longitude'],
+  required: true,
+  where: {
+    latitude: { [Op.not]: null },
+    longitude: { [Op.not]: null }
+  }
+});
+
+const buildCategoryInclude = () => ({
+  model: AttendanceCategory,
+  as: 'attendance_category',
+  attributes: ['category_name'],
+  required: true,
+  where: {
+    category_name: { [Op.in]: Object.keys(HERO_MAP_STATUS_BY_CATEGORY) }
+  }
+});
+
+const buildMappableIncludes = () => [buildLocationInclude(), buildCategoryInclude()];
+
+export const buildTodayLocationsSnapshot = async ({ date = getJakartaDateString(), limit } = {}) => {
+  const maxUsers = resolveMaxUsers(limit);
+  const where = buildAttendanceWhere(date);
+  const mappableIncludes = buildMappableIncludes();
+  const totalUsers = await Attendance.count({
+    where,
+    include: mappableIncludes,
+    distinct: true,
+    col: 'id_attendance'
+  });
   const rows = await Attendance.findAll({
-    where: {
-      attendance_date: date,
-      time_in: {
-        [Op.not]: null
-      }
-    },
+    where,
     include: [
       {
         model: User,
@@ -35,19 +105,10 @@ export const buildTodayLocationsSnapshot = async ({ date = getJakartaDateString(
           }
         ]
       },
-      {
-        model: Location,
-        as: 'location',
-        attributes: ['latitude', 'longitude'],
-        required: false
-      },
-      {
-        model: AttendanceCategory,
-        as: 'attendance_category',
-        attributes: ['category_name']
-      }
+      ...mappableIncludes
     ],
-    order: [['time_in', 'ASC']]
+    order: [['time_in', 'ASC']],
+    limit: maxUsers
   });
 
   const locations = rows
@@ -81,12 +142,18 @@ export const buildTodayLocationsSnapshot = async ({ date = getJakartaDateString(
     })
     .filter(Boolean);
 
+  const truncated = totalUsers > maxUsers;
+
   return {
     date,
     timezone: 'Asia/Jakarta',
     snapshot_type: 'attendance_checkin_snapshot',
     is_live_tracking: false,
-    total_users: locations.length,
+    authority: 'context_only',
+    final_attendance_authority: 'attendance_records',
+    total_users: totalUsers,
+    truncated,
+    truncated_at: truncated ? maxUsers : null,
     locations
   };
 };

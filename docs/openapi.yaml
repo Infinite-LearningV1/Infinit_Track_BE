@@ -464,9 +464,17 @@ paths:
       tags:
         - Attendance
       summary: Get today hero map locations
-      description: Retrieve render-ready hero map locations for users who already checked in today (Asia/Jakarta) and have valid coordinates.
+      description: Retrieve render-ready hero map locations for users who already checked in today (Asia/Jakarta) and have valid coordinates. This endpoint is a context-only current-day snapshot for map rendering; it does not accept historical range filters and is not the final attendance authority.
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            default: 500
+          description: Optional per-response location cap. The effective cap never exceeds HERO_MAP_MAX_USERS, which defaults to 500.
       responses:
         '200':
           description: Today locations retrieved successfully
@@ -494,9 +502,22 @@ paths:
                       is_live_tracking:
                         type: boolean
                         example: false
+                      authority:
+                        type: string
+                        example: 'context_only'
+                      final_attendance_authority:
+                        type: string
+                        example: 'attendance_records'
                       total_users:
                         type: integer
                         example: 1
+                      truncated:
+                        type: boolean
+                        example: false
+                      truncated_at:
+                        type: integer
+                        nullable: true
+                        example: null
                       locations:
                         type: array
                         items:
@@ -533,7 +554,11 @@ paths:
                     timezone: 'Asia/Jakarta'
                     snapshot_type: 'attendance_checkin_snapshot'
                     is_live_tracking: false
+                    authority: 'context_only'
+                    final_attendance_authority: 'attendance_records'
                     total_users: 1
+                    truncated: false
+                    truncated_at: null
                     locations:
                       - user_id: 7
                         full_name: 'Febri'
@@ -543,6 +568,8 @@ paths:
                         latitude: -0.8917
                         longitude: 119.8707
                   message: 'Today locations retrieved successfully'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

@@ -1,17 +1,19 @@
 'use strict';
 
-const indexExists = async (queryInterface, tableName, indexName, transaction) => {
+const getExistingIndexNames = async (queryInterface, tableName, transaction) => {
   const [rows] = await queryInterface.sequelize.query(`SHOW INDEX FROM \`${tableName}\``, {
     transaction
   });
 
-  return rows.some((row) => row.Key_name === indexName);
+  return new Set(rows.map((row) => row.Key_name));
 };
 
 module.exports = {
   async up(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
-      if (!(await indexExists(queryInterface, 'attendance', 'idx_attendance_date', transaction))) {
+      const existingIndexNames = await getExistingIndexNames(queryInterface, 'attendance', transaction);
+
+      if (!existingIndexNames.has('idx_attendance_date')) {
         await queryInterface.addIndex('attendance', ['attendance_date'], {
           name: 'idx_attendance_date',
           transaction
@@ -21,6 +23,12 @@ module.exports = {
   },
 
   async down(queryInterface) {
-    await queryInterface.removeIndex('attendance', 'idx_attendance_date');
+    await queryInterface.sequelize.transaction(async (transaction) => {
+      const existingIndexNames = await getExistingIndexNames(queryInterface, 'attendance', transaction);
+
+      if (existingIndexNames.has('idx_attendance_date')) {
+        await queryInterface.removeIndex('attendance', 'idx_attendance_date', { transaction });
+      }
+    });
   }
 };
