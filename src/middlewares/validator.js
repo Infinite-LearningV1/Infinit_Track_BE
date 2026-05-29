@@ -32,6 +32,29 @@ export const upload = multer({
 });
 
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
+const TODAY_LOCATIONS_LIMIT_MAX = 500;
+
+const validateTodayLocationsQueryKeys = (_value, { req }) => {
+  const unsupportedQueryKey = Object.keys(req.query ?? {}).find((key) => key !== 'limit');
+
+  if (unsupportedQueryKey) {
+    throw new Error('today-locations accepts only limit query parameter');
+  }
+
+  return true;
+};
+
+const validateTodayLocationsLimit = (value) => {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+    throw new Error('limit must be a positive integer');
+  }
+
+  if (Number.parseInt(value, 10) > TODAY_LOCATIONS_LIMIT_MAX) {
+    throw new Error(`limit must be at most ${TODAY_LOCATIONS_LIMIT_MAX}`);
+  }
+
+  return true;
+};
 
 export const safeUrlField = (field, { required = false, message } = {}) => {
   const errorMessage = message || `${field} harus berupa URL http/https yang valid`;
@@ -519,6 +542,12 @@ export const locationEventValidation = [
 
       return true;
     })
+];
+
+export const todayLocationsValidation = [
+  query().custom(validateTodayLocationsQueryKeys),
+  query('limit').optional().custom(validateTodayLocationsLimit),
+  validate
 ];
 
 export const dashboardAnalyticsValidation = [

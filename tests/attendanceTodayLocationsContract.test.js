@@ -204,6 +204,37 @@ describe('attendance today locations handler', () => {
     );
   });
 
+  it('returns all mapped users when requested limit is above the mappable user count', async () => {
+    mockAttendanceCount.mockResolvedValueOnce(2);
+    mockAttendanceFindAll.mockResolvedValueOnce([
+      buildAttendanceRow({ userId: 7, fullName: 'Febri' }),
+      buildAttendanceRow({ userId: 8, fullName: 'Diana', categoryName: 'Work From Anywhere' })
+    ]);
+
+    const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 1, role_name: 'Admin' }, query: { limit: '5' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getTodayLocations(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }));
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          total_users: 2,
+          truncated: false,
+          truncated_at: null,
+          locations: [
+            expect.objectContaining({ user_id: 7, status: 'WFO' }),
+            expect.objectContaining({ user_id: 8, status: 'WFA' })
+          ]
+        })
+      })
+    );
+  });
+
   it('excludes rows with invalid coordinates or unsupported category values', async () => {
     mockAttendanceCount.mockResolvedValueOnce(1);
     mockAttendanceFindAll.mockResolvedValueOnce([
@@ -271,6 +302,38 @@ describe('attendance today locations handler', () => {
           truncated_at: 1,
           locations: [expect.objectContaining({ user_id: 7 })]
         })
+      })
+    );
+  });
+
+  it.each([
+    ['2026-04-22 23:55 WIB', '2026-04-22'],
+    ['2026-04-23 00:05 WIB', '2026-04-23']
+  ])('uses the resolved Jakarta date at %s for the today-only query', async (_label, date) => {
+    mockGetJakartaDateString.mockReturnValueOnce(date);
+    mockAttendanceFindAll.mockResolvedValueOnce([]);
+
+    const { getTodayLocations } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 1, role_name: 'Admin' }, query: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getTodayLocations(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ attendance_date: date })
+      })
+    );
+    expect(mockAttendanceFindAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ attendance_date: date })
+      })
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ date })
       })
     );
   });
