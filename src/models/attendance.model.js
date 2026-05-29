@@ -89,10 +89,6 @@ const Attendance = sequelize.define(
         fields: ['attendance_date']
       },
       {
-        name: 'idx_attendance_user_date',
-        fields: ['user_id', 'attendance_date']
-      },
-      {
         name: 'uq_attendance_user_date',
         fields: ['user_id', 'attendance_date'],
         unique: true

@@ -13,7 +13,10 @@ module.exports = {
     await queryInterface.sequelize.transaction(async (transaction) => {
       const existingIndexNames = await getExistingIndexNames(queryInterface, 'attendance', transaction);
 
-      if (!existingIndexNames.has('idx_attendance_user_date')) {
+      if (
+        !existingIndexNames.has('idx_attendance_user_date') &&
+        !existingIndexNames.has('uq_attendance_user_date')
+      ) {
         await queryInterface.addIndex('attendance', ['user_id', 'attendance_date'], {
           name: 'idx_attendance_user_date',
           transaction

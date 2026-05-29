@@ -480,6 +480,7 @@ paths:
           schema:
             type: integer
             minimum: 1
+            maximum: 500
             default: 500
           description: Optional per-response location cap. The effective cap never exceeds HERO_MAP_MAX_USERS, which defaults to 500.
       responses:
