@@ -338,6 +338,7 @@ describe('attendance today locations handler', () => {
     );
   });
 
+
   it('uses HERO_MAP_MAX_USERS as the default query and response hard cap', async () => {
     process.env.HERO_MAP_MAX_USERS = '1';
     mockAttendanceCount.mockResolvedValueOnce(2);
