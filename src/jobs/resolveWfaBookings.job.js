@@ -1,10 +1,10 @@
 import cron from 'node-cron';
 import { Op } from 'sequelize';
 
+import sequelize from '../config/database.js';
 import { Booking, Attendance } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout } from '../utils/jobHelper.js';
-import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 
 /**
  * Resolve unused WFA bookings and expired pending bookings
@@ -27,15 +27,12 @@ export const resolveWfaBookingsJob = async () => {
 
     logger.info(`Processing WFA bookings for date (H-1): ${targetDate}`);
 
-    // TASK A: Handle unused approved WFA bookings for targetDate (H-1)
-    await handleUnusedApprovedBookings(targetDate, jakartaTime);
-
-    // TASK B: Handle expired pending bookings
-    await handleExpiredPendingBookings(targetDate);
+    await runResolverTasks(targetDate, jakartaTime);
 
     logger.info('Resolve WFA bookings job completed successfully');
   } catch (error) {
     logger.error('Error in resolve WFA bookings job:', error);
+    throw error;
   }
 };
 
@@ -50,13 +47,63 @@ export const resolveWfaBookingsForDate = async (targetDate) => {
     const jakartaTime = new Date(jakartaTimeString);
 
     logger.info(`Resolve WFA bookings for explicit date: ${targetDate}`);
-    await handleUnusedApprovedBookings(targetDate, jakartaTime);
-    await handleExpiredPendingBookings(targetDate);
+    await runResolverTasks(targetDate, jakartaTime);
     return { success: true, targetDate };
   } catch (error) {
     logger.error('Error in resolveWfaBookingsForDate:', error);
     return { success: false, error: error.message };
   }
+};
+
+const runResolverTasks = async (targetDate, jakartaTime) => {
+  let taskAFailure;
+  let taskBFailure;
+
+  try {
+    // TASK A: Handle unused approved WFA bookings for targetDate (H-1)
+    await handleUnusedApprovedBookings(targetDate, jakartaTime);
+  } catch (error) {
+    taskAFailure = error;
+  }
+
+  try {
+    // TASK B: Handle expired pending bookings even if Task A failed
+    await handleExpiredPendingBookings(targetDate);
+  } catch (error) {
+    taskBFailure = error;
+  }
+
+  if (taskAFailure && taskBFailure) {
+    throw new AggregateError(
+      [taskAFailure, taskBFailure],
+      `Resolver tasks failed. Task A: ${taskAFailure.message}; Task B: ${taskBFailure.message}`
+    );
+  }
+
+  if (taskAFailure) {
+    throw taskAFailure;
+  }
+
+  if (taskBFailure) {
+    throw taskBFailure;
+  }
+};
+
+const buildUnusedWfaAlphaRows = (bookings, todayDate, stampedDateTime) => {
+  return bookings.map((booking) => ({
+    user_id: booking.user_id,
+    category_id: 3,
+    status_id: 3,
+    location_id: booking.location_id,
+    booking_id: booking.booking_id,
+    time_in: stampedDateTime,
+    time_out: stampedDateTime,
+    work_hour: 0,
+    attendance_date: booking.schedule_date || todayDate,
+    notes: `Booking WFA (ID: ${booking.booking_id}) disetujui tetapi tidak digunakan.`,
+    created_at: stampedDateTime,
+    updated_at: stampedDateTime
+  }));
 };
 
 /**
@@ -76,72 +123,46 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
 
     logger.info(`Found ${approvedBookings.length} approved WFA bookings for today`);
 
-    let alphaRecordsCreated = 0;
-    let skippedBookings = 0;
-
     // Build execution time (HH:mm:ss) in Jakarta, then stamp to target date
     const hh = String(jakartaTime.getHours()).padStart(2, '0');
     const mm = String(jakartaTime.getMinutes()).padStart(2, '0');
     const ss = String(jakartaTime.getSeconds()).padStart(2, '0');
     const stampedDateTime = new Date(`${todayDate}T${hh}:${mm}:${ss}+07:00`);
 
-    // Process each approved booking
-    for (const booking of approvedBookings) {
-      try {
-        // Check if user has ANY attendance record for today (not just for this booking)
-        const existingAttendance = await Attendance.findOne({
-          where: {
-            user_id: booking.user_id,
-            attendance_date: todayDate
-          }
-        });
-
-        if (!existingAttendance) {
-          // No attendance record found for this user today, create alpha record
-          await Attendance.create({
-            user_id: booking.user_id,
-            category_id: 3, // Work From Anywhere
-            status_id: 3, // alpha status
-            location_id: booking.location_id,
-            booking_id: booking.booking_id,
-            time_in: stampedDateTime,
-            time_out: stampedDateTime,
-            work_hour: 0,
-            attendance_date: booking.schedule_date,
-            notes: `Booking WFA (ID: ${booking.booking_id}) disetujui tetapi tidak digunakan.`,
-            created_at: stampedDateTime,
-            updated_at: stampedDateTime
+    const result = approvedBookings.length
+      ? await sequelize.transaction(async (transaction) => {
+          const userIds = [...new Set(approvedBookings.map((booking) => booking.user_id))];
+          const existingAttendances = await Attendance.findAll({
+            attributes: ['user_id'],
+            where: {
+              user_id: { [Op.in]: userIds },
+              attendance_date: todayDate
+            },
+            transaction
           });
 
-          alphaRecordsCreated++;
-          logger.info(
-            `Created alpha attendance record for unused booking ID: ${booking.booking_id}, user ID: ${booking.user_id}`
+          const existingUserIds = new Set(existingAttendances.map((attendance) => attendance.user_id));
+          const bookingsToInsert = approvedBookings.filter(
+            (booking) => !existingUserIds.has(booking.user_id)
           );
-        } else {
-          // Attendance record already exists, skip
-          skippedBookings++;
-          logger.debug(
-            `Skipping booking ID: ${booking.booking_id} - user already has attendance record`
-          );
-        }
-      } catch (error) {
-        if (isAttendanceDuplicateConstraintError(error)) {
-          skippedBookings++;
-          logger.info(
-            `Duplicate-safe skip for booking ID: ${booking.booking_id}, user ID: ${booking.user_id}`
-          );
-          continue;
-        }
+          const skippedBookings = approvedBookings.length - bookingsToInsert.length;
 
-        logger.error(`Error processing booking ID: ${booking.booking_id} - ${error.message}`);
-      }
-    }
+          if (bookingsToInsert.length === 0) {
+            return { created: null, skipped: skippedBookings, insertRowsRequested: 0 };
+          }
+
+          const rows = buildUnusedWfaAlphaRows(bookingsToInsert, todayDate, stampedDateTime);
+          await Attendance.bulkCreate(rows, { ignoreDuplicates: true, transaction });
+          return { created: null, skipped: skippedBookings, insertRowsRequested: rows.length };
+        })
+      : { created: null, skipped: 0, insertRowsRequested: 0 };
 
     logger.info(
-      `Task A completed. Alpha records created: ${alphaRecordsCreated}, Skipped: ${skippedBookings}`
+      `Task A completed. Alpha insert rows requested: ${result.insertRowsRequested}, Pre-insert skipped: ${result.skipped}. Actual created count unavailable with ignoreDuplicates.`
     );
   } catch (error) {
     logger.error('Error in Task A (unused approved bookings):', error);
+    throw error;
   }
 };
 
@@ -149,11 +170,12 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
  * Task B: Reject expired pending bookings
  */
 const handleExpiredPendingBookings = async (todayDate) => {
-  try {
-    logger.info('Task B: Processing expired pending bookings...');
+  logger.info('Task B: Processing expired pending bookings...');
 
+  let expiredBookings;
+  try {
     // Find all pending bookings with schedule_date < today
-    const expiredBookings = await Booking.findAll({
+    expiredBookings = await Booking.findAll({
       where: {
         schedule_date: {
           [Op.lt]: todayDate
@@ -161,40 +183,52 @@ const handleExpiredPendingBookings = async (todayDate) => {
         status: 3 // pending status
       }
     });
-
-    logger.info(`Found ${expiredBookings.length} expired pending bookings`);
-
-    let rejectedBookings = 0;
-    let errorCount = 0;
-
-    // Get proper timestamp for updates
-    const updateTime = new Date();
-
-    // Process each expired booking
-    for (const booking of expiredBookings) {
-      try {
-        await booking.update({
-          status: 2, // rejected
-          processed_at: updateTime,
-          approved_by: null, // System rejection, no specific admin
-          updated_at: updateTime
-        });
-
-        rejectedBookings++;
-        logger.info(
-          `Rejected expired booking ID: ${booking.booking_id}, schedule_date: ${booking.schedule_date}`
-        );
-      } catch (error) {
-        errorCount++;
-        logger.error(`Error rejecting booking ID: ${booking.booking_id} - ${error.message}`);
-      }
-    }
-
-    logger.info(
-      `Task B completed. Expired bookings rejected: ${rejectedBookings}, Errors: ${errorCount}`
-    );
   } catch (error) {
-    logger.error('Error in Task B (expired pending bookings):', error);
+    logger.error('Error finding expired pending bookings in Task B:', error);
+    throw error;
+  }
+
+  logger.info(`Found ${expiredBookings.length} expired pending bookings`);
+
+  let rejectedBookings = 0;
+  const updateFailures = [];
+
+  // Get proper timestamp for updates
+  const updateTime = new Date();
+
+  // Process each expired booking
+  for (const booking of expiredBookings) {
+    try {
+      await booking.update({
+        status: 2, // rejected
+        processed_at: updateTime,
+        approved_by: null, // System rejection, no specific admin
+        updated_at: updateTime
+      });
+
+      rejectedBookings++;
+      logger.info(
+        `Rejected expired booking ID: ${booking.booking_id}, schedule_date: ${booking.schedule_date}`
+      );
+    } catch (error) {
+      updateFailures.push({ bookingId: booking.booking_id, error });
+      logger.error(`Error rejecting booking ID: ${booking.booking_id} - ${error.message}`);
+    }
+  }
+
+  logger.info(
+    `Task B completed. Expired bookings rejected: ${rejectedBookings}, Errors: ${updateFailures.length}`
+  );
+
+  if (updateFailures.length > 0) {
+    const failureMessage = `Failed to reject ${updateFailures.length} expired pending WFA booking${
+      updateFailures.length === 1 ? '' : 's'
+    }`;
+    logger.error(`${failureMessage}. Booking IDs: ${updateFailures.map(({ bookingId }) => bookingId).join(', ')}`);
+    throw new AggregateError(
+      updateFailures.map(({ error }) => error),
+      failureMessage
+    );
   }
 };
 

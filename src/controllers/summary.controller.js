@@ -27,6 +27,8 @@ import { buildUserAttendanceSummary } from '../utils/userAttendanceSummary.js';
  * @param {Date} endDate - End date for calculation
  * @returns {Object} User metrics object
  */
+// Retained as a standalone helper for compatibility; getSummaryReport uses preloaded rows to avoid N+1 reads.
+// eslint-disable-next-line no-unused-vars
 const calculateUserMetrics = async (userId, startDate, endDate, settingsMap = null) => {
   try {
     const effectiveSettingsMap = settingsMap || {};
@@ -143,6 +145,81 @@ const calculateUserMetrics = async (userId, startDate, endDate, settingsMap = nu
     };
   }
 };
+
+const groupAttendanceRowsByUser = (attendanceRows) => {
+  return attendanceRows.reduce((grouped, attendance) => {
+    const userId = attendance.user?.id_users || attendance.user_id;
+    if (!userId) return grouped;
+    if (!grouped[userId]) grouped[userId] = [];
+    grouped[userId].push(attendance);
+    return grouped;
+  }, {});
+};
+
+const calculateUserMetricsFromRows = (attendanceRecords, settingsMap = {}) => {
+  const checkinStartTime = settingsMap['checkin.start_time'] || '08:00:00';
+  const startParts = checkinStartTime.split(':').map((v) => parseInt(v, 10) || 0);
+  const startMinutes = (startParts[0] || 0) * 60 + (startParts[1] || 0);
+
+  if (attendanceRecords.length === 0) {
+    return {
+      alpha_rate: 0,
+      avg_lateness_minutes: 0,
+      lateness_frequency: 0,
+      work_hour_consistency: 0
+    };
+  }
+
+  const totalDays = attendanceRecords.length;
+  let alphaDays = 0;
+  const presentRecords = [];
+
+  for (const record of attendanceRecords) {
+    const statusName = (record.status?.attendance_status_name || '').toLowerCase();
+    if (statusName === 'alpa' || statusName === 'alpha') {
+      alphaDays++;
+    } else {
+      presentRecords.push(record);
+    }
+  }
+
+  const presentDays = presentRecords.length;
+  let lateDays = 0;
+  let totalLatenessMinutes = 0;
+  let consistencyDays = 0;
+
+  for (const record of presentRecords) {
+    const statusName = (record.status?.attendance_status_name || '').toLowerCase();
+    if (statusName === 'terlambat' || statusName === 'late') lateDays++;
+
+    if (record.time_in) {
+      const hhmm = formatTimeOnly(record.time_in);
+      const parts = hhmm.split(':').map((v) => parseInt(v, 10) || 0);
+      const timeInMinutes = (parts[0] || 0) * 60 + (parts[1] || 0);
+      totalLatenessMinutes += Math.max(0, timeInMinutes - startMinutes);
+    }
+
+    const workHour = parseFloat(record.work_hour);
+    if (!Number.isNaN(workHour) && workHour >= 8.0) consistencyDays++;
+  }
+
+  const clamp01 = (value) => Math.max(0, Math.min(1, value));
+  const clampMin = (value, low, high) => Math.max(low, Math.min(high, value));
+  const alphaRateRatio = totalDays > 0 ? alphaDays / totalDays : 0;
+  const latenessFrequencyRatio = presentDays > 0 ? lateDays / presentDays : 0;
+  const avgLatenessMinutes = presentDays > 0 ? totalLatenessMinutes / presentDays : 0;
+  const workHourConsistencyRatio = presentDays > 0 ? consistencyDays / presentDays : 0;
+
+  return {
+    alpha_rate: Math.round(clamp01(alphaRateRatio) * 10000) / 100,
+    avg_lateness_minutes: Math.round(clampMin(avgLatenessMinutes, 0, 60) * 100) / 100,
+    lateness_frequency: Math.round(clamp01(latenessFrequencyRatio) * 10000) / 100,
+    work_hour_consistency: Math.round(clamp01(workHourConsistencyRatio) * 10000) / 100,
+    total_days: totalDays,
+    alpha_days: alphaDays,
+    late_days: lateDays
+  };
+};
 /**
  * Get summary report for admin and management with Discipline Index integration
  * Provides aggregated summary data (counts by status & category)
@@ -164,7 +241,7 @@ export const getSummaryReport = async (req, res, next) => {
     }
 
     const effectiveWindow = buildEffectiveWindow({ period, from, to });
-    const { startDate, endDate, startDateStr, endDateStr } = effectiveWindow;
+    const { startDateStr, endDateStr } = effectiveWindow;
 
     logger.info(
       `Generating summary report with discipline analysis - Period: ${period}, Range: ${startDateStr || 'unlimited'} to ${endDateStr || 'unlimited'}`
@@ -355,11 +432,37 @@ export const getSummaryReport = async (req, res, next) => {
       logger.error('Error preloading summary settings:', error);
     }
 
+    const uniqueUserIds = Object.keys(uniqueUsers);
+    let attendanceRowsByUser = {};
+    if (uniqueUserIds.length > 0) {
+      const fullWindowAttendanceRows = await Attendance.findAll({
+        where: {
+          user_id: {
+            [Op.in]: uniqueUserIds
+          },
+          attendance_date: {
+            [Op.between]: [startDateStr, endDateStr]
+          }
+        },
+        include: [
+          {
+            model: AttendanceStatus,
+            as: 'status',
+            attributes: ['attendance_status_name']
+          }
+        ]
+      });
+      attendanceRowsByUser = groupAttendanceRowsByUser(fullWindowAttendanceRows);
+    }
+
     // Calculate discipline index for each user
     const userDisciplineMap = {};
-    const disciplineCalculationPromises = Object.keys(uniqueUsers).map(async (userId) => {
+    const disciplineCalculationPromises = uniqueUserIds.map(async (userId) => {
       try {
-        const userMetrics = await calculateUserMetrics(parseInt(userId, 10), startDate, endDate, settingsMap);
+        const userMetrics = calculateUserMetricsFromRows(
+          attendanceRowsByUser[userId] || [],
+          settingsMap
+        );
         const disciplineResult = await fuzzyAhpEngine.calculateDisciplineIndex(userMetrics);
 
         userDisciplineMap[userId] = {
