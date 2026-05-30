@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { Op } from 'sequelize';
 
 const mockAttendanceFindAll = jest.fn();
 const mockAttendanceFindAndCountAll = jest.fn();
@@ -61,6 +62,52 @@ const buildRes = () => ({
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis()
 });
+
+const getDetailQueryOptions = () => mockAttendanceFindAndCountAll.mock.calls[0][0];
+
+const getSearchConditions = (whereClause) => {
+  if (!whereClause || typeof whereClause !== 'object') {
+    return undefined;
+  }
+
+  if (whereClause[Op.or]) {
+    return whereClause[Op.or];
+  }
+
+  const andConditions = whereClause[Op.and];
+  if (!Array.isArray(andConditions)) {
+    return undefined;
+  }
+
+  for (const condition of andConditions) {
+    const nestedSearch = getSearchConditions(condition);
+    if (nestedSearch) {
+      return nestedSearch;
+    }
+  }
+
+  return undefined;
+};
+
+const expectSearchTerm = (queryOptions, expectedTerm) => {
+  const searchConditions = getSearchConditions(queryOptions.where);
+
+  expect(searchConditions).toEqual(expect.any(Array));
+  expect(searchConditions).toEqual(
+    expect.arrayContaining([
+      { '$user.full_name$': { [Op.like]: `%${expectedTerm}%` } },
+      { '$user.nip_nim$': { [Op.like]: `%${expectedTerm}%` } },
+      { '$user.email$': { [Op.like]: `%${expectedTerm}%` } },
+      { '$user.role.role_name$': { [Op.like]: `%${expectedTerm}%` } },
+      { '$status.attendance_status_name$': { [Op.like]: `%${expectedTerm}%` } },
+      { '$attendance_category.category_name$': { [Op.like]: `%${expectedTerm}%` } }
+    ])
+  );
+};
+
+const expectNoSearchConditions = (queryOptions) => {
+  expect(getSearchConditions(queryOptions.where)).toBeUndefined();
+};
 
 const detailRow = {
   id_attendance: 501,
@@ -208,8 +255,8 @@ describe('summary report controller contract', () => {
     });
   });
 
-  it('rejects legacy report period values with the dashboard analytics period contract', async () => {
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+  it('rejects all report periods because unlimited dashboard summary reports are unsupported', async () => {
+    const req = { query: { period: 'all', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
 
@@ -222,7 +269,50 @@ describe('summary report controller contract', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       code: 'E_VALIDATION',
-      message: 'Parameter period harus berupa: 30d, current_month, atau custom'
+      message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
+    });
+  });
+
+  it.each([
+    ['daily'],
+    ['weekly'],
+    ['monthly'],
+    ['range']
+  ])('accepts canonical dashboard report period %s', async (period) => {
+    const req = {
+      query: {
+        period,
+        from: period === 'range' ? '2026-05-01' : undefined,
+        to: period === 'range' ? '2026-05-07' : undefined,
+        page: '1',
+        limit: '10'
+      }
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockAttendanceFindAndCountAll).toHaveBeenCalled();
+  });
+
+  it('rejects range report periods without both date boundaries', async () => {
+    const req = { query: { period: 'range', from: '2026-05-01', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAndCountAll).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter from dan to wajib diisi saat period=range atau custom'
     });
   });
 
@@ -240,7 +330,86 @@ describe('summary report controller contract', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       code: 'E_VALIDATION',
-      message: 'Parameter from dan to wajib diisi saat period=custom'
+      message: 'Parameter from dan to wajib diisi saat period=range atau custom'
     });
+  });
+
+  it('applies canonical q search to report rows before pagination without filtering period-wide summary queries', async () => {
+    const req = { query: { period: 'monthly', q: 'Rina', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockAttendanceFindAll.mock.calls[0][0].where).toEqual({
+      attendance_date: expect.any(Object)
+    });
+    expect(mockAttendanceFindAll.mock.calls[1][0].where).toEqual({
+      attendance_date: expect.any(Object)
+    });
+
+    const queryOptions = getDetailQueryOptions();
+    expect(queryOptions.distinct).toBe(true);
+    expectSearchTerm(queryOptions, 'Rina');
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.summary).toEqual({
+      total_ontime: 1,
+      total_late: 0,
+      total_early: 0,
+      total_alpha: 0,
+      total_wfo: 1,
+      total_wfh: 0,
+      total_wfa: 0
+    });
+  });
+
+  it.each([
+    ['search', 'SearchAlias'],
+    ['query', 'QueryAlias'],
+    ['keyword', 'KeywordAlias']
+  ])('applies deprecated %s search alias when q is absent', async (paramName, value) => {
+    const req = { query: { period: 'monthly', [paramName]: value, page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expectSearchTerm(getDetailQueryOptions(), value);
+  });
+
+  it('uses q over deprecated search aliases when multiple aliases are present', async () => {
+    const req = {
+      query: {
+        period: 'monthly',
+        q: 'Canonical',
+        search: 'SearchAlias',
+        query: 'QueryAlias',
+        keyword: 'KeywordAlias',
+        page: '1',
+        limit: '10'
+      }
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expectSearchTerm(getDetailQueryOptions(), 'Canonical');
+  });
+
+  it('treats blank q as no search filter', async () => {
+    const req = { query: { period: 'monthly', q: '   ', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    const queryOptions = getDetailQueryOptions();
+    expectNoSearchConditions(queryOptions);
   });
 });
