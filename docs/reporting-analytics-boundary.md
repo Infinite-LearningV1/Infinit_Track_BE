@@ -12,7 +12,7 @@ Infinite Track exposes three related but distinct read surfaces for reporting an
 
 | Use case | Endpoint | Why |
 | --- | --- | --- |
-| Historical attendance report, paginated rows, export payloads, legacy summary totals, and per-user attendance summary for the selected report window | `GET /api/summary/reports` | Canonical reporting/export surface. Uses dashboard-style historical range semantics for this phase: `period=30d`, `period=current_month`, or `period=custom` with `from`/`to`. |
+| Historical attendance report, paginated rows, export payloads, legacy summary totals, and per-user attendance summary for the selected report window | `GET /api/summary/reports` | Canonical reporting/export surface. Uses dashboard-native report window semantics: period=daily, period=weekly, period=monthly, or period=range with from/to. Legacy 30d, current_month, and custom remain temporarily supported for backend compatibility. |
 | Transitional access to the same reporting contract during consumer migration | `GET /api/summary` | Deprecated compatibility alias. Must stay behaviorally equivalent to `/api/summary/reports` for the same query. |
 | Dashboard cards, historical trend, mode mix, geofence evidence context, insights, and lightweight FAHP snapshots | `GET /api/summary/dashboard-analytics` | Cockpit/dashboard aggregate surface. Returns top-level `requested_window` and `executed_window`, then section-based analytics under `data.*`; it does not own `map_context` or `today_locations`. |
 | Today-only/live snapshot map for users who already checked in on the current Jakarta date | `GET /api/attendance/today-locations` | Dedicated operational snapshot surface for the current day. This is context-only map evidence, not a historical aggregation endpoint, final attendance authority, or fraud authority. |
@@ -26,6 +26,10 @@ Infinite Track exposes three related but distinct read surfaces for reporting an
 
 ## Consumer rules
 - Use `/api/summary/reports` for reporting tables, exports, and `report.user_attendance_summary`.
+- Use `q` as the canonical free-text search parameter for `/api/summary/reports` rows.
+- Treat `search`, `query`, and `keyword` as deprecated compatibility aliases for `q`.
+- Do not use `period=all` for `/api/summary/reports`; use `daily`, `weekly`, `monthly`, or `range`.
+- Search filters `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users on the current page.
 - Treat `/api/summary` as a temporary deprecated alias during migration; it must return the same contract as `/api/summary/reports`.
 - Use `/api/summary/dashboard-analytics` for dashboard analytics cards, charts, mode mix, geofence evidence context, insights, and FAHP snapshot panels.
 - Use `/api/attendance/today-locations` for today-focused map widgets or hero maps.

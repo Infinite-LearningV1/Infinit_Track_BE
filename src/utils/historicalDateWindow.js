@@ -1,8 +1,21 @@
 import { getJakartaDateString } from './geofence.js';
 import { parseIsoDateUtcStrict } from './isoDate.js';
 
-export const HISTORICAL_WINDOW_PERIODS = ['30d', 'current_month', 'custom'];
+export const HISTORICAL_WINDOW_PERIODS = [
+  'daily',
+  'weekly',
+  'monthly',
+  'range',
+  '30d',
+  'current_month',
+  'custom'
+];
 export const HISTORICAL_WINDOW_MAX_CUSTOM_DAYS = 31;
+
+const RANGE_PERIODS = new Set(['range', 'custom']);
+const PERIOD_VALIDATION_MESSAGE =
+  'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom';
+const RANGE_BOUNDARY_MESSAGE = 'Parameter from dan to wajib diisi saat period=range atau custom';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -26,15 +39,15 @@ export const addUtcDays = (date, days) => {
 
 export const buildJakartaDayStartUtc = (dateStr) => new Date(`${dateStr}T00:00:00+07:00`);
 
-export const buildRequestedWindow = ({ period = '30d', from = null, to = null } = {}) => ({
+export const buildRequestedWindow = ({ period = 'monthly', from = null, to = null } = {}) => ({
   period,
   from,
   to
 });
 
-export const validateHistoricalDateWindowQuery = ({ period = '30d', from = null, to = null } = {}) => {
+export const validateHistoricalDateWindowQuery = ({ period = 'monthly', from = null, to = null } = {}) => {
   if (!HISTORICAL_WINDOW_PERIODS.includes(period)) {
-    return 'Parameter period harus berupa: 30d, current_month, atau custom';
+    return PERIOD_VALIDATION_MESSAGE;
   }
 
   if (from && !parseIsoDateUtcStrict(from)) {
@@ -45,12 +58,12 @@ export const validateHistoricalDateWindowQuery = ({ period = '30d', from = null,
     return 'Parameter to harus menggunakan format YYYY-MM-DD';
   }
 
-  if (period !== 'custom') {
+  if (!RANGE_PERIODS.has(period)) {
     return null;
   }
 
   if (!from || !to) {
-    return 'Parameter from dan to wajib diisi saat period=custom';
+    return RANGE_BOUNDARY_MESSAGE;
   }
 
   const fromDate = parseIsoDateUtcStrict(from);
@@ -72,7 +85,7 @@ export const validateHistoricalDateWindowQuery = ({ period = '30d', from = null,
   return null;
 };
 
-export const buildEffectiveWindow = ({ period = '30d', from = null, to = null } = {}) => {
+export const buildEffectiveWindow = ({ period = 'monthly', from = null, to = null } = {}) => {
   const validationMessage = validateHistoricalDateWindowQuery({ period, from, to });
   if (validationMessage) {
     throw new Error(validationMessage);
@@ -81,7 +94,7 @@ export const buildEffectiveWindow = ({ period = '30d', from = null, to = null } 
   const todayDate = getJakartaDateString();
   const todayUtc = parseDateOnlyUtc(todayDate);
 
-  if (period === 'custom') {
+  if (RANGE_PERIODS.has(period)) {
     const startDate = parseDateOnlyUtc(from);
     const endDate = parseDateOnlyUtc(to);
 
@@ -103,7 +116,17 @@ export const buildEffectiveWindow = ({ period = '30d', from = null, to = null } 
     };
   }
 
-  const startDate = addUtcDays(todayUtc, -29);
+  if (period === 'daily') {
+    return {
+      startDate: todayUtc,
+      endDate: todayUtc,
+      startDateStr: todayDate,
+      endDateStr: todayDate
+    };
+  }
+
+  const daysBack = period === 'weekly' ? 6 : 29;
+  const startDate = addUtcDays(todayUtc, -daysBack);
   return {
     startDate,
     endDate: todayUtc,

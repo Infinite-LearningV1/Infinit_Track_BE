@@ -1731,23 +1731,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
             default: 30d
-          description: Historical aggregation window. Use `custom` together with `from` and `to`.
+          description: Historical aggregation window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
       responses:
         '200':
           description: Dashboard analytics retrieved successfully
@@ -2342,23 +2342,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
-            default: 30d
-          description: Historical report window. Use `custom` together with `from` and `to`.
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
+            default: monthly
+          description: Dashboard/report window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: page
           schema:
@@ -2373,6 +2373,34 @@ paths:
             minimum: 1
             default: 10
           description: Number of attendance rows returned in the report section.
+        - in: query
+          name: q
+          deprecated: false
+          schema:
+            type: string
+            example: nico
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
+        - in: query
+          name: search
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. If multiple aliases are provided, precedence is `q`, then `search`, then `query`, then `keyword`.
+        - in: query
+          name: query
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
+        - in: query
+          name: keyword
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
       responses:
         '200':
           description: Summary report with discipline analysis generated successfully
@@ -2395,7 +2423,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: 30d, current_month, atau custom
+                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2415,23 +2443,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
-            default: 30d
-          description: Historical report window. Use `custom` together with `from` and `to`.
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
+            default: monthly
+          description: Dashboard/report window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: page
           schema:
@@ -2446,6 +2474,34 @@ paths:
             minimum: 1
             default: 10
           description: Number of attendance rows returned in the report section.
+        - in: query
+          name: q
+          deprecated: false
+          schema:
+            type: string
+            example: nico
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
+        - in: query
+          name: search
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. If multiple aliases are provided, precedence is `q`, then `search`, then `query`, then `keyword`.
+        - in: query
+          name: query
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
+        - in: query
+          name: keyword
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
       responses:
         '200':
           description: Summary report with discipline analysis generated successfully
@@ -2468,7 +2524,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: 30d, current_month, atau custom
+                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

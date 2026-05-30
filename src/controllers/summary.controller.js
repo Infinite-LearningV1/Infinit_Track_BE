@@ -19,6 +19,11 @@ import {
   validateHistoricalDateWindowQuery
 } from '../utils/historicalDateWindow.js';
 import { buildUserAttendanceSummary } from '../utils/userAttendanceSummary.js';
+import { applySearch } from '../utils/searchHelper.js';
+import {
+  resolveSummarySearchTerm,
+  SUMMARY_REPORT_SEARCH_FIELDS
+} from '../utils/summaryReportQuery.js';
 
 /**
  * Calculate user metrics for discipline index calculation
@@ -229,7 +234,8 @@ const calculateUserMetricsFromRows = (attendanceRecords, settingsMap = {}) => {
  */
 export const getSummaryReport = async (req, res, next) => {
   try {
-    const { period = '30d', from = null, to = null, page = 1, limit = 10 } = req.query;
+    const { period = 'monthly', from = null, to = null, page = 1, limit = 10 } = req.query;
+    const { term: summarySearchTerm } = resolveSummarySearchTerm(req.query);
 
     const validationMessage = validateHistoricalDateWindowQuery({ period, from, to });
     if (validationMessage) {
@@ -357,8 +363,8 @@ export const getSummaryReport = async (req, res, next) => {
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const attendanceData = await Attendance.findAndCountAll({
-      where: whereClause,
+    const detailQueryOptions = {
+      where: { ...whereClause },
       include: [
         {
           model: User,
@@ -401,12 +407,19 @@ export const getSummaryReport = async (req, res, next) => {
         ['time_in', 'DESC']
       ],
       limit: parseInt(limit),
-      offset: offset
-    });
+      offset: offset,
+      distinct: true
+    };
+
+    if (summarySearchTerm) {
+      applySearch(detailQueryOptions, summarySearchTerm, SUMMARY_REPORT_SEARCH_FIELDS);
+    }
+
+    const attendanceData = await Attendance.findAndCountAll(detailQueryOptions);
 
     // ==== SMART ANALYTICS: CALCULATE DISCIPLINE INDEX ====
 
-    // Get unique users from the attendance data
+    // Get unique users from the visible report rows
     const uniqueUsers = {};
     attendanceData.rows.forEach((attendance) => {
       const userId = attendance.user?.id_users;
