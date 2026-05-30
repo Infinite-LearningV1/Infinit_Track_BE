@@ -96,6 +96,7 @@ const arrangeAttendanceFindAllForSummary = () => {
   mockAttendanceFindAll
     .mockResolvedValueOnce([])
     .mockResolvedValueOnce([])
+    .mockResolvedValueOnce(buildSummaryRows())
     .mockResolvedValueOnce([
       {
         time_in: new Date('2026-04-23T01:15:00.000Z'),

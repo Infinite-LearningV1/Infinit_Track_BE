@@ -64,6 +64,7 @@ const buildRes = () => ({
 });
 
 const getDetailQueryOptions = () => mockAttendanceFindAndCountAll.mock.calls[0][0];
+const getAnalyticsScopeQueryOptions = () => mockAttendanceFindAll.mock.calls[2][0];
 
 const getSearchConditions = (whereClause) => {
   if (!whereClause || typeof whereClause !== 'object') {
@@ -128,6 +129,18 @@ const detailRow = {
   notes: ''
 };
 
+const analyticsScopeSecondUserRow = {
+  id_attendance: 502,
+  user: {
+    id_users: 202,
+    full_name: 'Budi',
+    email: 'budi@example.com',
+    nip_nim: 'NIP-202',
+    role: { role_name: 'Management' }
+  },
+  attendance_date: '2026-05-07'
+};
+
 const mockedSummaryRow = {
   user_id: 101,
   full_name: 'Rina',
@@ -151,6 +164,12 @@ const mockedSummaryRow = {
 describe('summary report controller contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAttendanceFindAll.mockReset();
+    mockAttendanceFindAndCountAll.mockReset();
+    mockSettingsFindAll.mockReset();
+    mockBuildUserAttendanceSummary.mockReset();
+    mockCalculateDisciplineIndex.mockReset();
+    mockGetDisciplineLabel.mockReset();
 
     mockAttendanceFindAll
       .mockResolvedValueOnce([
@@ -165,7 +184,8 @@ describe('summary report controller contract', () => {
           dataValues: { total: '1' }
         }
       ])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([detailRow, analyticsScopeSecondUserRow])
+      .mockResolvedValue([]);
 
     mockAttendanceFindAndCountAll.mockResolvedValueOnce({
       count: 1,
@@ -173,11 +193,17 @@ describe('summary report controller contract', () => {
     });
 
     mockSettingsFindAll.mockResolvedValueOnce([]);
-    mockCalculateDisciplineIndex.mockResolvedValueOnce({
-      score: 88,
-      label: 'Tinggi',
-      breakdown: { alpha_rate: 0 }
-    });
+    mockCalculateDisciplineIndex
+      .mockResolvedValueOnce({
+        score: 88,
+        label: 'Tinggi',
+        breakdown: { alpha_rate: 0 }
+      })
+      .mockResolvedValueOnce({
+        score: 44,
+        label: 'Rendah',
+        breakdown: { alpha_rate: 50 }
+      });
     mockGetDisciplineLabel.mockReturnValue('Sedang');
     mockBuildUserAttendanceSummary.mockResolvedValueOnce([mockedSummaryRow]);
   });
@@ -362,6 +388,39 @@ describe('summary report controller contract', () => {
       total_wfo: 1,
       total_wfh: 0,
       total_wfa: 0
+    });
+  });
+
+  it('keeps discipline analytics period-wide when q filters report rows', async () => {
+    const req = { query: { period: 'monthly', q: 'Rina', page: '1', limit: '10' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReport(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+
+    const detailQueryOptions = getDetailQueryOptions();
+    expectSearchTerm(detailQueryOptions, 'Rina');
+
+    const analyticsScopeQueryOptions = getAnalyticsScopeQueryOptions();
+    expect(analyticsScopeQueryOptions.where).toEqual({
+      attendance_date: expect.any(Object)
+    });
+    expectNoSearchConditions(analyticsScopeQueryOptions);
+    expect(analyticsScopeQueryOptions.limit).toBeUndefined();
+    expect(analyticsScopeQueryOptions.offset).toBeUndefined();
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.report.data).toHaveLength(1);
+    expect(payload.report.data[0]).toMatchObject({
+      attendance_id: 501,
+      user_id: 101,
+      full_name: 'Rina'
+    });
+    expect(payload.analytics.discipline_analysis).toMatchObject({
+      users_analyzed: 2,
+      average_discipline_score: 66
     });
   });
 

@@ -287,7 +287,7 @@ export const getSummaryReport = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const detailQueryOptions = {
-      where: whereClause,
+      where: { ...whereClause },
       include: [
         {
           model: User,
@@ -342,9 +342,27 @@ export const getSummaryReport = async (req, res, next) => {
 
     // ==== SMART ANALYTICS: CALCULATE DISCIPLINE INDEX ====
 
-    // Get unique users from the attendance data
+    const analyticsScopeAttendanceRows = await Attendance.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id_users', 'full_name', 'email', 'nip_nim'],
+          include: [
+            {
+              model: Role,
+              as: 'role',
+              attributes: ['role_name']
+            }
+          ]
+        }
+      ]
+    });
+
+    // Get unique users from the period-wide attendance data
     const uniqueUsers = {};
-    attendanceData.rows.forEach((attendance) => {
+    analyticsScopeAttendanceRows.forEach((attendance) => {
       const userId = attendance.user?.id_users;
       if (userId && !uniqueUsers[userId]) {
         uniqueUsers[userId] = attendance.user;
