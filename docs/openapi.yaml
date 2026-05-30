@@ -1731,23 +1731,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
             default: 30d
-          description: Historical aggregation window. Use `custom` together with `from` and `to`.
+          description: Historical aggregation window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
       responses:
         '200':
           description: Dashboard analytics retrieved successfully

@@ -227,9 +227,36 @@ describe('client-critical OpenAPI contract', () => {
   });
 
   test('documents dashboard analytics as cockpit aggregate only in the public OpenAPI contract', () => {
-    const dashboardSchema = schemaAt(openapi.paths['/api/summary/dashboard-analytics'].get);
+    const dashboardOperation = openapi.paths['/api/summary/dashboard-analytics'].get;
+    const dashboardSchema = schemaAt(dashboardOperation);
     const dataSchema = dashboardSchema.properties.data;
     const sectionWindows = dataSchema.properties.meta.properties.section_windows.properties;
+    const expectedPeriodValues = [
+      'daily',
+      'weekly',
+      'monthly',
+      'range',
+      '30d',
+      'current_month',
+      'custom'
+    ];
+    const periodParameter = dashboardOperation.parameters.find((parameter) => parameter.name === 'period');
+    const fromParameter = dashboardOperation.parameters.find((parameter) => parameter.name === 'from');
+    const toParameter = dashboardOperation.parameters.find((parameter) => parameter.name === 'to');
+
+    expect(periodParameter.schema).toMatchObject({
+      type: 'string',
+      default: '30d'
+    });
+    expect(periodParameter.schema.enum).toEqual(expect.arrayContaining(expectedPeriodValues));
+    expect(periodParameter.schema.enum).toHaveLength(expectedPeriodValues.length);
+    expect(periodParameter.schema.enum).not.toContain('all');
+    expect(fromParameter.description).toMatch(/period=range|deprecated period=custom/);
+    expect(fromParameter.description).toContain('period=range');
+    expect(fromParameter.description).toContain('deprecated period=custom');
+    expect(toParameter.description).toMatch(/period=range|deprecated period=custom/);
+    expect(toParameter.description).toContain('period=range');
+    expect(toParameter.description).toContain('deprecated period=custom');
 
     expect(dashboardSchema.properties).toMatchObject({
       success: { type: 'boolean', example: true },
