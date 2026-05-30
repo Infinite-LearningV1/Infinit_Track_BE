@@ -2,10 +2,76 @@ import cron from 'node-cron';
 import { Op } from 'sequelize';
 import Holidays from 'date-holidays';
 
+import sequelize from '../config/database.js';
 import { User, Role, Attendance, Booking } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout } from '../utils/jobHelper.js';
-import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
+
+const buildGeneralAlphaRows = (userIds, targetDate, stampedDateTime, notes) => {
+  return userIds.map((userId) => ({
+    user_id: userId,
+    attendance_date: targetDate,
+    status_id: 3,
+    category_id: 1,
+    location_id: null,
+    booking_id: null,
+    time_in: stampedDateTime,
+    time_out: stampedDateTime,
+    work_hour: 0,
+    notes,
+    created_at: stampedDateTime,
+    updated_at: stampedDateTime
+  }));
+};
+
+const countRequiredUsersExcludedByWfa = (requiredUserIds, wfaUserIdSet) => {
+  const uniqueRequiredUserIds = new Set(requiredUserIds);
+  let skipped = 0;
+
+  uniqueRequiredUserIds.forEach((userId) => {
+    if (wfaUserIdSet.has(userId)) {
+      skipped += 1;
+    }
+  });
+
+  return skipped;
+};
+
+const createMissingGeneralAlphaRows = async ({
+  candidateUserIds,
+  targetDate,
+  stampedDateTime,
+  notes
+}) => {
+  if (candidateUserIds.length === 0) {
+    return { created: 0, skipped: 0, insertRowsRequested: 0 };
+  }
+
+  return sequelize.transaction(async (transaction) => {
+    const existingAttendances = await Attendance.findAll({
+      attributes: ['user_id'],
+      where: {
+        user_id: { [Op.in]: candidateUserIds },
+        attendance_date: targetDate
+      },
+      transaction
+    });
+
+    const existingUserIds = new Set(existingAttendances.map((attendance) => attendance.user_id));
+    const missingUserIds = candidateUserIds.filter((userId) => !existingUserIds.has(userId));
+    const skipped = candidateUserIds.length - missingUserIds.length;
+
+    if (missingUserIds.length === 0) {
+      return { created: 0, skipped, insertRowsRequested: 0 };
+    }
+
+    const rows = buildGeneralAlphaRows(missingUserIds, targetDate, stampedDateTime, notes);
+    const insertedRows = await Attendance.bulkCreate(rows, { ignoreDuplicates: true, transaction });
+    const created = Array.isArray(insertedRows) ? insertedRows.length : 0;
+
+    return { created, skipped, insertRowsRequested: rows.length };
+  });
+};
 
 /**
  * Main function to create general alpha records for users who didn't check-in
@@ -73,18 +139,7 @@ const createGeneralAlphaRecords = async () => {
 
     logger.info(`Found ${requiredUserIds.length} users who are required to attend`);
 
-    // STEP B: Get users who already have attendance for targetDate
-
-    // B1: Users who already checked in (have attendance record)
-    const presentUsers = await Attendance.findAll({
-      attributes: ['user_id'],
-      where: {
-        attendance_date: targetDate
-      }
-    });
-    const presentUserIds = presentUsers.map((a) => a.user_id);
-
-    // B2: Users who have approved WFA bookings for targetDate (exclude from GENERAL alpha)
+    // STEP B: Users who have approved WFA bookings for targetDate (exclude from GENERAL alpha)
     const wfaUsers = await Booking.findAll({
       attributes: ['user_id'],
       where: {
@@ -93,32 +148,23 @@ const createGeneralAlphaRecords = async () => {
       }
     });
     const wfaUserIds = wfaUsers.map((b) => b.user_id);
-
-    // B3: Combine both lists into unique set
-    const presentOrWfaUserIds = [...new Set([...presentUserIds, ...wfaUserIds])];
+    const wfaUserIdSet = new Set(wfaUserIds);
+    const wfaSkipped = countRequiredUsersExcludedByWfa(requiredUserIds, wfaUserIdSet);
 
     logger.info(
-      `Users with existing records: ${presentOrWfaUserIds.length} (${presentUserIds.length} checked-in, ${wfaUserIds.length} approved WFA)`
+      `Users with approved WFA bookings: ${wfaUserIds.length}; required users excluded by WFA: ${wfaSkipped}`
     );
 
-    // STEP C (GENERAL): Determine who should get alpha status
-    // Required users who have no attendance AND do not have approved WFA booking
-    const alphaUserIds = requiredUserIds.filter(
-      (userId) => !presentUserIds.includes(userId) && !wfaUserIds.includes(userId)
-    );
+    // STEP C (GENERAL): Required users who do not have approved WFA booking.
+    // Existing attendance is checked inside the transactional batch insert helper.
+    const alphaUserIds = requiredUserIds.filter((userId) => !wfaUserIdSet.has(userId));
 
     if (alphaUserIds.length === 0) {
-      logger.info(
-        'No users need alpha records - all required users have attendance or approved WFA'
-      );
+      logger.info('No users need alpha records - all required users have approved WFA');
       return;
     }
 
-    logger.info(`Found ${alphaUserIds.length} users who need alpha records`);
-
-    // STEP D: Create alpha records
-    let alphaRecordsCreated = 0;
-    let errorCount = 0;
+    logger.info(`Found ${alphaUserIds.length} users who need alpha eligibility check`);
 
     // Calculate execution timestamp once (WIB) on target date
     // Reuse current time for stamping
@@ -132,55 +178,21 @@ const createGeneralAlphaRecords = async () => {
     const ss = String(jakartaTimeForStamp.getSeconds()).padStart(2, '0');
     const stampedDateTime = new Date(`${targetDate}T${hh}:${mm}:${ss}+07:00`);
 
-    for (const userId of alphaUserIds) {
-      try {
-        // Double-check that user doesn't already have an attendance record
-        const existingRecord = await Attendance.findOne({
-          where: {
-            user_id: userId,
-            attendance_date: targetDate
-          }
-        });
-
-        if (!existingRecord) {
-          await Attendance.create({
-            user_id: userId,
-            attendance_date: targetDate,
-            status_id: 3, // Alpha
-            category_id: 1, // WFO as default for GENERAL alpha
-            location_id: null,
-            booking_id: null,
-            time_in: stampedDateTime, // WIB execution time on target date
-            time_out: stampedDateTime,
-            work_hour: 0,
-            notes: 'Auto alpha (working day, no attendance record)',
-            created_at: stampedDateTime,
-            updated_at: stampedDateTime
-          });
-
-          alphaRecordsCreated++;
-          logger.info(`Created alpha record for user ID: ${userId}`);
-        } else {
-          logger.debug(`Skipping user ID: ${userId} - attendance record already exists`);
-        }
-      } catch (error) {
-        if (isAttendanceDuplicateConstraintError(error)) {
-          logger.info(`Skipping user ID: ${userId} - duplicate attendance detected during create`);
-          continue;
-        }
-
-        errorCount++;
-        logger.error(`Error creating alpha record for user ID: ${userId} - ${error.message}`);
-      }
-    }
+    const { created, skipped, insertRowsRequested } = await createMissingGeneralAlphaRows({
+      candidateUserIds: alphaUserIds,
+      targetDate,
+      stampedDateTime,
+      notes: 'Auto alpha (working day, no attendance record)'
+    });
 
     logger.info(
-      `Create general alpha records job completed. Alpha records created: ${alphaRecordsCreated}, Errors: ${errorCount}`
+      `Create general alpha records job completed. Alpha records created: ${created}, insert rows requested: ${insertRowsRequested}, skipped: ${skipped + wfaSkipped}`
     );
   } catch (error) {
     logger.error('Error in create general alpha records job:', error.message, {
       stack: error.stack
     });
+    throw error;
   }
 };
 
@@ -249,7 +261,7 @@ export const runGeneralAlphaForDate = async (targetDate) => {
       logger.info(
         `Skipping GENERAL alpha (override) - target ${targetDate} is ${isWeekend ? 'weekend' : 'holiday'}`
       );
-      return { created: 0, skipped: 0 };
+      return { created: 0, skipped: 0, insertRowsRequested: 0 };
     }
 
     // STEP A: Users excluding Admin/Management
@@ -266,32 +278,22 @@ export const runGeneralAlphaForDate = async (targetDate) => {
     });
     const requiredUserIds = requiredUsers.map((u) => u.id_users);
 
-    // STEP B: Present users on target date
-    const presentUsers = await Attendance.findAll({
-      attributes: ['user_id'],
-      where: { attendance_date: targetDate }
-    });
-    const presentUserIds = presentUsers.map((a) => a.user_id);
-
-    // STEP C: Users with approved WFA bookings on target date (excluded from GENERAL)
+    // STEP B: Users with approved WFA bookings on target date (excluded from GENERAL)
     const wfaUsers = await Booking.findAll({
       attributes: ['user_id'],
       where: { schedule_date: targetDate, status: 1 }
     });
     const wfaUserIds = wfaUsers.map((b) => b.user_id);
+    const wfaUserIdSet = new Set(wfaUserIds);
+    const wfaSkipped = countRequiredUsersExcludedByWfa(requiredUserIds, wfaUserIdSet);
 
-    // Determine GENERAL alpha candidates
-    const alphaUserIds = requiredUserIds.filter(
-      (uid) => !presentUserIds.includes(uid) && !wfaUserIds.includes(uid)
-    );
+    // Determine GENERAL alpha candidates. Existing attendance is checked transactionally later.
+    const alphaUserIds = requiredUserIds.filter((uid) => !wfaUserIdSet.has(uid));
 
     if (alphaUserIds.length === 0) {
       logger.info('GENERAL alpha override: No candidates');
-      return { created: 0, skipped: 0 };
+      return { created: 0, skipped: wfaSkipped, insertRowsRequested: 0 };
     }
-
-    let created = 0;
-    let skipped = 0;
 
     // Execution time in Jakarta for stamping on target date
     const currentTime = new Date();
@@ -304,47 +306,22 @@ export const runGeneralAlphaForDate = async (targetDate) => {
     const ss = String(currentJakartaTime.getSeconds()).padStart(2, '0');
     const stampedDateTime = new Date(`${targetDate}T${hh}:${mm}:${ss}+07:00`);
 
-    for (const userId of alphaUserIds) {
-      try {
-        const exists = await Attendance.findOne({
-          where: { user_id: userId, attendance_date: targetDate }
-        });
-        if (exists) {
-          skipped++;
-          continue;
-        }
-        await Attendance.create({
-          user_id: userId,
-          attendance_date: targetDate,
-          status_id: 3,
-          category_id: 1,
-          location_id: null,
-          booking_id: null,
-          time_in: stampedDateTime,
-          time_out: stampedDateTime,
-          work_hour: 0,
-          notes: 'Auto alpha (override run - working day, no attendance)',
-          created_at: stampedDateTime,
-          updated_at: stampedDateTime
-        });
-        created++;
-      } catch (e) {
-        if (isAttendanceDuplicateConstraintError(e)) {
-          skipped++;
-          logger.info(`GENERAL alpha duplicate-safe skip for user ${userId} on ${targetDate}`);
-          continue;
-        }
-
-        logger.error(`GENERAL alpha override failed for user ${userId}: ${e.message}`);
-      }
-    }
+    const result = await createMissingGeneralAlphaRows({
+      candidateUserIds: alphaUserIds,
+      targetDate,
+      stampedDateTime,
+      notes: 'Auto alpha (override run - working day, no attendance)'
+    });
+    const skipped = result.skipped + wfaSkipped;
 
     logger.info(
-      `GENERAL alpha override completed for ${targetDate}. created=${created}, skipped=${skipped}`
+      `GENERAL alpha override completed for ${targetDate}. created=${result.created}, insertRowsRequested=${result.insertRowsRequested}, skipped=${skipped}`
     );
-    return { created, skipped };
+    return { created: result.created, skipped, insertRowsRequested: result.insertRowsRequested };
   } catch (error) {
-    logger.error('runGeneralAlphaForDate failed:', error);
-    return { created: 0, skipped: 0, error: error.message };
+    logger.error('runGeneralAlphaForDate failed:', error.message, {
+      stack: error.stack
+    });
+    throw error;
   }
 };
