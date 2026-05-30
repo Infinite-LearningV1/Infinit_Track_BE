@@ -391,7 +391,7 @@ describe('summary report controller contract', () => {
     });
   });
 
-  it('keeps discipline analytics period-wide when q filters report rows', async () => {
+  it('calculates discipline analytics from full-window rows scoped to visible report users', async () => {
     const req = { query: { period: 'monthly', q: 'Rina', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
@@ -404,9 +404,17 @@ describe('summary report controller contract', () => {
     expectSearchTerm(detailQueryOptions, 'Rina');
 
     const analyticsScopeQueryOptions = getAnalyticsScopeQueryOptions();
-    expect(analyticsScopeQueryOptions.where).toEqual({
-      attendance_date: expect.any(Object)
-    });
+    const userIdOperator = Object.getOwnPropertySymbols(analyticsScopeQueryOptions.where.user_id).find(
+      (symbol) => symbol.description === 'in'
+    );
+    expect(analyticsScopeQueryOptions.where.user_id[userIdOperator]).toEqual(['101']);
+    const attendanceDateOperator = Object.getOwnPropertySymbols(
+      analyticsScopeQueryOptions.where.attendance_date
+    ).find((symbol) => symbol.description === 'between');
+    expect(analyticsScopeQueryOptions.where.attendance_date[attendanceDateOperator]).toEqual([
+      expect.any(String),
+      expect.any(String)
+    ]);
     expectNoSearchConditions(analyticsScopeQueryOptions);
     expect(analyticsScopeQueryOptions.limit).toBeUndefined();
     expect(analyticsScopeQueryOptions.offset).toBeUndefined();
@@ -419,8 +427,8 @@ describe('summary report controller contract', () => {
       full_name: 'Rina'
     });
     expect(payload.analytics.discipline_analysis).toMatchObject({
-      users_analyzed: 2,
-      average_discipline_score: 66
+      users_analyzed: 1,
+      average_discipline_score: 88
     });
   });
 

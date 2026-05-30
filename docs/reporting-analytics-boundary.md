@@ -29,7 +29,7 @@ Infinite Track exposes three related but distinct read surfaces for reporting an
 - Use `q` as the canonical free-text search parameter for `/api/summary/reports` rows.
 - Treat `search`, `query`, and `keyword` as deprecated compatibility aliases for `q`.
 - Do not use `period=all` for `/api/summary/reports`; use `daily`, `weekly`, `monthly`, or `range`.
-- Search filters `report.data` and `report.pagination` only; top-level `summary` remains period-wide.
+- Search filters `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users on the current page.
 - Treat `/api/summary` as a temporary deprecated alias during migration; it must return the same contract as `/api/summary/reports`.
 - Use `/api/summary/dashboard-analytics` for dashboard analytics cards, charts, mode mix, geofence evidence context, insights, and FAHP snapshot panels.
 - Use `/api/attendance/today-locations` for today-focused map widgets or hero maps.

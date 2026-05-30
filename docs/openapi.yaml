@@ -2379,7 +2379,7 @@ paths:
           schema:
             type: string
             example: nico
-          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination` only; top-level `summary` remains period-wide.
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
         - in: query
           name: search
           deprecated: true
@@ -2480,7 +2480,7 @@ paths:
           schema:
             type: string
             example: nico
-          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination` only; top-level `summary` remains period-wide.
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
         - in: query
           name: search
           deprecated: true
