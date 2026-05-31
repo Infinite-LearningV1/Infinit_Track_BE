@@ -4,21 +4,56 @@ import {
   buildWfaAnalysis
 } from '../services/fuzzyAhpAnalysis.service.js';
 
+function getWibParts(date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+function wibWallTimeToDate({ year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0 }) {
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, second, millisecond));
+}
+
+function toWibIsoString(date) {
+  const parts = getWibParts(date);
+  const millisecond = String(date.getUTCMilliseconds()).padStart(3, '0');
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${millisecond}+07:00`;
+}
+
 export function getAnalysisWindow(period) {
   const now = new Date();
-  const wibNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  const wibNow = getWibParts(now);
+  const year = Number(wibNow.year);
+  const month = Number(wibNow.month);
+  const day = Number(wibNow.day);
 
   if (period === 'weekly') {
-    const day = wibNow.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const start = new Date(wibNow);
-    start.setDate(wibNow.getDate() + mondayOffset);
-    start.setHours(0, 0, 0, 0);
-    return { startAt: start, endAt: wibNow };
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(Date.UTC(year, month - 1, day + mondayOffset));
+    const startAt = wibWallTimeToDate({
+      year: monday.getUTCFullYear(),
+      month: monday.getUTCMonth() + 1,
+      day: monday.getUTCDate()
+    });
+
+    return { startAt, endAt: now };
   }
 
-  const start = new Date(wibNow.getFullYear(), wibNow.getMonth(), 1, 0, 0, 0, 0);
-  return { startAt: start, endAt: wibNow };
+  return {
+    startAt: wibWallTimeToDate({ year, month, day: 1 }),
+    endAt: now
+  };
 }
 
 export async function getFuzzyAhpAnalysis(req, res, next) {
@@ -62,11 +97,11 @@ export async function getFuzzyAhpAnalysis(req, res, next) {
       data: {
         type,
         period,
-        generated_at: endAt.toISOString(),
+        generated_at: toWibIsoString(endAt),
         timezone: 'Asia/Jakarta',
         window: {
-          start_at: startAt.toISOString(),
-          end_at: endAt.toISOString()
+          start_at: toWibIsoString(startAt),
+          end_at: toWibIsoString(endAt)
         },
         ...result
       },

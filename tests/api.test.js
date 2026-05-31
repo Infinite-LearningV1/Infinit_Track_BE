@@ -28,8 +28,10 @@ jest.unstable_mockModule('../src/config/cloudinary.js', () => ({
 const { default: app } = await import('../src/app.js');
 
 describe('FAHP Dynamic Test Endpoint', () => {
-  it('POST /api/wfa/test-ahp returns expected JSON structure', async () => {
+  it('POST /api/wfa/test-ahp returns compact evidence payload', async () => {
     const body = {
+      scenario: 'WFA - Sangat Baik',
+      expected: 'Sangat Baik',
       place_data: {
         properties: {
           name: 'Coffee Lab',
@@ -46,15 +48,180 @@ describe('FAHP Dynamic Test Endpoint', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/json/);
-
-    // Ensure shape includes score, label, breakdown, weights, CR
     expect(res.body).toHaveProperty('success', true);
-    expect(res.body).toHaveProperty('data.test_result');
-    const result = res.body.data.test_result;
-    expect(result).toHaveProperty('score');
-    expect(result).toHaveProperty('label');
-    expect(result).toHaveProperty('breakdown');
-    expect(result).toHaveProperty('weights');
-    expect(result).toHaveProperty('CR');
+    expect(res.body.data).toMatchObject({
+      scenario: 'WFA - Sangat Baik',
+      expected: 'Sangat Baik',
+      category: 'Sangat Baik',
+      match: true
+    });
+    expect(res.body.data).toHaveProperty('weights.location_type');
+    expect(res.body.data).toHaveProperty('weights.distance_factor');
+    expect(res.body.data).toHaveProperty('weights.amenity_score');
+    expect(res.body.data).toHaveProperty('cr');
+    expect(res.body.data).toHaveProperty('score');
+    expect(res.body.data).not.toHaveProperty('test_result');
+    expect(res.body.data).not.toHaveProperty('interpretation');
+  });
+
+  it('POST /api/wfa/test-ahp returns Rendah with canonical CR', async () => {
+    const body = {
+      scenario: 'WFA - Rendah',
+      expected: 'Rendah',
+      place_data: {
+        properties: {
+          name: 'Remote Industrial Yard',
+          categories: ['industrial'],
+          distance: 3000,
+          amenity_score: 0
+        },
+        geometry: { type: 'Point', coordinates: [106.8, -6.2] },
+        userLocation: { lat: -6.2, lon: 106.8 }
+      }
+    };
+
+    const res = await request(app).post('/api/wfa/test-ahp').send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toMatchObject({
+      scenario: 'WFA - Rendah',
+      expected: 'Rendah',
+      category: 'Rendah',
+      match: true
+    });
+    expect(res.body.data.cr).toBeCloseTo(0.058, 3);
+    expect(res.body.data).not.toHaveProperty('test_result');
+    expect(res.body.data).not.toHaveProperty('interpretation');
+  });
+
+  it('POST /api/wfa/test-ahp returns null CR for custom weights', async () => {
+    const body = {
+      scenario: 'WFA - Custom Weights',
+      custom_weights: {
+        location_type: 0.4,
+        distance_factor: 0.35,
+        amenity_score: 0.25
+      },
+      place_data: {
+        properties: {
+          name: 'Coffee Lab',
+          categories: ['cafe'],
+          distance: 200,
+          amenity_score: 90
+        },
+        geometry: { type: 'Point', coordinates: [106.8, -6.2] },
+        userLocation: { lat: -6.2, lon: 106.8 }
+      }
+    };
+
+    const res = await request(app).post('/api/wfa/test-ahp').send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toMatchObject({
+      scenario: 'WFA - Custom Weights',
+      cr: null
+    });
+    expect(res.body.data.weights).toMatchObject({
+      location_type: 0.4,
+      distance_factor: 0.35,
+      amenity_score: 0.25
+    });
+  });
+
+  it('POST /api/discipline/test-ahp returns compact evidence payload', async () => {
+    const body = {
+      scenario: 'Discipline - Baik',
+      expected: 'Baik',
+      metrics: {
+        alpha_rate: 30,
+        avg_lateness_minutes: 25,
+        lateness_frequency: 35,
+        work_hour_consistency: 50
+      }
+    };
+
+    const res = await request(app).post('/api/discipline/test-ahp').send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toMatchObject({
+      scenario: 'Discipline - Baik',
+      expected: 'Baik',
+      category: 'Baik',
+      match: true
+    });
+    expect(res.body.data).toHaveProperty('weights.alpha_rate');
+    expect(res.body.data).toHaveProperty('weights.lateness_severity');
+    expect(res.body.data).toHaveProperty('weights.lateness_frequency');
+    expect(res.body.data).toHaveProperty('weights.work_focus');
+    expect(res.body.data).toHaveProperty('cr');
+    expect(res.body.data).toHaveProperty('score');
+    expect(res.body.data).not.toHaveProperty('discipline_result');
+    expect(res.body.data).not.toHaveProperty('methodology');
+  });
+
+  it('POST /api/attendance/test-weighted-prediction returns compact evidence payload', async () => {
+    const body = {
+      scenario: 'Auto Checkout - Normal',
+      expected_range: '17:00-18:00',
+      targetDate: '2026-05-19',
+      timeIn: '2026-05-19T08:00:00+07:00',
+      candidates: {
+        HIST: '17:30:00',
+        CHECKIN: '17:15:00',
+        CONTEXT: '17:45:00',
+        TRANSITION: '17:20:00'
+      }
+    };
+
+    const res = await request(app).post('/api/attendance/test-weighted-prediction').send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toMatchObject({
+      scenario: 'Auto Checkout - Normal',
+      expected_range: '17:00-18:00',
+      match: true
+    });
+    expect(res.body.data).toHaveProperty('weights.HIST');
+    expect(res.body.data).toHaveProperty('weights.CHECKIN');
+    expect(res.body.data).toHaveProperty('weights.CONTEXT');
+    expect(res.body.data).toHaveProperty('weights.TRANSITION');
+    expect(res.body.data).toHaveProperty('cr');
+    expect(res.body.data).toHaveProperty('predicted_checkout');
+    expect(res.body.data).not.toHaveProperty('input');
+    expect(res.body.data).not.toHaveProperty('result_time');
+    expect(res.body.data).not.toHaveProperty('CR_threshold');
+    expect(res.body.data).not.toHaveProperty('is_consistent');
+  });
+
+  it('POST /api/attendance/test-weighted-prediction returns null CR for custom weights', async () => {
+    const body = {
+      scenario: 'Auto Checkout - Custom Weights',
+      expected_range: '17:00-18:00',
+      targetDate: '2026-05-19',
+      timeIn: '2026-05-19T08:00:00+07:00',
+      weights: [0.4, 0.25, 0.2, 0.15],
+      candidates: {
+        HIST: '17:30:00',
+        CHECKIN: '17:15:00',
+        CONTEXT: '17:45:00',
+        TRANSITION: '17:20:00'
+      }
+    };
+
+    const res = await request(app).post('/api/attendance/test-weighted-prediction').send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toMatchObject({
+      scenario: 'Auto Checkout - Custom Weights',
+      expected_range: '17:00-18:00',
+      cr: null,
+      match: true
+    });
+    expect(res.body.data).toHaveProperty('predicted_checkout');
   });
 });

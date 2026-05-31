@@ -5,7 +5,7 @@ const mockAttendanceFindAll = jest.fn();
 const mockGetDisciplineAhpWeights = jest.fn(() => ({ lateness: 0.25 }));
 const mockCalculateDisciplineIndex = jest.fn(async () => ({
   score: 82,
-  label: 'Tinggi'
+  label: 'Sangat Baik'
 }));
 const mockLoggerInfo = jest.fn();
 

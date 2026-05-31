@@ -91,7 +91,7 @@ export const getUserDisciplineIndex = async (req, res, next) => {
         methodology: {
           engine: 'FAHP',
           criteria_weights: ahpWeights,
-          approach: 'TFN pairwise + Buckley + centroid; weighted normalization'
+          approach: 'TFN pairwise + Chang extent + weighted normalization'
         }
       },
       message: 'Indeks kedisiplinan berhasil dihitung menggunakan FAHP (tanpa FIS)'
@@ -117,29 +117,31 @@ export const getUserDisciplineIndex = async (req, res, next) => {
  */
 export const testDisciplineAhp = async (req, res, next) => {
   try {
-    const { metrics } = req.body || {};
+    const { metrics, scenario, expected } = req.body || {};
     if (!metrics) {
       return res.status(400).json({ success: false, message: 'Parameter metrics wajib diisi' });
     }
 
     const ahpWeights = fuzzyEngine.getDisciplineAhpWeights();
     const result = await fuzzyEngine.calculateDisciplineIndex(metrics, ahpWeights);
+    const category = result.label;
+    const normalizedExpected = typeof expected === 'string' ? expected.trim() : null;
 
     return res.status(200).json({
       success: true,
       data: {
-        discipline_result: result,
-        methodology: {
-          engine: 'FAHP',
-          criteria_weights: ahpWeights,
-          scoring_ranges: {
-            'Sangat Tinggi': '>=80',
-            Tinggi: '60-79.9',
-            Sedang: '40-59.9',
-            Rendah: '20-39.9',
-            'Sangat Rendah': '<20'
-          }
-        }
+        scenario: scenario || 'Discipline Test',
+        weights: {
+          alpha_rate: Number((ahpWeights.alpha_rate ?? result.weights?.[0] ?? 0).toFixed(4)),
+          lateness_severity: Number((ahpWeights.lateness_severity ?? result.weights?.[1] ?? 0).toFixed(4)),
+          lateness_frequency: Number((ahpWeights.lateness_frequency ?? result.weights?.[2] ?? 0).toFixed(4)),
+          work_focus: Number((ahpWeights.work_focus ?? result.weights?.[3] ?? 0).toFixed(4))
+        },
+        cr: result.CR ?? Number((ahpWeights.consistency_ratio ?? 0).toFixed(3)),
+        score: result.score,
+        category,
+        expected: normalizedExpected,
+        match: normalizedExpected ? category === normalizedExpected : false
       },
       message: 'Discipline Index computed from manual metrics'
     });
@@ -282,7 +284,7 @@ export const getAllDisciplineIndices = async (req, res, next) => {
         methodology: {
           engine: 'FAHP',
           criteria_weights: ahpWeights,
-          approach: 'TFN pairwise + Buckley + centroid; weighted normalization'
+          approach: 'TFN pairwise + Chang extent + weighted normalization'
         }
       },
       message: `Indeks kedisiplinan ${validResults.length} karyawan berhasil dihitung`
@@ -316,19 +318,18 @@ export const getDisciplineConfig = async (req, res, next) => {
       data: {
         criteria_weights: ahpWeights,
         criteria_definitions: {
-          lateness: 'Tingkat keterlambatan (persentase hari terlambat)',
-          absenteeism: 'Tingkat ketidakhadiran (persentase hari tidak hadir)',
-          overtime: 'Frekuensi lembur (persentase hari lembur)',
-          consistency: 'Konsistensi kehadiran (skor konsistensi 0-100)'
+          alpha_rate: 'Tingkat alpha terhadap total hari kerja dalam periode analisis',
+          lateness_severity: 'Rata-rata menit keterlambatan dari jam kerja WIB',
+          lateness_frequency: 'Frekuensi keterlambatan terhadap total hari kerja dalam periode analisis',
+          work_focus: 'Konsistensi jam kerja berdasarkan rata-rata durasi kerja tercatat'
         },
         scoring_ranges: {
-          'Sangat Disiplin': '85-100',
-          Disiplin: '70-84',
-          'Cukup Disiplin': '55-69',
-          'Kurang Disiplin': '40-54',
-          'Tidak Disiplin': '0-39'
+          Rendah: '0-24.99',
+          Cukup: '25-49.99',
+          Baik: '50-74.99',
+          'Sangat Baik': '75-100'
         },
-        fuzzy_logic_approach: 'Triangular membership functions with IF-THEN rules',
+        fuzzy_logic_approach: 'Fuzzy AHP dengan Chang’s Extent Analysis',
         consistency_ratio: ahpWeights.consistency_ratio,
         is_consistent: ahpWeights.consistency_ratio <= 0.1
       },
@@ -488,11 +489,10 @@ function calculateWorkingDays(startDate, endDate) {
  * @returns {string} Category
  */
 function getDisciplineCategory(score) {
-  if (score >= 85) return 'Excellent';
-  if (score >= 70) return 'Good';
-  if (score >= 55) return 'Average';
-  if (score >= 40) return 'Below Average';
-  return 'Poor';
+  if (score >= 75) return 'Sangat Baik';
+  if (score >= 50) return 'Baik';
+  if (score >= 25) return 'Cukup';
+  return 'Rendah';
 }
 
 /**
@@ -538,13 +538,10 @@ function calculateDisciplineSummary(results) {
 
   // Calculate distribution
   const distribution = {
-    'Sangat Disiplin': results.filter((r) => r.discipline_score >= 85).length,
-    Disiplin: results.filter((r) => r.discipline_score >= 70 && r.discipline_score < 85).length,
-    'Cukup Disiplin': results.filter((r) => r.discipline_score >= 55 && r.discipline_score < 70)
-      .length,
-    'Kurang Disiplin': results.filter((r) => r.discipline_score >= 40 && r.discipline_score < 55)
-      .length,
-    'Tidak Disiplin': results.filter((r) => r.discipline_score < 40).length
+    'Sangat Baik': results.filter((r) => r.discipline_score >= 75).length,
+    Baik: results.filter((r) => r.discipline_score >= 50 && r.discipline_score < 75).length,
+    Cukup: results.filter((r) => r.discipline_score >= 25 && r.discipline_score < 50).length,
+    Rendah: results.filter((r) => r.discipline_score < 25).length
   };
 
   return {

@@ -195,12 +195,12 @@ export const getWfaRecommendations = async (req, res, next) => {
         scoredRecommendations.push(scoredPlace);
       } catch (error) {
         logger.warn(`Failed to score place ${place.properties?.name || 'unknown'}:`, error.message);
-        // Include place with default score if scoring fails
+        const fallbackScore = 25;
         scoredRecommendations.push({
           ...place,
           scoring_details: {
-            final_score: 50,
-            label: 'Cukup Direkomendasikan',
+            final_score: fallbackScore,
+            label: fuzzyEngine.getWfaScoreLabel(fallbackScore),
             breakdown: { error: error.message },
             distance_meters: place.properties?.distance || 1000
           }
@@ -313,7 +313,7 @@ export const getWfaRecommendations = async (req, res, next) => {
           recommendations_returned: sortedRecommendations.length
         },
         fahp_methodology: {
-          approach: 'Pure FAHP (TFN + Buckley + centroid)',
+          approach: 'Pure FAHP (TFN + Chang extent)',
           criteria_weights: ahpWeights
         }
       },
@@ -387,7 +387,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
         },
         consistency_ratio: ahpWeights.consistency_ratio,
         is_consistent: ahpWeights.consistency_ratio <= 0.1,
-        method: 'FAHP (TFN + Buckley + centroid) - Comprehensive Amenity Assessment',
+        method: 'Fuzzy AHP dengan Chang’s Extent Analysis',
         criteria_explanation: {
           location_type:
             'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)',
@@ -395,7 +395,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
             'Penilaian komprehensif fasilitas: WiFi, informasi bisnis, brand recognition, payment options, aksesibilitas, dan keragaman kategori',
           distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
         },
-        weight_calculation: 'Menggunakan AHP library dengan expert judgment matrix',
+        weight_calculation: 'Pembobotan kriteria berbasis pairwise TFN dengan Chang’s Extent Analysis',
         scoring_method: 'Weighted scoring model dengan normalisasi 0-100'
       },
       message: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
@@ -412,34 +412,37 @@ export const getWfaAhpConfig = async (req, res, next) => {
  */
 export const testFuzzyAhp = async (req, res, next) => {
   try {
-    const { place_data, custom_weights } = req.body;
+    const { place_data, custom_weights, scenario, expected } = req.body;
 
-    // Validasi input
     if (!place_data) {
       return res.status(400).json({
         success: false,
         message: 'Parameter place_data wajib diisi untuk testing'
       });
-    } // Gunakan custom weights jika disediakan, atau default weights
-    const weights = custom_weights || fuzzyEngine.getWfaAhpWeights();
+    }
 
-    // Test scoring dengan data yang disediakan
+    const usesCustomWeights = custom_weights != null;
+    const weights = usesCustomWeights ? custom_weights : fuzzyEngine.getWfaAhpWeights();
     const testResult = await fuzzyEngine.calculateWfaScore(place_data, weights);
+    const category = testResult.label;
+    const normalizedExpected = typeof expected === 'string' ? expected.trim() : null;
 
     res.status(200).json({
       success: true,
       data: {
-        test_result: testResult,
-        interpretation: {
-          score_range: '0-100',
-          score_meaning:
-            testResult.score >= 70
-              ? 'Recommended'
-              : testResult.score >= 50
-                ? 'Acceptable'
-                : 'Not recommended',
-          consistency_check: weights.consistency_ratio <= 0.1 ? 'Consistent' : 'Inconsistent'
-        }
+        scenario: scenario || place_data.properties?.name || 'WFA Test',
+        weights: {
+          location_type: Number((weights.location_type ?? testResult.weights?.[0] ?? 0).toFixed(4)),
+          distance_factor: Number((weights.distance_factor ?? testResult.weights?.[1] ?? 0).toFixed(4)),
+          amenity_score: Number((weights.amenity_score ?? testResult.weights?.[2] ?? 0).toFixed(4))
+        },
+        cr: usesCustomWeights
+          ? null
+          : testResult.CR ?? Number((weights.consistency_ratio ?? 0).toFixed(3)),
+        score: testResult.score,
+        category,
+        expected: normalizedExpected,
+        match: normalizedExpected ? category === normalizedExpected : false
       },
       message: 'Test Fuzzy AHP berhasil'
     });

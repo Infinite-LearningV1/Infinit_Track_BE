@@ -145,9 +145,9 @@ describe('summary dashboard analytics seam', () => {
         values: [0.6, 0.4]
       },
       ranking: [
-        { id: 9, name: 'Outsider', score: 99, label: 'Sangat Tinggi' },
-        { id: 7, name: 'Febri', score: 84, label: 'Tinggi' },
-        { id: 8, name: 'Diana', score: 80, label: 'Sedang' }
+        { id: 9, name: 'Outsider', score: 99, label: 'Sangat Baik' },
+        { id: 7, name: 'Febri', score: 84, label: 'Sangat Baik' },
+        { id: 8, name: 'Diana', score: 80, label: 'Sangat Baik' }
       ]
     });
 
@@ -158,8 +158,8 @@ describe('summary dashboard analytics seam', () => {
         values: [0.55, 0.45]
       },
       ranking: [
-        { id: 31, name: 'Cafe Satu', score: 90, label: 'Sangat Tinggi' },
-        { id: 32, name: 'Library Dua', score: 70, label: 'Tinggi' }
+        { id: 31, name: 'Cafe Satu', score: 90, label: 'Sangat Baik' },
+        { id: 32, name: 'Library Dua', score: 70, label: 'Baik' }
       ]
     });
 
@@ -170,9 +170,9 @@ describe('summary dashboard analytics seam', () => {
         values: [0.4, 0.6]
       },
       ranking: [
-        { id: 99, name: 'Untracked User', score: 95, label: 'Sangat Tinggi' },
-        { id: 8, name: 'Diana', score: 72, label: 'Tinggi' },
-        { id: 7, name: 'Febri', score: 65, label: 'Sedang' }
+        { id: 99, name: 'Untracked User', score: 95, label: 'Sangat Baik' },
+        { id: 8, name: 'Diana', score: 72, label: 'Baik' },
+        { id: 7, name: 'Febri', score: 65, label: 'Baik' }
       ]
     });
 
@@ -282,7 +282,7 @@ describe('summary dashboard analytics seam', () => {
             top_rank: {
               id: 7,
               name: 'Febri',
-              label: 'Tinggi'
+              label: 'Sangat Baik'
             }
           },
           wfa: {
@@ -290,7 +290,7 @@ describe('summary dashboard analytics seam', () => {
             top_rank: {
               id: 31,
               name: 'Cafe Satu',
-              label: 'Sangat Tinggi'
+              label: 'Sangat Baik'
             }
           },
           smart_ac: {
@@ -298,7 +298,7 @@ describe('summary dashboard analytics seam', () => {
             top_rank: {
               id: 8,
               name: 'Diana',
-              label: 'Tinggi'
+              label: 'Baik'
             }
           }
         },

@@ -26,7 +26,7 @@ Sistem ini memiliki empat pilar fungsionalitas utama yang membuatnya lebih dari 
 
 - Merekomendasikan lokasi WFA di sekitar pengguna.
 - Setiap lokasi dinilai oleh **FAHP murni** untuk menghasilkan **Skor Kelayakan**.
-- **Suitability Labels:** 5 tingkat (Sangat Rendah → Sangat Tinggi) berbasis interval sama.
+- **Suitability Labels:** 4 tingkat (Rendah, Cukup, Baik, Sangat Baik) dengan ambang interval sama 0–25–50–75.
 - **Multi-criteria Analysis (default):** Location type, Distance, Amenities.
 
 ### **⚡ 3. Proses Otomatis Malam Hari (Cron Jobs)**
@@ -53,8 +53,8 @@ Sistem ini memiliki empat pilar fungsionalitas utama yang membuatnya lebih dari 
 
 ### **🧠 Decision Engine**
 
-- **FAHP (Pure):** TFN pairwise → Fuzzy Geometric Mean (Buckley) → centroid defuzzification → normalized weights (∑w=1)
-- **Consistency Check:** CR dihitung dari matriks defuzzifikasi (eigenvalue approximation)
+- **FAHP (Pure):** TFN pairwise → synthetic extent → degree of possibility → minimum possibility → normalized crisp weights (∑w=1)
+- **Consistency Check:** CR dihitung dari matriks TFN yang didefuzzifikasi (eigenvalue approximation)
 
 ### **☁️ External Services**
 
@@ -221,7 +221,7 @@ GET /api/bookings/history?status=approved&sort_by=schedule_date&sort_order=DESC&
         "schedule_date": "2025-07-15",
         "status": "approved",
         "suitability_score": 87.5,
-        "suitability_label": "Sangat Direkomendasikan",
+        "suitability_label": "Sangat Baik",
         "location": {
           "description": "Starbucks Mall Panakkukang",
           "latitude": -5.1477,
@@ -260,7 +260,7 @@ GET /api/summary?period=monthly&start_date=2025-07-01&end_date=2025-07-31
         "total_present": 22,
         "total_late": 3,
         "discipline_score": 85.5,
-        "discipline_label": "Sangat Disiplin"
+        "discipline_label": "Sangat Baik"
       }
     ]
   }
@@ -342,18 +342,22 @@ src/
 // Core Intelligence Components
 Fuzzy AHP Engine
 ├── WFA Recommendation System
-│   ├── Location Type Scoring (70% weight)
-│   ├── Distance Factor (23% weight)
-│   └── Amenity Assessment (7% weight)
+│   ├── Location Type
+│   ├── Distance Factor
+│   └── Amenity Score
 ├── Discipline Index Calculator
-│   ├── Attendance Rate (40% weight)
-│   ├── Punctuality Score (35% weight)
-│   └── Consistency Analysis (25% weight)
+│   ├── Alpha Rate
+│   ├── Lateness Severity
+│   ├── Lateness Frequency
+│   └── Work Focus
 └── Smart Auto-Checkout Predictor
-    ├── Check-in Time Pattern (40% weight)
-    ├── Historical Hours (35% weight)
-    └── Work Duration Context (25% weight)
+    ├── Historical Pattern
+    ├── Check-in Pattern
+    ├── Context Signal
+    └── Transition Signal
 ```
+
+Bobot setiap komponen dihitung dari pairwise TFN backend menggunakan Chang’s Extent Analysis.
 
 ### **⚡ 6.3 Automated Job Processing**
 
@@ -368,29 +372,30 @@ Jobs Schedule
 
 ## FAHP (Fuzzy AHP) Engine
 
-- Method: TFN → FGM (Buckley) → defuzzify (centroid) → normalize (∑w=1) → CR check.
-- Normalization: min–max to [0,1] with benefit/cost; labeling equal-interval (5 classes).
+- Method: TFN → synthetic extent → degree of possibility → minimum possibility → normalized crisp weights (∑w=1) → CR check.
+- Normalization: min–max to [0,1] with benefit/cost; labeling equal-interval 4 bucket (`Rendah`, `Cukup`, `Baik`, `Sangat Baik`).
 - Public APIs:
   - `calculateWfaScore(place)` → `{ score(0..100), label, breakdown, weights, CR, warning? }`
   - `calculateDisciplineIndex(metrics)` → `{ score(0..100), label, breakdown, weights, CR, warning? }`
-  - `getWfaAhpWeights()`, `getDisciplineAhpWeights()` → `{... , consistency_ratio}`
+  - `getWfaAhpWeights()`, `getDisciplineAhpWeights()`, `getSmartAcAhpWeights()` → `{ ...weights, consistency_ratio, consistency_index, lambda_max }`
+  - `GET /api/analysis/fuzzy-ahp` → dashboard payload with `generated_at`, `window.start_at`, and `window.end_at` emitted as millisecond-precision WIB timestamps (`+07:00`).
 - Configuration: TFN scales and pairwise matrices in `src/analytics/config.fahp.js`.
-- Consistency: CR computed from defuzzified matrix; threshold is fixed in backend code at `0.10` because it is a theoretical FAHP guardrail, not an operational setting.
-- Auto-checkout: prediction removed; system flags likely-missed-checkout using time tolerance only.
+- Consistency: CR, CI, and λmax are computed from the defuzzified matrix; threshold is fixed in backend code at `0.10` because it is a theoretical FAHP guardrail, not an operational setting.
+- WFA analysis uses the static location catalog assumptions (`amenity_score=50`, `distance=1000`) when runtime visit telemetry is not applied; the response exposes `scope`, `window_applied`, and `data_source` to make that boundary explicit.
+- Auto-checkout: Smart Auto Checkout uses FAHP weighted prediction from historical, check-in, contextual, and transition signals; CR/CI/λmax are exposed as consistency diagnostics.
 
 ## 7. Fuzzy AHP Intelligence System
 
 ### **🎯 7.1 WFA Suitability Scoring**
 
-Setiap lokasi WFA dinilai menggunakan 5-tier scoring system:
+Setiap lokasi WFA dinilai menggunakan 4 bucket equal-interval:
 
-| **Suitability Label**     | **Score Range** | **Business Action**   |
-| ------------------------- | --------------- | --------------------- |
-| `Sangat Direkomendasikan` | 85-100          | Auto-approve kandidat |
-| `Direkomendasikan`        | 70-84           | Standard approval     |
-| `Cukup Direkomendasikan`  | 55-69           | Manual review needed  |
-| `Kurang Direkomendasikan` | 40-54           | Likely rejection      |
-| `Tidak Direkomendasikan`  | 0-39            | Auto-reject           |
+| **Suitability Label** | **Score Range** | **Business Action**           |
+| --------------------- | --------------- | ----------------------------- |
+| `Sangat Baik`         | 75-100          | Kandidat paling sesuai        |
+| `Baik`                | 50-74.99        | Kandidat sesuai               |
+| `Cukup`               | 25-49.99        | Perlu review tambahan         |
+| `Rendah`              | 0-24.99         | Kesesuaian rendah             |
 
 ### **📊 7.2 Discipline Index Components**
 

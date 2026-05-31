@@ -117,7 +117,7 @@ describe('booking controller readiness regressions', () => {
             },
             notes: 'Needs review',
             suitability_score: '80',
-            suitability_label: 'Tinggi',
+            suitability_label: 'Sangat Baik',
             created_at: new Date('2026-05-01T08:00:00.000Z'),
             processed_at: null,
             approved_by: null

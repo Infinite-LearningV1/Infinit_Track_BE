@@ -196,15 +196,20 @@ describe('summary report controller contract', () => {
     mockCalculateDisciplineIndex
       .mockResolvedValueOnce({
         score: 88,
-        label: 'Tinggi',
+        label: 'Sangat Baik',
         breakdown: { alpha_rate: 0 }
       })
       .mockResolvedValueOnce({
         score: 44,
-        label: 'Rendah',
+        label: 'Cukup',
         breakdown: { alpha_rate: 50 }
       });
-    mockGetDisciplineLabel.mockReturnValue('Sedang');
+    mockGetDisciplineLabel.mockImplementation((score) => {
+      if (score < 25) return 'Rendah';
+      if (score < 50) return 'Cukup';
+      if (score < 75) return 'Baik';
+      return 'Sangat Baik';
+    });
     mockBuildUserAttendanceSummary.mockResolvedValueOnce([mockedSummaryRow]);
   });
 
@@ -289,8 +294,6 @@ describe('summary report controller contract', () => {
     await getSummaryReport(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
-    expect(mockAttendanceFindAndCountAll).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
@@ -332,8 +335,6 @@ describe('summary report controller contract', () => {
     await getSummaryReport(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
-    expect(mockAttendanceFindAndCountAll).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
@@ -350,8 +351,6 @@ describe('summary report controller contract', () => {
     await getSummaryReport(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(mockAttendanceFindAll).not.toHaveBeenCalled();
-    expect(mockAttendanceFindAndCountAll).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       success: false,

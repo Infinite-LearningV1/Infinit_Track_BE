@@ -10,9 +10,6 @@ import { toJakartaTime } from '../utils/geofence.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout, processBatchRecords } from '../utils/jobHelper.js';
-import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
-import { extentWeightsTFN } from '../analytics/fahp.extent.js';
-import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
 function isManageableTask(task) {
   return Boolean(task && (typeof task.destroy === 'function' || typeof task.stop === 'function'));
@@ -151,16 +148,19 @@ export const triggerAutoCheckout = async () => {
 // ================= SMART AUTO CHECKOUT (FAHP + DOW) =================
 
 function getFahpWeights() {
-  const weights = extentWeightsTFN(SMART_AC_PAIRWISE_TFN);
-  // Optional CR logging for diagnostics
-  try {
-    const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
-    const { CR } = computeCR(crisp);
-    logger.info(`Smart Auto Checkout FAHP CR=${CR.toFixed(3)}`);
-  } catch (e) {
-    logger.debug(`CR computation failed: ${e?.message || e}`);
+  const weightsObj = fuzzyAhpEngine.getSmartAcAhpWeights();
+  const weights = [
+    weightsObj.history,
+    weightsObj.checkin_pattern,
+    weightsObj.context,
+    weightsObj.transition
+  ];
+
+  if (Number.isFinite(weightsObj.consistency_ratio)) {
+    logger.info(`Smart Auto Checkout FAHP CR=${weightsObj.consistency_ratio.toFixed(3)}`);
   }
-  return weights; // [w_hist, w_checkin, w_context, w_transition]
+
+  return weights;
 }
 
 function median(numbers) {

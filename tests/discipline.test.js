@@ -11,7 +11,7 @@ describe('Discipline Index FAHP Logic', () => {
     jest.clearAllMocks();
   });
 
-  it('menghasilkan label "Sangat Rendah" untuk profil disiplin sangat buruk', async () => {
+  it('menghasilkan label "Rendah" untuk profil disiplin sangat buruk', async () => {
     const input = {
       alpha_rate: 90,
       avg_lateness_minutes: 55,
@@ -21,10 +21,10 @@ describe('Discipline Index FAHP Logic', () => {
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
     expect(result).toHaveProperty('score');
     expect(result).toHaveProperty('label');
-    expect(result.label).toBe('Sangat Rendah');
+    expect(result.label).toBe('Rendah');
   });
 
-  it('menghasilkan label "Rendah" untuk profil disiplin rendah', async () => {
+  it('menghasilkan label "Cukup" untuk profil disiplin rendah', async () => {
     const input = {
       alpha_rate: 60,
       avg_lateness_minutes: 40,
@@ -32,10 +32,10 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 20
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Sedang');
+    expect(result.label).toBe('Cukup');
   });
 
-  it('menghasilkan label "Sedang" untuk profil disiplin sedang', async () => {
+  it('menghasilkan label "Baik" untuk profil disiplin sedang', async () => {
     const input = {
       alpha_rate: 30,
       avg_lateness_minutes: 25,
@@ -43,10 +43,10 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 50
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Tinggi');
+    expect(result.label).toBe('Baik');
   });
 
-  it('menghasilkan label "Tinggi" untuk profil disiplin baik', async () => {
+  it('menghasilkan label "Sangat Baik" untuk profil disiplin baik', async () => {
     const input = {
       alpha_rate: 15,
       avg_lateness_minutes: 10,
@@ -54,10 +54,10 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 75
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Sangat Tinggi');
+    expect(result.label).toBe('Sangat Baik');
   });
 
-  it('menghasilkan label "Sangat Tinggi" untuk profil disiplin sangat baik', async () => {
+  it('menghasilkan label "Sangat Baik" untuk profil disiplin sangat baik', async () => {
     const input = {
       alpha_rate: 0,
       avg_lateness_minutes: 0,
@@ -65,6 +65,6 @@ describe('Discipline Index FAHP Logic', () => {
       work_hour_consistency: 100
     };
     const result = await fuzzyEngine.calculateDisciplineIndex(input);
-    expect(result.label).toBe('Sangat Tinggi');
+    expect(result.label).toBe('Sangat Baik');
   });
 });

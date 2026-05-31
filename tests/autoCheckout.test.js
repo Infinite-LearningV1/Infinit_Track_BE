@@ -4,7 +4,13 @@ describe('Smart Auto Checkout FAHP Logic', () => {
   const targetDate = '2025-09-20';
   const timeIn = new Date('2025-09-20T09:00:00+07:00');
   const fallbackEndStr = '18:00:00';
-  const weights = [0.4, 0.2, 0.2, 0.2]; // [HIST, CHECKIN, CONTEXT, TRANSITION]
+  const smartAcWeights = fuzzyEngine.getSmartAcAhpWeights();
+  const weights = [
+    smartAcWeights.history,
+    smartAcWeights.checkin_pattern,
+    smartAcWeights.context,
+    smartAcWeights.transition
+  ];
 
   it('menggabungkan semua kandidat saat tersedia', () => {
     const candidates = {

@@ -35,6 +35,7 @@ jest.unstable_mockModule('../src/utils/attendanceDuplicateError.js', () => ({
 }));
 
 const resetMocks = () => {
+  jest.useRealTimers();
   jest.resetModules();
   mockUserFindAll.mockReset();
   mockAttendanceFindAll.mockReset();
@@ -91,6 +92,9 @@ describe('createGeneralAlpha job idempotency and batching', () => {
   });
 
   test('manual trigger rethrows fatal batch failures after logging', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-05-29T12:00:00.000Z'));
+
     const fatalError = new Error('database unavailable');
     mockUserFindAll.mockRejectedValueOnce(fatalError);
 
