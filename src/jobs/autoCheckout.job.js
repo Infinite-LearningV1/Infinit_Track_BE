@@ -84,6 +84,7 @@ export const startAutoCheckoutJob = () => {
     );
     startedTasks.push(missedCheckoutTask);
 
+    // INF-130 #6 reviewed, kept as is, batching acceptable (timing tolerance 10 min)
     // Nightly Smart Auto Checkout for yesterday (H-1)
     logger.info('Smart Auto Checkout (FAHP+DOW) scheduled to run daily at 23:45');
     const smartAutoCheckoutTask = assertManageableTask(

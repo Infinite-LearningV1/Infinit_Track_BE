@@ -40,18 +40,41 @@ jest.unstable_mockModule('bcryptjs', () => ({
   }
 }));
 
+const mockUserFindOne = jest.fn(async () => mockUser);
+const mockUserFindByPk = jest.fn(async () => mockUser);
+const mockTransaction = {
+  LOCK: {
+    UPDATE: 'UPDATE'
+  },
+  commit: jest.fn(async () => undefined),
+  rollback: jest.fn(async () => undefined)
+};
+const mockSequelizeTransaction = jest.fn(async () => mockTransaction);
+const mockAuthSession = {
+  create: jest.fn(async (payload) => ({
+    session_id: 42,
+    refresh_jti: payload.refresh_jti
+  })),
+  update: jest.fn(async () => [0])
+};
+
 jest.unstable_mockModule('../src/config/index.js', () => ({
   default: {
     jwt: {
       secret: 'test-secret',
-      ttl: 7200
+      refreshSecret: 'refresh-secret',
+      ttl: 7200,
+      accessTtl: 7200,
+      refreshTtl: 2592000,
+      refreshInactivityWindowSeconds: 172800
     }
   }
 }));
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
   User: {
-    findOne: jest.fn(async () => mockUser)
+    findOne: mockUserFindOne,
+    findByPk: mockUserFindByPk
   },
   Photo: {},
   Role: {
@@ -60,11 +83,14 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Program: {},
   Position: {},
   Division: {},
-  AttendanceCategory: {}
+  AttendanceCategory: {},
+  AuthSession: mockAuthSession
 }));
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
-  default: {}
+  default: {
+    transaction: mockSequelizeTransaction
+  }
 }));
 
 jest.unstable_mockModule('../src/models/location.js', () => ({
@@ -89,28 +115,40 @@ jest.unstable_mockModule('../src/config/spaces.js', () => ({
 
 const { login } = await import('../src/controllers/auth.controller.js');
 
+function createRequest() {
+  return {
+    body: {
+      email: 'management@example.com',
+      password: 'correct-password'
+    },
+    cookies: {
+      token: employeeCookieToken
+    },
+    headers: {},
+    get: jest.fn(() => 'Mozilla/5.0')
+  };
+}
+
+function createResponse() {
+  return {
+    cookie: jest.fn(),
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn()
+  };
+}
+
 describe('auth login cookie token reuse', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
   it('does not reuse a valid cookie token that belongs to a different authenticated user', async () => {
-    const req = {
-      body: {
-        email: 'management@example.com',
-        password: 'correct-password'
-      },
-      cookies: {
-        token: employeeCookieToken
-      },
-      headers: {},
-      get: jest.fn(() => 'Mozilla/5.0')
-    };
-    const res = {
-      cookie: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = createRequest();
+    const res = createResponse();
 
     await login(req, res);
 
@@ -149,30 +187,24 @@ describe('auth login cookie token reuse', () => {
     );
   });
 
-  it('refreshes the login token when the existing cookie token is not active yet', async () => {
-    jest.spyOn(jwt, 'verify').mockImplementation(() => {
+  it('ignores an existing cookie token and issues fresh login credentials', async () => {
+    const verifySpy = jest.spyOn(jwt, 'verify').mockImplementation(() => {
       throw new jwt.NotBeforeError('jwt not active', new Date());
     });
 
-    const req = {
-      body: {
-        email: 'management@example.com',
-        password: 'correct-password'
-      },
-      cookies: {
-        token: employeeCookieToken
-      },
-      headers: {},
-      get: jest.fn(() => 'Mozilla/5.0')
-    };
-    const res = {
-      cookie: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = createRequest();
+    const res = createResponse();
 
     await login(req, res);
 
+    expect(verifySpy).not.toHaveBeenCalled();
+    expect(mockAuthSession.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 2,
+        client_type: 'web'
+      }),
+      { transaction: mockTransaction }
+    );
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -185,36 +217,26 @@ describe('auth login cookie token reuse', () => {
     expect(res.cookie).toHaveBeenCalled();
   });
 
-  it('does not treat unexpected cookie verification failures as a normal token refresh', async () => {
-    jest.spyOn(jwt, 'verify').mockImplementation(() => {
+  it('does not fail login when an existing cookie token would be unreadable', async () => {
+    const verifySpy = jest.spyOn(jwt, 'verify').mockImplementation(() => {
       throw new Error('jwt library unavailable');
     });
 
-    const req = {
-      body: {
-        email: 'management@example.com',
-        password: 'correct-password'
-      },
-      cookies: {
-        token: employeeCookieToken
-      },
-      headers: {},
-      get: jest.fn(() => 'Mozilla/5.0')
-    };
-    const res = {
-      cookie: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
-    };
+    const req = createRequest();
+    const res = createResponse();
 
     await login(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      success: false,
-      code: 'E_LOGIN',
-      message: 'Terjadi kesalahan pada server'
-    });
-    expect(res.cookie).not.toHaveBeenCalled();
+    expect(verifySpy).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          token: expect.any(String)
+        })
+      })
+    );
+    expect(res.cookie).toHaveBeenCalled();
   });
 });

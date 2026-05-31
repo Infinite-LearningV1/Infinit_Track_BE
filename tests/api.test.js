@@ -21,6 +21,10 @@ jest.unstable_mockModule('../src/middlewares/roleGuard.js', () => ({
   default: mockRoleGuard
 }));
 
+jest.unstable_mockModule('../src/config/cloudinary.js', () => ({
+  default: {}
+}));
+
 const { default: app } = await import('../src/app.js');
 
 describe('FAHP Dynamic Test Endpoint', () => {

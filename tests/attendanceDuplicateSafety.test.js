@@ -349,7 +349,6 @@ describe('checkIn duplicate-safe behavior', () => {
     expect(res.status).toHaveBeenCalledWith(201);
     expect(commit).toHaveBeenCalled();
   });
-
   it('passes rollback failure to next when pre-check duplicate rollback rejects', async () => {
     const rollbackError = new Error('rollback failed');
     const rollback = jest.fn().mockRejectedValueOnce(rollbackError);
@@ -720,21 +719,19 @@ describe('job duplicate-safe behavior', () => {
 
   it('treats duplicate createGeneralAlpha inserts as skipped, not errors', async () => {
     const mockedAttendance = {
-      findAll: jest.fn().mockResolvedValue([]),
-      findOne: jest.fn().mockResolvedValueOnce(null),
-      create: jest.fn().mockRejectedValueOnce({
-        name: 'SequelizeUniqueConstraintError',
-        fields: { user_id: 2, attendance_date: '2026-04-14' },
-        errors: [{ path: 'user_id' }, { path: 'attendance_date' }],
-        parent: { code: 'ER_DUP_ENTRY' }
-      })
+      findAll: jest.fn().mockResolvedValue([{ user_id: 2 }]),
+      bulkCreate: jest.fn()
     };
+    const mockedTransaction = jest.fn(async (callback) => callback('tx'));
 
     jest.unstable_mockModule('../src/models/index.js', () => ({
       User: { findAll: jest.fn().mockResolvedValue([{ id_users: 2 }]) },
       Role: {},
       Attendance: mockedAttendance,
       Booking: { findAll: jest.fn().mockResolvedValue([]) }
+    }));
+    jest.unstable_mockModule('../src/config/database.js', () => ({
+      default: { transaction: mockedTransaction }
     }));
 
     const mockedLogger = { info: jest.fn(), error: jest.fn(), debug: jest.fn() };
@@ -748,20 +745,21 @@ describe('job duplicate-safe behavior', () => {
 
     expect(result.error).toBeUndefined();
     expect(result.skipped).toBeGreaterThanOrEqual(1);
+    expect(result.insertRowsRequested).toBe(0);
   });
 
-  it('treats duplicate resolveWfaBookings inserts as skipped, not errors', async () => {
+  it('uses transactional bulkCreate ignoreDuplicates for unresolved WFA booking candidates', async () => {
     const mockedAttendance = {
-      findOne: jest.fn().mockResolvedValueOnce(null),
-      create: jest.fn().mockRejectedValueOnce({
-        name: 'SequelizeUniqueConstraintError',
-        fields: { user_id: 3, attendance_date: '2026-04-14' },
-        errors: [{ path: 'user_id' }, { path: 'attendance_date' }],
-        parent: { code: 'ER_DUP_ENTRY' }
-      })
+      findAll: jest.fn().mockResolvedValueOnce([]),
+      bulkCreate: jest.fn().mockResolvedValueOnce([])
     };
+    const mockedTransaction = jest.fn(async (callback) => callback('tx'));
 
     const mockedLogger = { info: jest.fn(), error: jest.fn(), debug: jest.fn() };
+
+    jest.unstable_mockModule('../src/config/database.js', () => ({
+      default: { transaction: mockedTransaction }
+    }));
 
     jest.unstable_mockModule('../src/models/index.js', () => ({
       Booking: {
@@ -783,9 +781,114 @@ describe('job duplicate-safe behavior', () => {
     const { resolveWfaBookingsForDate } = await import('../src/jobs/resolveWfaBookings.job.js');
     const result = await resolveWfaBookingsForDate('2026-04-14');
 
-    expect(result.success).toBe(true);
-    expect(mockedLogger.error).not.toHaveBeenCalledWith(
-      expect.stringMatching(/duplicate/i)
+    expect(result).toEqual({ success: true, targetDate: '2026-04-14' });
+    expect(mockedTransaction).toHaveBeenCalledTimes(1);
+    expect(mockedAttendance.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: ['user_id'],
+        where: expect.objectContaining({ attendance_date: '2026-04-14' }),
+        transaction: 'tx'
+      })
     );
+    expect(mockedAttendance.bulkCreate).toHaveBeenCalledTimes(1);
+    expect(mockedAttendance.bulkCreate).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          user_id: 3,
+          category_id: 3,
+          status_id: 3,
+          location_id: 1,
+          booking_id: 99,
+          work_hour: 0,
+          attendance_date: '2026-04-14'
+        })
+      ],
+      expect.objectContaining({ ignoreDuplicates: true, transaction: 'tx' })
+    );
+    expect(mockedLogger.info).not.toHaveBeenCalledWith(
+      expect.stringContaining('Alpha records created')
+    );
+    expect(mockedLogger.info).toHaveBeenCalledWith(
+      'Task A completed. Alpha insert rows requested: 1, Pre-insert skipped: 0. Actual created count unavailable with ignoreDuplicates.'
+    );
+    expect(mockedLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('createGeneralAlpha duplicate-safe batch behavior', () => {
+  const mockGeneralAlphaModules = ({ users, bookings = [], attendances = [] }) => {
+    const mockedUserFindAll = jest.fn().mockResolvedValue(users);
+    const mockedBookingFindAll = jest.fn().mockResolvedValue(bookings);
+    const mockedAttendanceFindAll = jest.fn().mockResolvedValue(attendances);
+    const mockedAttendanceBulkCreate = jest.fn().mockResolvedValue([]);
+    const mockedTransaction = jest.fn(async (callback) => callback('tx'));
+
+    jest.unstable_mockModule('../src/config/database.js', () => ({
+      default: { transaction: mockedTransaction }
+    }));
+
+    jest.unstable_mockModule('../src/models/index.js', () => ({
+      User: { findAll: mockedUserFindAll },
+      Role: {},
+      Attendance: {
+        findAll: mockedAttendanceFindAll,
+        bulkCreate: mockedAttendanceBulkCreate
+      },
+      Booking: { findAll: mockedBookingFindAll }
+    }));
+
+    jest.unstable_mockModule('../src/utils/logger.js', () => ({
+      default: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }
+    }));
+
+    return {
+      mockedAttendanceFindAll,
+      mockedAttendanceBulkCreate,
+      mockedTransaction
+    };
+  };
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  it('uses bulkCreate ignoreDuplicates when missing candidates race with duplicate insert', async () => {
+    const { mockedAttendanceFindAll, mockedAttendanceBulkCreate } = mockGeneralAlphaModules({
+      users: [{ id_users: 1 }, { id_users: 2 }],
+      attendances: []
+    });
+
+    const { runGeneralAlphaForDate } = await import('../src/jobs/createGeneralAlpha.job.js');
+    const result = await runGeneralAlphaForDate('2026-05-29');
+
+    expect(result).toEqual({ created: 0, skipped: 0, insertRowsRequested: 2 });
+    expect(mockedAttendanceFindAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ attendance_date: '2026-05-29' }),
+        transaction: 'tx'
+      })
+    );
+    expect(mockedAttendanceBulkCreate).toHaveBeenCalledTimes(1);
+    expect(mockedAttendanceBulkCreate).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ user_id: 1, attendance_date: '2026-05-29' }),
+        expect.objectContaining({ user_id: 2, attendance_date: '2026-05-29' })
+      ]),
+      expect.objectContaining({ ignoreDuplicates: true, transaction: 'tx' })
+    );
+  });
+
+  it('does not call bulkCreate on idempotent rerun when all candidates already exist', async () => {
+    const { mockedAttendanceBulkCreate } = mockGeneralAlphaModules({
+      users: [{ id_users: 1 }, { id_users: 2 }],
+      attendances: [{ user_id: 1 }, { user_id: 2 }]
+    });
+
+    const { runGeneralAlphaForDate } = await import('../src/jobs/createGeneralAlpha.job.js');
+    const result = await runGeneralAlphaForDate('2026-05-29');
+
+    expect(result).toEqual({ created: 0, skipped: 2, insertRowsRequested: 0 });
+    expect(mockedAttendanceBulkCreate).not.toHaveBeenCalled();
   });
 });

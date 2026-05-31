@@ -13,10 +13,19 @@ info:
     - Comprehensive reporting and analytics
 
     ## Authentication
-    This API uses JWT (JSON Web Token) for authentication. Include the token in the Authorization header:
-    ```
-    Authorization: Bearer <your_jwt_token>
-    ```
+    This API uses a JWT access credential backed by a stateful `auth_sessions` record.
+
+    Protected endpoints accept the access token through either:
+    - `Authorization: Bearer <access_token>`
+    - HTTP-only `token` cookie for browser-based flows
+
+    Protected routes treat the access token as valid only while the linked `auth_sessions` row remains active.
+
+    Browser login sets HTTP-only `token` and `refresh_token` cookies while also returning the access token in `data.token` and the primary `data.auth.access_token` field. Non-browser clients receive the access token in `data.token`, the refresh token in `data.refresh_token`, and both tokens under `data.auth`.
+
+    Clients can explicitly force login transport behavior with `X-Client-Type: web` or `X-Client-Type: mobile`; `X-Client-Type: android` remains a backward-compatible native alias. When the header is absent, the backend falls back to User-Agent heuristics.
+
+    A successful login atomically replaces any previous active session for the same user and resolved client type before issuing credentials. The backend serializes same-user replacement attempts and keeps sessions for other client types active.
 
     ## Timezone
     All timestamps are handled in WIB (Jakarta timezone, UTC+7) for consistency.
@@ -41,6 +50,7 @@ servers:
 
 security:
   - bearerAuth: []
+  - cookieAuth: []
 
 paths:
   # Health Check
@@ -144,52 +154,39 @@ paths:
       tags:
         - Authentication
       summary: User login
-      description: Authenticate user with email and password
+      description: |
+        Authenticate user credentials, atomically revoke any previous active session for the same user and resolved client type, create a refresh-backed replacement session, and issue new credentials.
+
+        `X-Client-Type: web` forces browser cookie transport. `X-Client-Type: mobile` forces native JSON transport, while `X-Client-Type: android` remains a backward-compatible native alias. When the header is absent, the backend falls back to User-Agent heuristics and treats Bearer-only clients as native.
+
+        Browser clients receive HTTP-only `token` and `refresh_token` cookies. The response body includes the access token in both the backward-compatible `data.token` field and the primary `data.auth.access_token` field.
+        Non-browser clients receive the access token in `data.token`, the refresh token in `data.refresh_token`, and both credentials under the primary `data.auth` object.
       security: []
+      parameters:
+        - in: header
+          name: X-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, android, mobile]
+          description: Optional explicit client transport hint for login. `web` forces cookie transport, while `android` and `mobile` force native JSON transport.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - email
-                - password
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: 'user@company.com'
-                password:
-                  type: string
-                  format: password
-                  example: 'password123'
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Login successful
+          description: Login successful and session created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Login successful'
-                  data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/User'
-                      token:
-                        type: string
-                        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                oneOf:
+                  - $ref: '#/components/schemas/LoginWebResponse'
+                  - $ref: '#/components/schemas/LoginNonWebResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/AuthLoginError'
         '429':
           description: Too many login attempts
           content:
@@ -209,51 +206,105 @@ paths:
                   retryAfter:
                     type: integer
                     example: 900
+        '500':
+          $ref: '#/components/responses/AuthLoginServerError'
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: |
+        Rotate the active refresh session and issue a new access token.
+
+        Browser clients can supply the refresh credential through the HTTP-only `refresh_token` cookie.
+        Non-browser clients can supply it in the JSON body as `refresh_token`.
+        Refresh succeeds only while the persisted refresh session is still active.
+
+        The refresh transport follows the stored session type established at login: web sessions rotate cookies and return only `access_token` in JSON, while native sessions return both `access_token` and `refresh_token` in JSON.
+
+        The refresh session is rejected when the refresh JWT is malformed, when the session was revoked, when the persisted session `expires_at` has passed, or when there has been no successful login/refresh activity for longer than `JWT_REFRESH_INACTIVITY_WINDOW_SECONDS` (48 hours in the current deployment contract).
+        Expired refresh JWTs and inactive persisted sessions both return `AUTH_SESSION_INACTIVE` and require a full login.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Refresh successful
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RefreshWebResponse'
+                  - $ref: '#/components/schemas/RefreshNonWebResponse'
+        '401':
+          description: Refresh rejected because the token is invalid, the session was revoked, or the session is no longer active
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RefreshInvalidError'
+                  - $ref: '#/components/schemas/RefreshRevokedError'
+                  - $ref: '#/components/schemas/RefreshSessionInactiveError'
+        '500':
+          $ref: '#/components/responses/AuthInternalServerError'
 
   /api/auth/logout:
     post:
       tags:
         - Authentication
-      summary: User logout
-      description: Logout current user and invalidate token
+      summary: Logout current session
+      description: |
+        Clear the `token` and `refresh_token` cookies and revoke the current refresh session when it can be identified.
+
+        Session identification can come from the authenticated access token (`Authorization: Bearer <access_token>` or `token` cookie) or from the refresh token (`refresh_token` cookie or body field for non-browser clients).
+        Invalid or expired JWT credentials do not block cookie clearing; this endpoint stays idempotent and only revokes a server-side session when one can still be resolved.
+        Revoking the refresh session blocks future refresh attempts and also causes protected routes to reject the same access JWT once middleware re-checks the linked `auth_sessions` row.
+        Session-store failures after a session has been identified return the generic auth 500 response. Unexpected token-verification failures are delegated to the shared error handler.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
       responses:
         '200':
           description: Logout successful
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: 'Logout successful'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: '#/components/schemas/LogoutResponse'
+        '500':
+          $ref: '#/components/responses/AuthInternalServerError'
 
   /api/auth/me:
     get:
       tags:
         - Authentication
       summary: Get current user
-      description: Get information about the currently authenticated user
+      description: |
+        Get the authenticated user profile resolved from the current access token and database record.
+
+        Protected-route authentication requires both a valid access JWT and an active linked `auth_sessions` row. A revoked session causes this route to reject the access credential even before the JWT expiry time.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: User information retrieved successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AuthProfileResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AuthenticatedUserNotFound'
 
   /api/analysis/fuzzy-ahp:
     get:
@@ -439,9 +490,18 @@ paths:
       tags:
         - Attendance
       summary: Get today hero map locations
-      description: Retrieve render-ready hero map locations for users who already checked in today (Asia/Jakarta) and have valid coordinates.
+      description: Retrieve render-ready hero map locations for users who already checked in today (Asia/Jakarta) and have valid coordinates. This endpoint is a context-only current-day snapshot for map rendering; it does not accept historical range filters and is not the final attendance authority.
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+          description: Optional per-response location cap. The effective cap never exceeds HERO_MAP_MAX_USERS, which defaults to 500.
       responses:
         '200':
           description: Today locations retrieved successfully
@@ -469,9 +529,22 @@ paths:
                       is_live_tracking:
                         type: boolean
                         example: false
+                      authority:
+                        type: string
+                        example: 'context_only'
+                      final_attendance_authority:
+                        type: string
+                        example: 'attendance_records'
                       total_users:
                         type: integer
                         example: 1
+                      truncated:
+                        type: boolean
+                        example: false
+                      truncated_at:
+                        type: integer
+                        nullable: true
+                        example: null
                       locations:
                         type: array
                         items:
@@ -508,7 +581,11 @@ paths:
                     timezone: 'Asia/Jakarta'
                     snapshot_type: 'attendance_checkin_snapshot'
                     is_live_tracking: false
+                    authority: 'context_only'
+                    final_attendance_authority: 'attendance_records'
                     total_users: 1
+                    truncated: false
+                    truncated_at: null
                     locations:
                       - user_id: 7
                         full_name: 'Febri'
@@ -518,6 +595,8 @@ paths:
                         latitude: -0.8917
                         longitude: 119.8707
                   message: 'Today locations retrieved successfully'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1671,23 +1750,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
             default: 30d
-          description: Historical aggregation window. Use `custom` together with `from` and `to`.
+          description: Historical aggregation window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
       responses:
         '200':
           description: Dashboard analytics retrieved successfully
@@ -2282,23 +2361,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
-            default: 30d
-          description: Historical report window. Use `custom` together with `from` and `to`.
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
+            default: monthly
+          description: Dashboard/report window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: page
           schema:
@@ -2313,6 +2392,34 @@ paths:
             minimum: 1
             default: 10
           description: Number of attendance rows returned in the report section.
+        - in: query
+          name: q
+          deprecated: false
+          schema:
+            type: string
+            example: nico
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
+        - in: query
+          name: search
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. If multiple aliases are provided, precedence is `q`, then `search`, then `query`, then `keyword`.
+        - in: query
+          name: query
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
+        - in: query
+          name: keyword
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
       responses:
         '200':
           description: Summary report with discipline analysis generated successfully
@@ -2335,7 +2442,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: 30d, current_month, atau custom
+                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2355,23 +2462,23 @@ paths:
           name: period
           schema:
             type: string
-            enum: [30d, current_month, custom]
-            default: 30d
-          description: Historical report window. Use `custom` together with `from` and `to`.
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
+            default: monthly
+          description: Dashboard/report window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
             type: string
             format: date
             example: '2026-04-01'
-          description: Custom range start date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range start date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: to
           schema:
             type: string
             format: date
             example: '2026-04-30'
-          description: Custom range end date in `YYYY-MM-DD` format. Required when `period=custom`.
+          description: Custom range end date in YYYY-MM-DD format. Required when period=range or deprecated period=custom.
         - in: query
           name: page
           schema:
@@ -2386,6 +2493,34 @@ paths:
             minimum: 1
             default: 10
           description: Number of attendance rows returned in the report section.
+        - in: query
+          name: q
+          deprecated: false
+          schema:
+            type: string
+            example: nico
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
+        - in: query
+          name: search
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. If multiple aliases are provided, precedence is `q`, then `search`, then `query`, then `keyword`.
+        - in: query
+          name: query
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
+        - in: query
+          name: keyword
+          deprecated: true
+          schema:
+            type: string
+            example: nico
+          description: Deprecated alias for `q`. Prefer `q` for new clients.
       responses:
         '200':
           description: Summary report with discipline analysis generated successfully
@@ -2408,7 +2543,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: 30d, current_month, atau custom
+                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3012,9 +3147,411 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT token for authentication. Include 'Bearer ' prefix.
+      description: Access token passed as `Authorization: Bearer <token>`.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+      description: Access token stored in the HTTP-only `token` cookie for browser flows.
 
   schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: 'user@company.com'
+        password:
+          type: string
+          format: password
+          example: 'password123'
+
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Required for non-browser refresh flows. Browser clients can rely on the HTTP-only `refresh_token` cookie instead.
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    AuthProfile:
+      type: object
+      required:
+        - id
+        - full_name
+        - email
+      properties:
+        id:
+          type: integer
+          example: 5
+        full_name:
+          type: string
+          example: 'User Example'
+        email:
+          type: string
+          format: email
+          example: 'user@example.com'
+        role_name:
+          type: string
+          nullable: true
+          example: 'Admin'
+        position_name:
+          type: string
+          nullable: true
+          example: 'Software Engineer'
+        program_name:
+          type: string
+          nullable: true
+          example: 'Informatics'
+        division_name:
+          type: string
+          nullable: true
+          example: 'Engineering'
+        nip_nim:
+          type: string
+          nullable: true
+          example: 'EMP-001'
+        phone:
+          type: string
+          nullable: true
+          example: '08123'
+        photo:
+          type: string
+          nullable: true
+          example: 'https://cloudinary.com/photo.jpg'
+        photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2025-07-01T10:00:00.000Z'
+        location:
+          type: object
+          nullable: true
+          properties:
+            latitude:
+              type: number
+              format: float
+              example: -6.2
+            longitude:
+              type: number
+              format: float
+              example: 106.816666
+            radius:
+              type: number
+              format: float
+              example: 100
+            description:
+              type: string
+              nullable: true
+              example: 'WFH default location'
+            category_name:
+              type: string
+              nullable: true
+              example: 'WFH'
+
+    AuthWebTokenBundle:
+      type: object
+      required:
+        - access_token
+      properties:
+        access_token:
+          type: string
+          description: Primary access token field for the current authenticated session.
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    AuthNativeTokenBundle:
+      allOf:
+        - $ref: '#/components/schemas/AuthWebTokenBundle'
+        - type: object
+          required:
+            - refresh_token
+          properties:
+            refresh_token:
+              type: string
+              description: Primary refresh token field for native/non-browser clients.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    AuthLoginWebData:
+      allOf:
+        - $ref: '#/components/schemas/AuthProfile'
+        - type: object
+          required:
+            - token
+            - auth
+          properties:
+            token:
+              type: string
+              description: Backward-compatible access token field for authenticated requests.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            auth:
+              $ref: '#/components/schemas/AuthWebTokenBundle'
+
+    AuthLoginNonWebData:
+      allOf:
+        - $ref: '#/components/schemas/AuthLoginWebData'
+        - type: object
+          required:
+            - refresh_token
+            - auth
+          properties:
+            refresh_token:
+              type: string
+              description: Backward-compatible refresh token field returned to non-browser clients.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            auth:
+              $ref: '#/components/schemas/AuthNativeTokenBundle'
+
+    LoginWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthLoginWebData'
+        message:
+          type: string
+          example: 'Login berhasil'
+
+    LoginNonWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthLoginNonWebData'
+        message:
+          type: string
+          example: 'Login berhasil'
+
+    RefreshWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - access_token
+            - auth
+          properties:
+            access_token:
+              type: string
+              description: Backward-compatible access token field.
+              example: 'new-access-token'
+            auth:
+              $ref: '#/components/schemas/AuthWebTokenBundle'
+        message:
+          type: string
+          example: 'Refresh successful'
+
+    RefreshNonWebResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - access_token
+            - refresh_token
+            - auth
+          properties:
+            access_token:
+              type: string
+              description: Backward-compatible access token field.
+              example: 'new-access-token'
+            refresh_token:
+              type: string
+              description: Backward-compatible refresh token field.
+              example: 'new-refresh-token'
+            auth:
+              $ref: '#/components/schemas/AuthNativeTokenBundle'
+        message:
+          type: string
+          example: 'Refresh successful'
+
+    LogoutResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: 'Logout successful'
+
+    AuthProfileResponse:
+      type: object
+      required:
+        - success
+        - data
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthProfile'
+        message:
+          type: string
+          example: 'User profile fetched successfully'
+
+    AccessTokenUnauthorizedError:
+      type: object
+      description: Message-only unauthorized response returned when access-token validation fails before the refreshable expiry contract applies.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          enum:
+            - 'No token provided'
+            - 'Invalid authorization header. Use: Bearer <token>'
+            - 'Invalid token'
+            - 'Unable to resolve authenticated user role'
+          example: 'Invalid token'
+
+    AccessTokenExpiredError:
+      type: object
+      description: Returned when a protected route receives an expired access JWT. Clients may attempt `/api/auth/refresh` if the refresh session is still active.
+      required:
+        - success
+        - code
+        - message
+        - details
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_ACCESS_TOKEN_EXPIRED'
+        message:
+          type: string
+          example: 'Access token expired'
+        details:
+          type: object
+          required:
+            - refreshable
+          properties:
+            refreshable:
+              type: boolean
+              example: true
+
+    RefreshInvalidError:
+      type: object
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_REFRESH_TOKEN_INVALID'
+        message:
+          type: string
+          example: 'Refresh token invalid'
+
+    RefreshRevokedError:
+      type: object
+      description: Returned when the persisted refresh session was already revoked, including after an explicit logout.
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_REFRESH_TOKEN_REVOKED'
+        message:
+          type: string
+          example: 'Refresh session revoked'
+
+    RefreshSessionInactiveError:
+      type: object
+      description: Returned when the refresh JWT expired, the persisted refresh session absolute expiry passed, or the inactivity window elapsed. Clients must log in again.
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'AUTH_SESSION_INACTIVE'
+        message:
+          type: string
+          example: 'Refresh session expired'
+
+    AuthLoginErrorBody:
+      type: object
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'E_LOGIN'
+        message:
+          type: string
+          example: 'Email tidak terdaftar'
+
+    AuthenticatedUserNotFoundError:
+      type: object
+      required:
+        - success
+        - code
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: 'E_USER_NOT_FOUND'
+        message:
+          type: string
+          example: 'User tidak ditemukan'
+
     User:
       type: object
       properties:
@@ -3938,19 +4475,49 @@ components:
                       type: string
                       example: 'Invalid email format'
 
-    Unauthorized:
-      description: Unauthorized - Invalid or missing authentication token
+    AuthLoginError:
+      description: Login failed because validation failed or the credentials were rejected
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthLoginErrorBody'
+
+    AuthLoginServerError:
+      description: Login failed because of an unexpected server error
       content:
         application/json:
           schema:
             type: object
+            required:
+              - success
+              - code
+              - message
             properties:
               success:
                 type: boolean
                 example: false
+              code:
+                type: string
+                example: 'E_LOGIN'
               message:
                 type: string
-                example: 'Unauthorized access'
+                example: 'Terjadi kesalahan pada server'
+
+    AuthenticatedUserNotFound:
+      description: Authenticated user could not be found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthenticatedUserNotFoundError'
+
+    Unauthorized:
+      description: Unauthorized - access token missing, malformed, invalid, unresolved, or expired. Non-expiry failures return a message-only body; expiry returns `AUTH_ACCESS_TOKEN_EXPIRED` with `details.refreshable=true`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/AccessTokenUnauthorizedError'
+              - $ref: '#/components/schemas/AccessTokenExpiredError'
 
     Forbidden:
       description: Forbidden - Insufficient permissions
@@ -4001,6 +4568,20 @@ components:
               message:
                 type: string
                 example: 'Resource already exists'
+
+    AuthInternalServerError:
+      description: Internal server error returned by auth endpoints that intentionally do not expose internal failure details
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+                example: 'Internal server error'
 
     InternalServerError:
       description: Internal server error

@@ -107,9 +107,23 @@ describe('client-critical OpenAPI contract', () => {
   });
 
   test('documents attendance today-locations snapshot metadata in the public OpenAPI contract', () => {
-    const todayLocationsSchema = schemaAt(openapi.paths['/api/attendance/today-locations'].get);
+    const todayLocationsOperation = openapi.paths['/api/attendance/today-locations'].get;
+    const todayLocationsSchema = schemaAt(todayLocationsOperation);
     const dataSchema = todayLocationsSchema.properties.data;
 
+    expect(todayLocationsOperation.parameters).toContainEqual(
+      expect.objectContaining({
+        in: 'query',
+        name: 'limit',
+        schema: expect.objectContaining({ type: 'integer', minimum: 1 })
+      })
+    );
+    expect(todayLocationsOperation.parameters).not.toContainEqual(
+      expect.objectContaining({ name: 'period' })
+    );
+    expect(todayLocationsOperation.parameters).not.toContainEqual(expect.objectContaining({ name: 'from' }));
+    expect(todayLocationsOperation.parameters).not.toContainEqual(expect.objectContaining({ name: 'to' }));
+    expect(todayLocationsOperation.responses).toHaveProperty('400');
     expect(dataSchema.properties).toMatchObject({
       date: { type: 'string', format: 'date' },
       timezone: { type: 'string', example: 'Asia/Jakarta' },
@@ -121,9 +135,26 @@ describe('client-critical OpenAPI contract', () => {
         type: 'boolean',
         example: false
       },
+      authority: {
+        type: 'string',
+        example: 'context_only'
+      },
+      final_attendance_authority: {
+        type: 'string',
+        example: 'attendance_records'
+      },
       total_users: { type: 'integer' },
+      truncated: { type: 'boolean' },
+      truncated_at: {
+        type: 'integer',
+        nullable: true
+      },
       locations: { type: 'array' }
     });
+  });
+
+  test('does not document canceled summary dashboard-map endpoint', () => {
+    expect(openapi.paths).not.toHaveProperty('/api/summary/dashboard-map');
   });
 
   test('documents booking creation request payload in the public OpenAPI contract', () => {
@@ -196,9 +227,36 @@ describe('client-critical OpenAPI contract', () => {
   });
 
   test('documents dashboard analytics as cockpit aggregate only in the public OpenAPI contract', () => {
-    const dashboardSchema = schemaAt(openapi.paths['/api/summary/dashboard-analytics'].get);
+    const dashboardOperation = openapi.paths['/api/summary/dashboard-analytics'].get;
+    const dashboardSchema = schemaAt(dashboardOperation);
     const dataSchema = dashboardSchema.properties.data;
     const sectionWindows = dataSchema.properties.meta.properties.section_windows.properties;
+    const expectedPeriodValues = [
+      'daily',
+      'weekly',
+      'monthly',
+      'range',
+      '30d',
+      'current_month',
+      'custom'
+    ];
+    const periodParameter = dashboardOperation.parameters.find((parameter) => parameter.name === 'period');
+    const fromParameter = dashboardOperation.parameters.find((parameter) => parameter.name === 'from');
+    const toParameter = dashboardOperation.parameters.find((parameter) => parameter.name === 'to');
+
+    expect(periodParameter.schema).toMatchObject({
+      type: 'string',
+      default: '30d'
+    });
+    expect(periodParameter.schema.enum).toEqual(expect.arrayContaining(expectedPeriodValues));
+    expect(periodParameter.schema.enum).toHaveLength(expectedPeriodValues.length);
+    expect(periodParameter.schema.enum).not.toContain('all');
+    expect(fromParameter.description).toMatch(/period=range|deprecated period=custom/);
+    expect(fromParameter.description).toContain('period=range');
+    expect(fromParameter.description).toContain('deprecated period=custom');
+    expect(toParameter.description).toMatch(/period=range|deprecated period=custom/);
+    expect(toParameter.description).toContain('period=range');
+    expect(toParameter.description).toContain('deprecated period=custom');
 
     expect(dashboardSchema.properties).toMatchObject({
       success: { type: 'boolean', example: true },
@@ -298,12 +356,20 @@ describe('client-critical OpenAPI contract', () => {
   test('documents canonical and deprecated summary report routes against the same shared schema', () => {
     const canonicalOperation = openapi.paths['/api/summary/reports'].get;
     const legacyOperation = openapi.paths['/api/summary'].get;
+    const expectedPeriodValues = [
+      'daily',
+      'weekly',
+      'monthly',
+      'range',
+      '30d',
+      'current_month',
+      'custom'
+    ];
     const expectedPeriodParameter = expect.objectContaining({
       name: 'period',
       schema: expect.objectContaining({
         type: 'string',
-        enum: ['30d', 'current_month', 'custom'],
-        default: '30d'
+        default: 'monthly'
       })
     });
     const expectedFromParameter = expect.objectContaining({
@@ -314,6 +380,19 @@ describe('client-critical OpenAPI contract', () => {
       name: 'to',
       schema: expect.objectContaining({ type: 'string', format: 'date' })
     });
+    const expectedQParameter = expect.objectContaining({
+      in: 'query',
+      name: 'q',
+      schema: expect.objectContaining({ type: 'string' })
+    });
+    const expectedDeprecatedSearchAliases = ['search', 'query', 'keyword'].map((name) =>
+      expect.objectContaining({
+        in: 'query',
+        name,
+        deprecated: true,
+        schema: expect.objectContaining({ type: 'string' })
+      })
+    );
 
     expect(canonicalOperation.deprecated).not.toBe(true);
     expect(legacyOperation.deprecated).toBe(true);
@@ -324,16 +403,38 @@ describe('client-critical OpenAPI contract', () => {
       $ref: '#/components/schemas/SummaryReportResponse'
     });
     expect(canonicalOperation.parameters).toEqual(
-      expect.arrayContaining([expectedPeriodParameter, expectedFromParameter, expectedToParameter])
+      expect.arrayContaining([
+        expectedPeriodParameter,
+        expectedFromParameter,
+        expectedToParameter,
+        expectedQParameter,
+        ...expectedDeprecatedSearchAliases
+      ])
     );
     expect(legacyOperation.parameters).toEqual(
-      expect.arrayContaining([expectedPeriodParameter, expectedFromParameter, expectedToParameter])
+      expect.arrayContaining([
+        expectedPeriodParameter,
+        expectedFromParameter,
+        expectedToParameter,
+        expectedQParameter,
+        ...expectedDeprecatedSearchAliases
+      ])
     );
+    const canonicalPeriodEnum = canonicalOperation.parameters.find((param) => param.name === 'period').schema.enum;
+    const legacyPeriodEnum = legacyOperation.parameters.find((param) => param.name === 'period').schema.enum;
+
+    expect(canonicalPeriodEnum).toEqual(expect.arrayContaining(expectedPeriodValues));
+    expect(canonicalPeriodEnum).toHaveLength(expectedPeriodValues.length);
+    expect(legacyPeriodEnum).toEqual(expect.arrayContaining(expectedPeriodValues));
+    expect(legacyPeriodEnum).toHaveLength(expectedPeriodValues.length);
+    expect(canonicalPeriodEnum).not.toContain('all');
+    expect(canonicalOperation.parameters.find((param) => param.name === 'q').deprecated).not.toBe(true);
+    expect(legacyOperation.parameters.find((param) => param.name === 'q').deprecated).not.toBe(true);
     expect(canonicalOperation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
-      '30d, current_month, atau custom'
+      'daily, weekly, monthly, range, 30d, current_month, atau custom'
     );
     expect(legacyOperation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
-      '30d, current_month, atau custom'
+      'daily, weekly, monthly, range, 30d, current_month, atau custom'
     );
     expect(legacyOperation.description).toContain('/api/summary/reports');
   });

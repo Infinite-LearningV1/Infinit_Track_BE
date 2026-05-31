@@ -52,6 +52,12 @@ const summaryReportQuery = {
   page: '2',
   limit: '5'
 };
+const dashboardAnalyticsCanonicalPeriodCases = [
+  ['daily', { period: 'daily' }],
+  ['weekly', { period: 'weekly' }],
+  ['monthly', { period: 'monthly' }],
+  ['range', { period: 'range', from: '2026-05-01', to: '2026-05-31' }]
+];
 
 const app = express();
 app.use(express.json());
@@ -135,6 +141,23 @@ describe('summary routes', () => {
     }
   );
 
+  it.each(dashboardAnalyticsCanonicalPeriodCases)(
+    'passes canonical %s period through to the dashboard analytics handler',
+    async (_periodName, query) => {
+      const res = await request(app).get('/api/summary/dashboard-analytics').query(query);
+
+      expect(res.status).toBe(200);
+      expect(mockGetDashboardAnalytics).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: expect.objectContaining(query)
+        }),
+        expect.anything(),
+        expect.anything()
+      );
+      expect(res.body.data.period).toBe(query.period);
+    }
+  );
+
   it('passes current_month through to the handler for a realistic dashboard filter', async () => {
     const res = await request(app).get('/api/summary/dashboard-analytics?period=current_month');
 
@@ -183,6 +206,28 @@ describe('summary routes', () => {
 
   it('returns 400 E_VALIDATION for an invalid period value', async () => {
     const res = await request(app).get('/api/summary/dashboard-analytics?period=invalid');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'E_VALIDATION'
+    });
+    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 E_VALIDATION for unsupported all period', async () => {
+    const res = await request(app).get('/api/summary/dashboard-analytics?period=all');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'E_VALIDATION'
+    });
+    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 E_VALIDATION when period is explicitly empty', async () => {
+    const res = await request(app).get('/api/summary/dashboard-analytics?period=');
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({

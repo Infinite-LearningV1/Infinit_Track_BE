@@ -389,6 +389,8 @@ export const checkIn = async (req, res, next) => {
 
   const rollbackTransaction = async () => {
     rollbackAttempted = true;
+    if (!transaction) return;
+
     await transaction.rollback();
     transactionFinished = true;
   };
@@ -1257,7 +1259,7 @@ export const deleteAttendance = async (req, res, next) => {
  */
 export const getTodayLocations = async (req, res, next) => {
   try {
-    const data = await buildTodayLocationsSnapshot();
+    const data = await buildTodayLocationsSnapshot({ limit: req.query?.limit });
 
     return res.status(200).json({
       success: true,
