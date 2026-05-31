@@ -128,10 +128,15 @@ describe('summary report controller contract', () => {
     mockSettingsFindAll.mockResolvedValueOnce([]);
     mockCalculateDisciplineIndex.mockResolvedValueOnce({
       score: 88,
-      label: 'Tinggi',
+      label: 'Sangat Baik',
       breakdown: { alpha_rate: 0 }
     });
-    mockGetDisciplineLabel.mockReturnValue('Sedang');
+    mockGetDisciplineLabel.mockImplementation((score) => {
+      if (score < 25) return 'Rendah';
+      if (score < 50) return 'Cukup';
+      if (score < 75) return 'Baik';
+      return 'Sangat Baik';
+    });
     mockBuildUserAttendanceSummary.mockResolvedValueOnce([mockedSummaryRow]);
   });
 

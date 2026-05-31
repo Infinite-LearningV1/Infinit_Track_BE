@@ -7,7 +7,7 @@ const mockUserFindAll = jest.fn();
 const mockDatabaseQuery = jest.fn();
 const mockFuzzyCalculate = jest.fn(async () => ({
   score: 88,
-  label: 'Sangat Tinggi',
+  label: 'Sangat Baik',
   breakdown: {}
 }));
 
@@ -26,6 +26,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Photo: {},
   LocationEvent: {},
   AttendanceCategory: {},
+  Booking: {},
   AttendanceStatus: {},
   Division: {},
   Settings: {
@@ -46,7 +47,12 @@ jest.unstable_mockModule('../src/utils/workHourFormatter.js', () => ({
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
   default: {
     calculateDisciplineIndex: mockFuzzyCalculate,
-    getDisciplineLabel: jest.fn(() => 'Sedang')
+    getDisciplineLabel: jest.fn((score) => {
+      if (score < 25) return 'Rendah';
+      if (score < 50) return 'Cukup';
+      if (score < 75) return 'Baik';
+      return 'Sangat Baik';
+    })
   }
 }));
 

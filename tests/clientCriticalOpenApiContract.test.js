@@ -411,7 +411,7 @@ describe('client-critical OpenAPI contract', () => {
       information: { type: 'string', example: 'Work Duration: 8h' },
       notes: { type: 'string', example: '' },
       discipline_score: { type: 'number', format: 'float', nullable: true, example: 88 },
-      discipline_label: { type: 'string', nullable: true, example: 'Tinggi' },
+      discipline_label: { type: 'string', nullable: true, example: 'Sangat Baik' },
       discipline_breakdown: { type: 'object', nullable: true, additionalProperties: true }
     });
     expect(detailRowProperties).not.toHaveProperty('user');

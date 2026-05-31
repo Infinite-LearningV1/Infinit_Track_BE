@@ -72,9 +72,9 @@ describe('dashboard analytics helper contract', () => {
         values: [0.6, 0.4]
       },
       ranking: [
-        { id: 9, name: 'Outsider', score: 99, label: 'Sangat Tinggi' },
-        { id: 7, name: 'Febri', score: 84, label: 'Tinggi' },
-        { id: 8, name: 'Diana', score: 80, label: 'Sedang' }
+        { id: 9, name: 'Outsider', score: 99, label: 'Sangat Baik' },
+        { id: 7, name: 'Febri', score: 84, label: 'Sangat Baik' },
+        { id: 8, name: 'Diana', score: 80, label: 'Sangat Baik' }
       ]
     });
 
@@ -85,8 +85,8 @@ describe('dashboard analytics helper contract', () => {
         values: [0.55, 0.45]
       },
       ranking: [
-        { id: 31, name: 'Cafe Satu', score: 90, label: 'Sangat Tinggi' },
-        { id: 32, name: 'Library Dua', score: 70, label: 'Tinggi' }
+        { id: 31, name: 'Cafe Satu', score: 90, label: 'Sangat Baik' },
+        { id: 32, name: 'Library Dua', score: 70, label: 'Baik' }
       ]
     });
 
@@ -97,9 +97,9 @@ describe('dashboard analytics helper contract', () => {
         values: [0.4, 0.6]
       },
       ranking: [
-        { id: 99, name: 'Untracked User', score: 95, label: 'Sangat Tinggi' },
-        { id: 8, name: 'Diana', score: 72, label: 'Tinggi' },
-        { id: 7, name: 'Febri', score: 65, label: 'Sedang' }
+        { id: 99, name: 'Untracked User', score: 95, label: 'Sangat Baik' },
+        { id: 8, name: 'Diana', score: 72, label: 'Baik' },
+        { id: 7, name: 'Febri', score: 65, label: 'Baik' }
       ]
     });
 
@@ -235,11 +235,10 @@ describe('dashboard analytics helper contract', () => {
           id: 7,
           name: 'Febri',
           score: 84,
-          label: 'Tinggi'
+          label: 'Sangat Baik'
         },
         distribution: {
-          Tinggi: 1,
-          Sedang: 1
+          'Sangat Baik': 2
         }
       },
       wfa: {
@@ -255,11 +254,11 @@ describe('dashboard analytics helper contract', () => {
           id: 31,
           name: 'Cafe Satu',
           score: 90,
-          label: 'Sangat Tinggi'
+          label: 'Sangat Baik'
         },
         distribution: {
-          'Sangat Tinggi': 1,
-          Tinggi: 1
+          'Sangat Baik': 1,
+          Baik: 1
         }
       },
       smart_ac: {
@@ -275,11 +274,10 @@ describe('dashboard analytics helper contract', () => {
           id: 8,
           name: 'Diana',
           score: 72,
-          label: 'Tinggi'
+          label: 'Baik'
         },
         distribution: {
-          Tinggi: 1,
-          Sedang: 1
+          Baik: 2
         }
       }
     });
@@ -320,11 +318,11 @@ describe('dashboard analytics helper contract', () => {
 
     mockLocationEventFindAll.mockResolvedValueOnce([]);
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
-      ranking: [{ id: 7, name: 'Febri', score: 55, label: 'Sedang' }]
+      ranking: [{ id: 7, name: 'Febri', score: 55, label: 'Baik' }]
     });
     mockBuildWfaAnalysis.mockResolvedValueOnce({ ranking: [] });
     mockBuildSmartAcAnalysis.mockResolvedValueOnce({
-      ranking: [{ id: 7, name: 'Febri', score: 40, label: 'Sedang' }]
+      ranking: [{ id: 7, name: 'Febri', score: 40, label: 'Cukup' }]
     });
     const result = await buildDashboardAnalytics({
       period: 'custom',

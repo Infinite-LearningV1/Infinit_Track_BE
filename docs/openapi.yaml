@@ -347,6 +347,26 @@ paths:
                         type: object
                         additionalProperties:
                           type: integer
+                      scope:
+                        type: string
+                        description: Present when the analysis uses a constrained source scope, such as static WFA location catalog data.
+                        example: place_catalog_static
+                      window_applied:
+                        type: boolean
+                        description: Indicates whether the requested analysis window was applied to the ranked data source.
+                        example: false
+                      data_source:
+                        type: object
+                        description: Optional source metadata and assumptions for analysis modes with constrained runtime data.
+                        additionalProperties: true
+                        example:
+                          type: location_catalog_static
+                          assumptions:
+                            - field: amenity_score
+                              value: 50
+                            - field: distance
+                              value: 1000
+                          warning: WFA analysis uses static location catalog assumptions because no runtime visit telemetry is applied.
                       ranking:
                         type: array
                         items:
@@ -372,16 +392,16 @@ paths:
                   data:
                     type: discipline
                     period: monthly
-                    generated_at: '2026-04-23T10:30:00+07:00'
+                    generated_at: '2026-04-23T10:30:00.000+07:00'
                     timezone: Asia/Jakarta
                     window:
-                      start_at: '2026-04-01T00:00:00+07:00'
-                      end_at: '2026-04-23T10:30:00+07:00'
+                      start_at: '2026-04-01T00:00:00.000+07:00'
+                      end_at: '2026-04-23T10:30:00.000+07:00'
                     entity_kind: user
                     consistency:
                       CR: 0.037
-                      CI: 0
-                      lambda_max: 0
+                      CI: 0.025
+                      lambda_max: 4.075
                       threshold: 0.1
                       is_consistent: true
                       verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
@@ -390,17 +410,16 @@ paths:
                       values: [0.45, 0.25, 0.18, 0.12]
                       method: "Chang's Extent Analysis"
                     distribution:
-                      Sangat Tinggi: 1
-                      Tinggi: 0
-                      Sedang: 0
+                      Sangat Baik: 1
+                      Baik: 0
+                      Cukup: 0
                       Rendah: 0
-                      Sangat Rendah: 0
                     ranking:
                       - rank: 1
                         id: 7
                         name: Andi
                         score: 87.5
-                        label: Sangat Tinggi
+                        label: Sangat Baik
                         breakdown:
                           alpha_rate: 0
                           avg_lateness_minutes: 3
@@ -2056,14 +2075,14 @@ paths:
                                     example: 84
                                   label:
                                     type: string
-                                    example: Tinggi
+                                    example: Sangat Baik
                               distribution:
                                 type: object
                                 additionalProperties:
                                   type: integer
                                 example:
-                                  Tinggi: 1
-                                  Sedang: 1
+                                  Sangat Baik: 1
+                                  Baik: 1
                           wfa:
                             type: object
                             properties:
@@ -2127,14 +2146,14 @@ paths:
                                     example: 90
                                   label:
                                     type: string
-                                    example: Sangat Tinggi
+                                    example: Sangat Baik
                               distribution:
                                 type: object
                                 additionalProperties:
                                   type: integer
                                 example:
-                                  Sangat Tinggi: 1
-                                  Tinggi: 1
+                                  Sangat Baik: 1
+                                  Baik: 1
                           smart_ac:
                             type: object
                             properties:
@@ -2198,14 +2217,14 @@ paths:
                                     example: 72
                                   label:
                                     type: string
-                                    example: Tinggi
+                                    example: Baik
                               distribution:
                                 type: object
                                 additionalProperties:
                                   type: integer
                                 example:
-                                  Tinggi: 1
-                                  Sedang: 1
+                                  Baik: 1
+                                  Cukup: 1
                       insights:
                         type: object
                         properties:
@@ -2442,8 +2461,8 @@ paths:
                       discipline_index:
                         type: number
                         format: float
-                        example: 8.7
-                        description: Overall discipline index (0-10 scale)
+                        example: 87.0
+                        description: Overall discipline index (0-100 scale)
                       period:
                         type: object
                         properties:
@@ -3328,7 +3347,7 @@ components:
                   discipline_label:
                     type: string
                     nullable: true
-                    example: Tinggi
+                    example: Sangat Baik
                   discipline_breakdown:
                     type: object
                     nullable: true
@@ -3706,7 +3725,7 @@ components:
         suitability_label:
           type: string
           nullable: true
-          example: 'Sangat Sesuai'
+          example: 'Sangat Baik'
           description: Human-readable suitability assessment
         created_at:
           type: string
@@ -3760,12 +3779,12 @@ components:
         fuzzy_ahp_score:
           type: number
           format: float
-          example: 8.7
-          description: Overall Fuzzy AHP score (0-10 scale)
+          example: 87.0
+          description: Overall Fuzzy AHP score (0-100 scale)
         suitability_label:
           type: string
-          example: 'Sangat Sesuai'
-          enum: ['Tidak Sesuai', 'Kurang Sesuai', 'Cukup Sesuai', 'Sesuai', 'Sangat Sesuai']
+          example: 'Sangat Baik'
+          enum: ['Rendah', 'Cukup', 'Baik', 'Sangat Baik']
           description: Human-readable suitability assessment
         criteria_scores:
           type: object

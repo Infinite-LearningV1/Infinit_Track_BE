@@ -18,8 +18,7 @@ import {
   calculateDistance,
   getJakartaTime,
   getJakartaDateString,
-  getCurrentTimeForDB,
-  toJakartaTime
+  getCurrentTimeForDB
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
@@ -34,9 +33,6 @@ import {
 import { runGeneralAlphaForDate } from '../jobs/createGeneralAlpha.job.js';
 import logger from '../utils/logger.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
-import { extentWeightsTFN } from '../analytics/fahp.extent.js';
-import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
-import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
@@ -49,7 +45,9 @@ export const testWeightedPrediction = async (req, res) => {
       weights,
       targetDate,
       timeIn,
-      fallbackEndStr = '18:00:00'
+      fallbackEndStr = '18:00:00',
+      scenario,
+      expected_range
     } = req.body || {};
 
     if (!targetDate || !timeIn) {
@@ -63,20 +61,34 @@ export const testWeightedPrediction = async (req, res) => {
     const parseTime = (value, dateStr) => {
       if (!value) return null;
       if (typeof value === 'string') {
-        // Accept "HH:mm:ss" or full ISO
         if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
           return new Date(`${dateStr}T${value}+07:00`);
         }
       }
       return new Date(value);
     };
-    const toWIBTimeString = (date) => {
+    const toWIBClock = (date) => {
       if (!date) return null;
-      const d = toJakartaTime(date);
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      const ss = String(d.getSeconds()).padStart(2, '0');
-      return `${hh}:${mm}:${ss}`;
+      const shifted = new Date(new Date(date).getTime() + 7 * 60 * 60 * 1000);
+      const hh = String(shifted.getUTCHours()).padStart(2, '0');
+      const mm = String(shifted.getUTCMinutes()).padStart(2, '0');
+      return `${hh}:${mm}`;
+    };
+    const clockToMinutes = (value) => {
+      if (typeof value !== 'string') return null;
+      const match = value.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+      if (!match) return null;
+      return Number(match[1]) * 60 + Number(match[2]);
+    };
+    const isWithinExpectedRange = (clock, range) => {
+      if (!clock || typeof range !== 'string') return false;
+      const parts = range.split('-').map((item) => item.trim());
+      if (parts.length !== 2) return false;
+      const actual = clockToMinutes(clock);
+      const start = clockToMinutes(parts[0]);
+      const end = clockToMinutes(parts[1]);
+      if (actual == null || start == null || end == null) return false;
+      return actual >= start && actual <= end;
     };
     const cand = {
       HIST: parseTime(candidates.HIST, targetDate),
@@ -85,13 +97,16 @@ export const testWeightedPrediction = async (req, res) => {
       TRANSITION: parseTime(candidates.TRANSITION, targetDate)
     };
 
-    // Determine weights: use provided or default FAHP SMART_AC weights (extent method)
-    const defaultWeights = extentWeightsTFN(SMART_AC_PAIRWISE_TFN);
-    const W = Array.isArray(weights) && weights.length === 4 ? weights : defaultWeights;
-
-    // Compute CR for diagnostics
-    const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
-    const { CR } = computeCR(crisp);
+    const smartAcWeights = fuzzyEngine.getSmartAcAhpWeights();
+    const defaultWeights = [
+      smartAcWeights.history,
+      smartAcWeights.checkin_pattern,
+      smartAcWeights.context,
+      smartAcWeights.transition
+    ];
+    const usesCustomWeights = Array.isArray(weights) && weights.length === 4;
+    const W = usesCustomWeights ? weights : defaultWeights;
+    const CR = usesCustomWeights ? null : smartAcWeights.consistency_ratio;
 
     const predicted = fuzzyEngine.weightedPrediction(
       cand,
@@ -100,26 +115,23 @@ export const testWeightedPrediction = async (req, res) => {
       parseTime(timeIn, targetDate),
       fallbackEndStr
     );
+    const predictedCheckout = predicted ? toWIBClock(predicted) : null;
+    const normalizedExpectedRange = typeof expected_range === 'string' ? expected_range.trim() : null;
 
     return res.status(200).json({
       success: true,
       data: {
-        input: {
-          candidates: {
-            HIST: toWIBTimeString(cand.HIST),
-            CHECKIN: toWIBTimeString(cand.CHECKIN),
-            CONTEXT: toWIBTimeString(cand.CONTEXT),
-            TRANSITION: toWIBTimeString(cand.TRANSITION)
-          },
-          weights: W,
-          targetDate,
-          timeIn: toWIBTimeString(parseTime(timeIn, targetDate)),
-          fallbackEndStr
+        scenario: scenario || 'Smart Auto Checkout Test',
+        weights: {
+          HIST: Number((W[0] ?? 0).toFixed(4)),
+          CHECKIN: Number((W[1] ?? 0).toFixed(4)),
+          CONTEXT: Number((W[2] ?? 0).toFixed(4)),
+          TRANSITION: Number((W[3] ?? 0).toFixed(4))
         },
-        result_time: predicted ? toWIBTimeString(predicted) : null,
-        CR: parseFloat(CR.toFixed(3)),
-        CR_threshold: 0.1,
-        is_consistent: CR <= 0.1
+        cr: CR == null ? null : Number(CR.toFixed(3)),
+        predicted_checkout: predictedCheckout,
+        expected_range: normalizedExpectedRange,
+        match: normalizedExpectedRange ? isWithinExpectedRange(predictedCheckout, normalizedExpectedRange) : false
       },
       message: 'Smart Auto Checkout weighted prediction'
     });
