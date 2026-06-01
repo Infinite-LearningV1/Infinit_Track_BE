@@ -3,14 +3,16 @@ import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { minMax } from '../analytics/normalization.js';
 import { labelEqualInterval } from '../analytics/labeling.js';
-import { WFA_PAIRWISE_TFN, DISC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
+import { WFA_PAIRWISE_TFN, DISC_PAIRWISE_TFN, SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 import { calculateDistance, toJakartaTime } from './geofence.js';
 
 // Simple memoization for FAHP weights
 let cachedWfaWeights = null;
 let cachedDiscWeights = null;
+let cachedSmartAcWeights = null;
 let cachedWfaCR = null;
 let cachedDiscCR = null;
+let cachedSmartAcConsistency = null;
 
 const CR_THRESHOLD = 0.10;
 function selectWeights(matrixTFN) {
@@ -184,6 +186,37 @@ function getDisciplineAhpWeights() {
   };
 }
 
+// --- Public API: getSmartAcAhpWeights (now FAHP) ---
+function getSmartAcAhpWeights() {
+  if (cachedSmartAcWeights && cachedSmartAcConsistency) {
+    return {
+      history: cachedSmartAcWeights[0],
+      checkin_pattern: cachedSmartAcWeights[1],
+      context: cachedSmartAcWeights[2],
+      transition: cachedSmartAcWeights[3],
+      consistency_ratio: cachedSmartAcConsistency.CR,
+      consistency_index: cachedSmartAcConsistency.CI,
+      lambda_max: cachedSmartAcConsistency.lambdaMax
+    };
+  }
+
+  const weights = selectWeights(SMART_AC_PAIRWISE_TFN);
+  const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
+  const consistency = computeCR(crisp);
+  cachedSmartAcWeights = weights;
+  cachedSmartAcConsistency = consistency;
+
+  return {
+    history: weights[0],
+    checkin_pattern: weights[1],
+    context: weights[2],
+    transition: weights[3],
+    consistency_ratio: consistency.CR,
+    consistency_index: consistency.CI,
+    lambda_max: consistency.lambdaMax
+  };
+}
+
 // --- Public API: calculateDisciplineIndex(metrics) ---
 async function calculateDisciplineIndex(m) {
   try {
@@ -285,6 +318,7 @@ export default {
   // Weights
   getWfaAhpWeights,
   getDisciplineAhpWeights,
+  getSmartAcAhpWeights,
 
   // Utils
   getWfaScoreLabel,

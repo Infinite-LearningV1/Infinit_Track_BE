@@ -42,6 +42,7 @@ const mockFuzzyEngine = {
   calculateDisciplineIndex: jest.fn(),
   getWfaAhpWeights: jest.fn(),
   calculateWfaScore: jest.fn(),
+  getSmartAcAhpWeights: jest.fn(),
   weightedPrediction: jest.fn(),
   categorizePlace: jest.fn((place) => {
     const name = (place?.properties?.name || '').toLowerCase();
@@ -141,6 +142,15 @@ describe('analysis fuzzy ahp contract', () => {
       label: 'Tinggi'
     });
 
+    mockFuzzyEngine.getSmartAcAhpWeights.mockReturnValue({
+      history: 0.43,
+      checkin_pattern: 0.24,
+      context: 0.12,
+      transition: 0.21,
+      consistency_ratio: 0.043,
+      consistency_index: 0.038,
+      lambda_max: 4.114
+    });
     mockFuzzyEngine.weightedPrediction.mockReturnValue(new Date('2026-04-21T10:15:00.000Z'));
   });
 
@@ -335,11 +345,18 @@ describe('analysis fuzzy ahp contract', () => {
         data: expect.objectContaining({
           type: 'smart_ac',
           entity_kind: 'user',
-          weights: expect.objectContaining({
-            criteria: ['history', 'checkin_pattern', 'context', 'transition'],
-            values: expect.any(Array),
-            method: expect.any(String)
+          consistency: expect.objectContaining({
+            CR: 0.043,
+            CI: 0.038,
+            lambda_max: 4.114,
+            threshold: 0.1,
+            is_consistent: true
           }),
+          weights: {
+            criteria: ['history', 'checkin_pattern', 'context', 'transition'],
+            values: [0.43, 0.24, 0.12, 0.21],
+            method: "Chang's Extent Analysis"
+          },
           ranking: expect.arrayContaining([
             expect.objectContaining({
               rank: 1,
