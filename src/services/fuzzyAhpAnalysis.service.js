@@ -315,7 +315,7 @@ const buildDisciplineMetrics = (attendances, startAt, endAt) => {
   };
 };
 
-export const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
+export const buildDisciplineAnalysis = async ({ startAt, endAt, includeLegacyId = true }) => {
   const users = await User.findAll({});
   const weightsObj = fuzzyEngine.getDisciplineAhpWeights();
   const criteria = ['alpha_rate', 'lateness_severity', 'lateness_frequency', 'work_focus'];
@@ -377,7 +377,7 @@ export const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
     const result = await fuzzyEngine.calculateDisciplineIndex(metrics, weightsObj);
 
     ranking.push({
-      id: user.id_users,
+      [includeLegacyId ? 'id' : 'user_id']: user.id_users,
       name: user.full_name,
       score: result.score,
       label: result.label,
@@ -409,7 +409,7 @@ export const buildDisciplineAnalysis = async ({ startAt, endAt }) => {
 
 export const buildDisciplineFahpPayload = async ({ period, from, to }) => {
   const { startAt, endAt, requestedWindow } = getWibAnalysisWindow(period, { from, to });
-  const result = await buildDisciplineAnalysis({ startAt, endAt });
+  const result = await buildDisciplineAnalysis({ startAt, endAt, includeLegacyId: false });
 
   return {
     type: 'discipline',

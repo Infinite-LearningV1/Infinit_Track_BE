@@ -236,7 +236,7 @@ describe('analysis discipline fuzzy ahp route validation', () => {
         ranking: [
           expect.objectContaining({
             rank: 1,
-            id: 7,
+            user_id: 7,
             name: 'Andi',
             score: 87.5,
             label: 'Sangat Tinggi'
@@ -244,6 +244,7 @@ describe('analysis discipline fuzzy ahp route validation', () => {
         ]
       })
     );
+    expect(res.body.data.ranking[0]).not.toHaveProperty('id');
     expect(mockAttendance.findAll).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

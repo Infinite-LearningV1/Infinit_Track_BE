@@ -204,14 +204,15 @@ describe('analysis discipline fuzzy ahp dedicated contract', () => {
     expect(res.body.data.ranking).toHaveLength(1);
     expect(res.body.data.ranking[0]).toEqual(
       expect.objectContaining({
-        id: 7,
+        user_id: 7,
         name: 'Andi',
         rank: 1,
         score: 87.5,
         label: 'Sangat Tinggi'
       })
     );
-    expect(res.body.data.ranking.map((item) => item.id)).not.toContain(8);
+    expect(res.body.data.ranking[0]).not.toHaveProperty('id');
+    expect(res.body.data.ranking.map((item) => item.user_id)).not.toContain(8);
     expect(res.body.data.distribution).toEqual({
       ...zeroDistribution,
       'Sangat Tinggi': 1
