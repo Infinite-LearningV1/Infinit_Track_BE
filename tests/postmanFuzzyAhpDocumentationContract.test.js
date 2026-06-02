@@ -1,0 +1,73 @@
+import fs from 'fs';
+import path from 'path';
+
+const repoRoot = path.resolve(process.cwd());
+const reportingBoundaryPath = path.join(repoRoot, 'docs', 'reporting-analytics-boundary.md');
+const reportingBoundary = fs.readFileSync(reportingBoundaryPath, 'utf8');
+
+const dedicatedProductionPaths = [
+  'GET /api/analysis/fuzzy-ahp/discipline',
+  'GET /api/analysis/fuzzy-ahp/wfa',
+  'GET /api/analysis/fuzzy-ahp/smart-ac'
+];
+
+const legacyCombinedEndpointPath = 'GET /api/analysis/fuzzy-ahp';
+const maximumAllowedMeaningfulLines = 10;
+
+const extractSection = (markdown, heading, nextHeadingPattern = /\n##\s/) => {
+  const sectionStart = markdown.indexOf(heading);
+  if (sectionStart === -1) return '';
+
+  const contentStart = sectionStart + heading.length;
+  const nextHeading = markdown.slice(contentStart).search(nextHeadingPattern);
+  return nextHeading === -1
+    ? markdown.slice(contentStart)
+    : markdown.slice(contentStart, contentStart + nextHeading);
+};
+
+const fahpSection = extractSection(reportingBoundary, '## Fuzzy AHP Endpoints Contract');
+const meaningfulFahpLines = fahpSection
+  .split('\n')
+  .map((line) => line.trim())
+  .filter(Boolean);
+
+const sectionSubheadingPattern = /^\s*#{3,6}\s+/m;
+const markdownTableRowPattern = /^\s*\|.*\|\s*$/m;
+
+const endpointBulletPattern = /^\s+-\s+`(GET \/api\/analysis\/fuzzy-ahp(?:\/[a-z-]+)?)`/gm;
+const endpointBullets = [...fahpSection.matchAll(endpointBulletPattern)].map((match) => match[1]);
+
+describe('Postman Fuzzy AHP documentation contract', () => {
+  test('keeps the FAHP documentation section short', () => {
+    expect(meaningfulFahpLines.length).toBeLessThanOrEqual(maximumAllowedMeaningfulLines);
+  });
+
+  test('keeps the FAHP documentation section as a Postman-first boundary pointer', () => {
+    expect(fahpSection).toContain('Postman collection `Infinite Track`');
+    expect(fahpSection).toContain('folder `FuzzyAhp`');
+    expect(fahpSection).toContain('primary manual smoke surface for the dedicated FAHP endpoints');
+    expect(fahpSection).toContain('contains curated Discipline, WFA, and Smart AC requests');
+    expect(fahpSection).toContain('Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here');
+  });
+
+  test('documents the legacy combined endpoint as transition-only compatibility', () => {
+    expect(endpointBullets).toContain(legacyCombinedEndpointPath);
+    expect(fahpSection).toMatch(
+      /`GET \/api\/analysis\/fuzzy-ahp` remains temporarily supported as the legacy combined endpoint[^\n]*transition-only/i
+    );
+    expect(fahpSection).toMatch(/Use the legacy combined endpoint only for explicit migration compatibility checks\./i);
+  });
+
+  test('lists exactly the three dedicated production endpoint paths', () => {
+    const dedicatedEndpointBullets = endpointBullets.filter(
+      (endpointPath) => endpointPath !== legacyCombinedEndpointPath
+    );
+
+    expect(dedicatedEndpointBullets).toEqual(dedicatedProductionPaths);
+  });
+
+  test('does not expand the FAHP section into a standalone manual guide', () => {
+    expect(fahpSection).not.toMatch(sectionSubheadingPattern);
+    expect(fahpSection).not.toMatch(markdownTableRowPattern);
+  });
+});
