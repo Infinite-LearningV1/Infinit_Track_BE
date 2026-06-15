@@ -117,17 +117,23 @@ LOG_LEVEL=info
 
 ### **🗄️ 4.3 Setup Database**
 
-```bash
-# Pastikan MySQL/MariaDB berjalan
-# Buat database baru (manual di MySQL)
-CREATE DATABASE v1_infinite_track;
+Pastikan MySQL/MariaDB sudah berjalan, lalu siapkan database lokal dari terminal dengan urutan berikut:
 
-# Jalankan migrasi untuk membuat semua tabel
+```bash
+# Buat database baru lewat terminal menggunakan MySQL/MariaDB client
+mysql -u your_db_user -p -e "CREATE DATABASE v1_infinite_track;"
+
+# Import baseline schema terlebih dahulu
+mysql -u your_db_user -p v1_infinite_track < v1_infinite_track.sql
+
+# Jalankan migrasi incremental setelah baseline schema tersedia
 npm run migrate
 
 # (Opsional) Isi data awal dengan seeder
 npm run seed
 ```
+
+> **Catatan:** Untuk database lokal yang benar-benar kosong, jalur bootstrap yang saat ini tervalidasi adalah import `v1_infinite_track.sql` terlebih dahulu, lalu jalankan `npm run migrate`, karena migrasi bersifat incremental dan mengasumsikan tabel inti seperti `attendance` sudah ada.
 
 ### **🚀 4.4 Jalankan Server**
 
@@ -144,10 +150,21 @@ bash ./test-production.sh --local-base-url http://127.0.0.1:3005 --public-base-u
 
 Server akan berjalan di `http://localhost:3005` (atau port yang ditentukan di `.env`).
 
+Endpoint health memiliki dua fungsi berbeda:
+
+- `GET /livez` memverifikasi proses backend masih hidup.
+- `GET /health` memverifikasi dependency startup sudah siap, terutama database dan scheduler.
+- Backend masih dapat start tetapi mengembalikan HTTP `503` dari `/health` jika database atau scheduler belum siap.
+
+> **Catatan Docker Desktop Windows:** `docker-compose.yml` repo ini menggunakan `network_mode: host`. Pada Docker Desktop Windows, aktifkan **Enable host networking** di **Docker Desktop Settings → Resources → Network** sebelum `http://127.0.0.1:3005` dapat diakses dari host. Jika dependency seperti container MySQL manual dijalankan di luar Compose, dependency tersebut mungkin perlu dijalankan ulang setelah Docker Desktop restart.
+
 ### **✅ 4.5 Verifikasi Setup**
 
 ```bash
-# Health check
+# Liveness check: proses backend hidup
+curl http://localhost:3005/livez
+
+# Readiness check: database dan scheduler siap
 curl http://localhost:3005/health
 
 # Swagger UI (requires authenticated Admin/Management session)
@@ -156,6 +173,8 @@ open http://localhost:3005/docs
 # Raw OpenAPI contract (requires authenticated Admin/Management token)
 curl -H "Authorization: Bearer <admin_or_management_token>" http://localhost:3005/docs/openapi.yaml
 ```
+
+Respons `/health` yang sehat mengembalikan `ready: true`, `components.database: "ready"`, dan `components.scheduler: "ready"`.
 
 ## 5. Dokumentasi API (Endpoint Utama)
 
