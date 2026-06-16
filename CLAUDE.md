@@ -181,3 +181,25 @@ A task is done **only when**:
 - `/backend-attendance-inspection` — attendance correctness inspection for final-state, mutation safety, job-driven attendance, timezone, and idempotency risks
 - `/backend-auth-contract-inspection` — auth contract inspection for token, session, cookie, RBAC, role resolution, and middleware-route boundary checks
 - `backend-contract-reviewer` — read-only subagent for contract compliance review
+
+## Phase 5 Context Sync (MVP)
+
+### Shared Context (Cross-Repo)
+
+- Sebelum kerja lintas-kontrak, baca `shared-context` di cockpit:
+  - `API_CONTRACT.md`
+  - `GLOBAL_STATUS.md`
+  - `ROUTING_POLICY.md`
+  - `QUALITY_GATE.md`
+  - `DECISIONS.md`
+  - `RISK_REGISTER.md`
+- Jika repo/runtime/Linear/docs berbeda, live repo/runtime adalah sumber fakta tertinggi.
+- Done = diff/PR + fresh verification + review verdict.
+
+### Execution Model (MVP)
+
+- Agent selalu kerja di isolated branch dalam worktree.
+- Branch utama yang dipegang manusia di terminal tetap `develop`.
+- Hasil kerja agent kembali ke `develop` lewat PR/merge, lalu manusia pull dan test di `develop`.
+- `master` hanya menerima hasil fix/no-bug/release-ready dari `develop`.
+- Backend nuance: PHASE0 baseline freeze berlaku; agent tidak boleh mengedit working tree utama, hanya worktree branch dari `develop`.
