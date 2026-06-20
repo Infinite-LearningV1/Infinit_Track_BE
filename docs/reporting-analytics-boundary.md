@@ -1,7 +1,7 @@
 # Reporting & Dashboard Analytics Boundary
 
 ## Why this exists
-Infinite Track exposes three related but distinct read surfaces for reporting and dashboard analytics. This document explains which endpoint owns which use case so clients do not mix historical aggregates with current-day snapshots.
+Infinite Track exposes related but distinct read surfaces for reporting, dashboard analytics, current-day map context, and FAHP analysis. This document explains which endpoint owns which use case so clients do not mix historical aggregates, current-day snapshots, or FAHP evidence boundaries.
 
 ## Source of truth
 - Runtime behavior in the backend is the final authority.
@@ -16,6 +16,7 @@ Infinite Track exposes three related but distinct read surfaces for reporting an
 | Transitional access to the same reporting contract during consumer migration | `GET /api/summary` | Deprecated compatibility alias. Must stay behaviorally equivalent to `/api/summary/reports` for the same query. |
 | Dashboard cards, historical trend, mode mix, geofence evidence context, insights, and lightweight FAHP snapshots | `GET /api/summary/dashboard-analytics` | Cockpit/dashboard aggregate surface. Returns top-level `requested_window` and `executed_window`, then section-based analytics under `data.*`; it does not own `map_context` or `today_locations`. |
 | Today-only/live snapshot map for users who already checked in on the current Jakarta date | `GET /api/attendance/today-locations` | Dedicated operational snapshot surface for the current day. This is context-only map evidence, not a historical aggregation endpoint, final attendance authority, or fraud authority. |
+| Dedicated FAHP analysis contracts | `GET /api/analysis/fuzzy-ahp/discipline`, `GET /api/analysis/fuzzy-ahp/wfa`, `GET /api/analysis/fuzzy-ahp/smart-ac` | Dedicated FAHP surfaces separate discipline evidence, live WFA provider validation, and Smart AC evidence sufficiency. The legacy combined endpoint remains transition-only. |
 
 ## Dashboard analytics contract notes
 - `requested_window` preserves raw client query intent.
@@ -23,6 +24,17 @@ Infinite Track exposes three related but distinct read surfaces for reporting an
 - `data.geofence_evidence_context` is contextual evidence only. Final attendance authority remains attendance records.
 - `data.map_context` and `data.today_locations` are not part of the dashboard analytics contract in this phase.
 - Clients that need today/live map points must call `/api/attendance/today-locations` directly.
+
+## Fuzzy AHP Endpoints Contract
+- `GET /api/analysis/fuzzy-ahp` remains temporarily supported as the legacy combined endpoint for existing clients; compatibility is transition-only.
+- Canonical dedicated production endpoints are:
+  - `GET /api/analysis/fuzzy-ahp/discipline`
+  - `GET /api/analysis/fuzzy-ahp/wfa`
+  - `GET /api/analysis/fuzzy-ahp/smart-ac`
+- The Postman collection `Infinite Track`, folder `FuzzyAhp`, is the primary manual smoke surface for the dedicated FAHP endpoints and contains curated Discipline, WFA, and Smart AC requests.
+- Dedicated FAHP endpoint smoke requests require a Bearer token authorized for `Admin` or `Management` access.
+- This repo document records only route ownership and source-of-truth boundary. Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here.
+- Use the legacy combined endpoint only for explicit migration compatibility checks.
 
 ## Consumer rules
 - Use `/api/summary/reports` for reporting tables, exports, and `report.user_attendance_summary`.
@@ -48,4 +60,4 @@ Infinite Track exposes three related but distinct read surfaces for reporting an
 - Canceled route: do not introduce, document, or consume `/api/summary/dashboard-map` for this phase.
 
 ## Change management
-Any future change to these three surfaces must keep runtime, tests, and `docs/openapi.yaml` aligned. If boundary intent changes, update this document in the same branch as the contract change.
+Any future change to these surfaces must keep runtime, tests, and `docs/openapi.yaml` aligned. If boundary intent changes, update this document in the same branch as the contract change.

@@ -32,7 +32,25 @@ export const upload = multer({
 });
 
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TODAY_LOCATIONS_LIMIT_MAX = 500;
+
+const parseStrictDateOnly = (value) => {
+  if (typeof value !== 'string' || !DATE_ONLY_PATTERN.test(value)) return null;
+
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+};
 
 const validateTodayLocationsQueryKeys = (_value, { req }) => {
   const unsupportedQueryKey = Object.keys(req.query ?? {}).find((key) => key !== 'limit');
@@ -450,6 +468,58 @@ export const updateStatusValidation = [
     .withMessage('Status wajib diisi')
     .isIn(['approved', 'rejected'])
     .withMessage('Status harus "approved" atau "rejected"')
+];
+
+export const disciplineFahpValidation = [
+  query('period')
+    .optional()
+    .isIn(['weekly', 'monthly', 'custom'])
+    .withMessage('period must be one of: weekly, monthly, custom')
+    .custom((value, { req }) => {
+      if (value !== 'custom') return true;
+
+      const { from, to } = req.query;
+      if (!from || !to) {
+        throw new Error('from and to are required when period is custom');
+      }
+
+      const fromDate = parseStrictDateOnly(from);
+      const toDate = parseStrictDateOnly(to);
+      if (!fromDate || !toDate) {
+        throw new Error('from and to must be valid dates');
+      }
+
+      if (toDate.getTime() < fromDate.getTime()) {
+        throw new Error('to must be on or after from');
+      }
+
+      const rangeInDays =
+        Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      if (rangeInDays > 365) {
+        throw new Error('custom range must not exceed 365 days');
+      }
+
+      return true;
+    })
+];
+
+export const wfaFahpValidation = [
+  query('lat')
+    .exists()
+    .withMessage('lat is required')
+    .bail()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('lat must be a valid latitude'),
+  query('lon')
+    .exists()
+    .withMessage('lon is required')
+    .bail()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('lon must be a valid longitude'),
+  query('radius_meters')
+    .default(5000)
+    .isInt({ min: 100, max: 50000 })
+    .withMessage('radius_meters must be an integer between 100 and 50000')
 ];
 
 // Check-out validation rules

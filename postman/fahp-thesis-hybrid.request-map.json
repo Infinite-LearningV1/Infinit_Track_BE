@@ -1,0 +1,31 @@
+{
+  "collection": "Infinite Track",
+  "folder": "FuzzyAhp",
+  "requests": [
+    {
+      "name": "Thesis / Legacy Combined / Discipline Monthly",
+      "endpoint": "/api/analysis/fuzzy-ahp?type=discipline&period=monthly",
+      "purpose": "thesis_comparison",
+      "sampleFile": "postman/samples/legacy-discipline-monthly.json"
+    },
+    {
+      "name": "Thesis / Legacy Combined / WFA Monthly",
+      "endpoint": "/api/analysis/fuzzy-ahp?type=wfa&period=monthly",
+      "purpose": "thesis_comparison",
+      "sampleFile": "postman/samples/legacy-wfa-monthly.json"
+    },
+    {
+      "name": "Thesis / Legacy Combined / Smart AC Monthly",
+      "endpoint": "/api/analysis/fuzzy-ahp?type=smart_ac&period=monthly",
+      "purpose": "thesis_comparison",
+      "sampleFile": "postman/samples/legacy-smart-ac-monthly.json"
+    },
+    {
+      "name": "Validation / Dedicated / WFA Live",
+      "endpoint": "/api/analysis/fuzzy-ahp/wfa",
+      "purpose": "live_validation",
+      "queryVariables": ["wfa_lat", "wfa_lon", "wfa_radius_meters"],
+      "sampleFile": "postman/samples/dedicated-wfa-live.json"
+    }
+  ]
+}

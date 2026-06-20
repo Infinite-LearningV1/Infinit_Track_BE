@@ -602,4 +602,61 @@ describe('client-critical OpenAPI contract', () => {
     expect(divisionProperties).not.toHaveProperty('id');
     expect(divisionProperties).not.toHaveProperty('name');
   });
+
+  test('documents dedicated Fuzzy AHP endpoint paths and temporary legacy compatibility', () => {
+    expect(openapi.paths['/api/analysis/fuzzy-ahp']?.get).toBeDefined();
+    expect(openapi.paths['/api/analysis/fuzzy-ahp']?.get.description).toContain('Fuzzy AHP analysis');
+
+    for (const pathName of [
+      '/api/analysis/fuzzy-ahp/discipline',
+      '/api/analysis/fuzzy-ahp/wfa',
+      '/api/analysis/fuzzy-ahp/smart-ac'
+    ]) {
+      const operation = openapi.paths[pathName]?.get;
+      expect(operation).toBeDefined();
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses['401']).toBeDefined();
+      expect(operation.responses['403']).toBeDefined();
+      expect(operation.description).toContain('legacy');
+    }
+  });
+
+  test('documents legacy combined FAHP as deprecated transition-only route compatibility', () => {
+    const operation = openapi.paths['/api/analysis/fuzzy-ahp'].get;
+    const description = operation.description.toLowerCase();
+    const responseContent = operation.responses['200'].content['application/json'];
+
+    expect(operation.deprecated).toBe(true);
+    expect(description).toContain('deprecated');
+    expect(description).toContain('transition-only');
+    expect(description).toContain('route-level compatibility');
+    expect(description).toContain('not semantically equivalent');
+    expect(description).not.toMatch(/is semantically equivalent/i);
+    expect(description).not.toMatch(/same contract as the dedicated/i);
+    expect(responseContent.example).toBeUndefined();
+    expect(Object.keys(responseContent.examples)).toEqual(expect.arrayContaining(['discipline', 'wfa', 'smart_ac']));
+  });
+
+  test('documents WFA query validation and provider boundary contract', () => {
+    const operation = openapi.paths['/api/analysis/fuzzy-ahp/wfa'].get;
+    const params = Object.fromEntries(operation.parameters.map((param) => [param.name, param]));
+
+    expect(params.lat.required).toBe(true);
+    expect(params.lon.required).toBe(true);
+    expect(params.radius_meters.schema).toMatchObject({ type: 'integer', minimum: 100, maximum: 50000, default: 5000 });
+    expect(operation.responses['503'].description).toContain('Geoapify');
+    expect(operation.responses['503'].content['application/json'].schema.properties).toHaveProperty('provider');
+  });
+
+  test('documents Smart AC evidence sufficiency fields', () => {
+    const dataProperties = schemaAt(openapi.paths['/api/analysis/fuzzy-ahp/smart-ac'].get).properties.data.properties;
+    const rankingProperties = dataProperties.ranking.items.properties;
+
+    expect(dataProperties).toHaveProperty('target_date');
+    expect(dataProperties).toHaveProperty('executed_window');
+    expect(rankingProperties).toHaveProperty('predicted_time_out');
+    expect(rankingProperties).toHaveProperty('evidence_summary');
+    expect(rankingProperties).toHaveProperty('needs_data');
+  });
+
 });

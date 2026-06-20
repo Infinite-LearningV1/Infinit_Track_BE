@@ -1,62 +1,68 @@
 import {
   buildDisciplineAnalysis,
+  buildDisciplineFahpPayload,
   buildSmartAcAnalysis,
-  buildWfaAnalysis
+  buildSmartAcFahpPayload,
+  buildWfaAnalysis,
+  buildWfaFahpPayload,
+  formatWibDateTime,
+  getAnalysisWindow
 } from '../services/fuzzyAhpAnalysis.service.js';
 
-function getWibParts(date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(date);
+export const getDisciplineFahp = async (req, res, next) => {
+  try {
+    const { period = 'monthly', from, to } = req.query;
+    const data = await buildDisciplineFahpPayload({ period, from, to });
 
-  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
-}
-
-function wibWallTimeToDate({ year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0 }) {
-  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, second, millisecond));
-}
-
-function toWibIsoString(date) {
-  const parts = getWibParts(date);
-  const millisecond = String(date.getUTCMilliseconds()).padStart(3, '0');
-
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${millisecond}+07:00`;
-}
-
-export function getAnalysisWindow(period) {
-  const now = new Date();
-  const wibNow = getWibParts(now);
-  const year = Number(wibNow.year);
-  const month = Number(wibNow.month);
-  const day = Number(wibNow.day);
-
-  if (period === 'weekly') {
-    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(Date.UTC(year, month - 1, day + mondayOffset));
-    const startAt = wibWallTimeToDate({
-      year: monday.getUTCFullYear(),
-      month: monday.getUTCMonth() + 1,
-      day: monday.getUTCDate()
+    return res.status(200).json({
+      success: true,
+      data,
+      message: 'Discipline Fuzzy AHP analysis retrieved successfully'
     });
-
-    return { startAt, endAt: now };
+  } catch (error) {
+    next(error);
   }
+};
 
-  return {
-    startAt: wibWallTimeToDate({ year, month, day: 1 }),
-    endAt: now
-  };
-}
+export const getWfaFahp = async (req, res, next) => {
+  try {
+    const { lat, lon, radius_meters: radiusMeters = 5000 } = req.query;
+    const data = await buildWfaFahpPayload({ lat, lon, radiusMeters });
 
-export async function getFuzzyAhpAnalysis(req, res, next) {
+    return res.status(200).json({
+      success: true,
+      data,
+      message: 'WFA Fuzzy AHP analysis retrieved successfully'
+    });
+  } catch (error) {
+    if (error.code === 'AUTH_OR_PROVIDER_UNAVAILABLE' && error.provider === 'geoapify') {
+      return res.status(503).json({
+        success: false,
+        code: 'AUTH_OR_PROVIDER_UNAVAILABLE',
+        provider: 'geoapify',
+        reason: error.reason || 'unavailable'
+      });
+    }
+
+    next(error);
+  }
+};
+
+export const getSmartAcFahp = async (_req, res, next) => {
+  try {
+    const data = await buildSmartAcFahpPayload();
+
+    return res.status(200).json({
+      success: true,
+      data,
+      message: 'Smart AC Fuzzy AHP analysis retrieved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getFuzzyAhpAnalysis = async (req, res, next) => {
   try {
     const { type, period = 'monthly' } = req.query;
 
@@ -97,11 +103,11 @@ export async function getFuzzyAhpAnalysis(req, res, next) {
       data: {
         type,
         period,
-        generated_at: toWibIsoString(endAt),
+        generated_at: formatWibDateTime(endAt),
         timezone: 'Asia/Jakarta',
         window: {
-          start_at: toWibIsoString(startAt),
-          end_at: toWibIsoString(endAt)
+          start_at: formatWibDateTime(startAt),
+          end_at: formatWibDateTime(endAt)
         },
         ...result
       },
@@ -110,4 +116,4 @@ export async function getFuzzyAhpAnalysis(req, res, next) {
   } catch (error) {
     next(error);
   }
-}
+};

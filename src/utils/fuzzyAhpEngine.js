@@ -4,14 +4,14 @@ import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { minMax } from '../analytics/normalization.js';
 import { labelEqualInterval } from '../analytics/labeling.js';
 import { WFA_PAIRWISE_TFN, DISC_PAIRWISE_TFN, SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
-import { calculateDistance } from './geofence.js';
+import { calculateDistance, toJakartaTime } from './geofence.js';
 
 // Simple memoization for FAHP weights
 let cachedWfaWeights = null;
 let cachedDiscWeights = null;
 let cachedSmartAcWeights = null;
-let cachedWfaConsistency = null;
-let cachedDiscConsistency = null;
+let cachedWfaCR = null;
+let cachedDiscCR = null;
 let cachedSmartAcConsistency = null;
 
 const CR_THRESHOLD = 0.10;
@@ -19,18 +19,17 @@ function selectWeights(matrixTFN) {
   return extentWeightsTFN(matrixTFN);
 }
 
-function deriveWeightsWithCr(matrixTFN) {
-  const weights = selectWeights(matrixTFN);
-  const crisp = defuzzifyMatrixTFN(matrixTFN);
-  const { CR, CI, lambdaMax } = computeCR(crisp);
-
-  return { weights, consistency: { CR, CI, lambdaMax } };
-}
-
 // --- Time utilities for Smart Auto Checkout weighted prediction ---
 function minutesSinceMidnightWIB(dateLike) {
-  const shifted = new Date(new Date(dateLike).getTime() + 7 * 60 * 60 * 1000);
-  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(new Date(dateLike));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return Number(values.hour) * 60 + Number(values.minute);
 }
 
 function clampCheckout(targetDate, candidate, timeIn, endBoundaryStr) {
@@ -63,28 +62,24 @@ function weightedPrediction(candidates, weights, targetDate, timeIn, fallbackEnd
 
 // --- Public API: getWfaAhpWeights (now returns FAHP weights) ---
 function getWfaAhpWeights() {
-  if (cachedWfaWeights && cachedWfaConsistency) {
+  if (cachedWfaWeights && cachedWfaCR != null) {
     return {
       location_type: cachedWfaWeights[0],
       distance_factor: cachedWfaWeights[1],
       amenity_score: cachedWfaWeights[2],
-      consistency_ratio: cachedWfaConsistency.CR,
-      consistency_index: cachedWfaConsistency.CI,
-      lambda_max: cachedWfaConsistency.lambdaMax
+      consistency_ratio: cachedWfaCR
     };
   }
-
-  const { weights, consistency } = deriveWeightsWithCr(WFA_PAIRWISE_TFN);
+  const weights = selectWeights(WFA_PAIRWISE_TFN);
+  const crisp = defuzzifyMatrixTFN(WFA_PAIRWISE_TFN);
+  const { CR } = computeCR(crisp);
   cachedWfaWeights = weights;
-  cachedWfaConsistency = consistency;
-
+  cachedWfaCR = CR;
   return {
     location_type: weights[0],
     distance_factor: weights[1],
     amenity_score: weights[2],
-    consistency_ratio: consistency.CR,
-    consistency_index: consistency.CI,
-    lambda_max: consistency.lambdaMax
+    consistency_ratio: CR
   };
 }
 
@@ -112,22 +107,6 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
       categories.some((c) => c.includes('restaurant') || c.includes('food')) ||
       name.includes('restaurant') ||
       name.includes('restoran');
-    const isLowSuitability =
-      categories.some(
-        (c) =>
-          c.includes('industrial') ||
-          c.includes('warehouse') ||
-          c.includes('factory') ||
-          c.includes('manufacturing') ||
-          c.includes('storage') ||
-          c.includes('yard')
-      ) ||
-      name.includes('industrial') ||
-      name.includes('warehouse') ||
-      name.includes('factory') ||
-      name.includes('manufacturing') ||
-      name.includes('storage') ||
-      name.includes('yard');
 
     let loc01 = 0.4;
     if (isCafe) loc01 = 1.0;
@@ -136,7 +115,6 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
     else if (isRestaurant) loc01 = 0.65;
     else if (categories.some((c) => c.includes('mall'))) loc01 = 0.6;
     else if (categories.some((c) => c.includes('park'))) loc01 = 0.45;
-    else if (isLowSuitability) loc01 = 0.1;
 
     // Distance fallback: use provided properties.distance or compute from coordinates
     let distanceMeters = placeDetails.properties?.distance;
@@ -186,39 +164,36 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
     return result;
   } catch (error) {
     logger.error('Error calculating WFA score (FAHP):', error);
-    return { score: 25, label: getWfaScoreLabel(25), breakdown: { error: error.message } };
+    return { score: 50, label: 'Sedang', breakdown: { error: error.message } };
   }
 }
 
 // --- Public API: getDisciplineAhpWeights (now FAHP) ---
 function getDisciplineAhpWeights() {
-  if (cachedDiscWeights && cachedDiscConsistency) {
+  if (cachedDiscWeights && cachedDiscCR != null) {
     return {
       alpha_rate: cachedDiscWeights[0],
       lateness_severity: cachedDiscWeights[1],
       lateness_frequency: cachedDiscWeights[2],
       work_focus: cachedDiscWeights[3],
-      consistency_ratio: cachedDiscConsistency.CR,
-      consistency_index: cachedDiscConsistency.CI,
-      lambda_max: cachedDiscConsistency.lambdaMax
+      consistency_ratio: cachedDiscCR
     };
   }
-
-  const { weights, consistency } = deriveWeightsWithCr(DISC_PAIRWISE_TFN);
+  const weights = selectWeights(DISC_PAIRWISE_TFN);
+  const crisp = defuzzifyMatrixTFN(DISC_PAIRWISE_TFN);
+  const { CR } = computeCR(crisp);
   cachedDiscWeights = weights;
-  cachedDiscConsistency = consistency;
-
+  cachedDiscCR = CR;
   return {
     alpha_rate: weights[0],
     lateness_severity: weights[1],
     lateness_frequency: weights[2],
     work_focus: weights[3],
-    consistency_ratio: consistency.CR,
-    consistency_index: consistency.CI,
-    lambda_max: consistency.lambdaMax
+    consistency_ratio: CR
   };
 }
 
+// --- Public API: getSmartAcAhpWeights (now FAHP) ---
 function getSmartAcAhpWeights() {
   if (cachedSmartAcWeights && cachedSmartAcConsistency) {
     return {
@@ -232,7 +207,9 @@ function getSmartAcAhpWeights() {
     };
   }
 
-  const { weights, consistency } = deriveWeightsWithCr(SMART_AC_PAIRWISE_TFN);
+  const weights = selectWeights(SMART_AC_PAIRWISE_TFN);
+  const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
+  const consistency = computeCR(crisp);
   cachedSmartAcWeights = weights;
   cachedSmartAcConsistency = consistency;
 
@@ -282,14 +259,18 @@ async function calculateDisciplineIndex(m) {
     return result;
   } catch (error) {
     logger.error('Error calculating Discipline Index (FAHP):', error);
-    return { score: 25, label: getDisciplineLabel(25), breakdown: { error: error.message } };
+    return { score: 50, label: 'Sedang', breakdown: { error: error.message } };
   }
 }
 
 // Utilities kept for controllers compatibility
 function getWfaScoreLabel(score) {
-  const s = Math.max(0, Math.min(100, Number(score)));
-  return labelEqualInterval(s / 100);
+  const s = Number(score);
+  if (s >= 80) return 'Sangat Tinggi';
+  if (s >= 60) return 'Tinggi';
+  if (s >= 40) return 'Sedang';
+  if (s >= 20) return 'Rendah';
+  return 'Sangat Rendah';
 }
 
 function getDisciplineLabel(score) {
