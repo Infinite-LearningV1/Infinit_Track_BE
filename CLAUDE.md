@@ -182,24 +182,25 @@ A task is done **only when**:
 - `/backend-auth-contract-inspection` — auth contract inspection for token, session, cookie, RBAC, role resolution, and middleware-route boundary checks
 - `backend-contract-reviewer` — read-only subagent for contract compliance review
 
-## Phase 5 Context Sync (MVP)
+## Active Host Context Sync
 
 ### Shared Context (Cross-Repo)
 
-- Before cross-contract work, read the cockpit/orchestration `shared-context` files outside this backend repository (`Deploy Infinite Track/Infinite Track/shared-context/`):
+- Before cross-contract work, read the cockpit shared context outside this backend repository (`Deploy Infinite Track/Infinite Track/shared-context/`).
   - `API_CONTRACT.md`
   - `GLOBAL_STATUS.md`
   - `ROUTING_POLICY.md`
   - `QUALITY_GATE.md`
   - `DECISIONS.md`
   - `RISK_REGISTER.md`
-- If repo/runtime/Linear/docs differ, live repo/runtime is the highest factual source.
-- Apply this file's Definition of Done together with the global MVP gate: diff/PR + fresh verification + review verdict.
+- Official operating model: `Cowork -> Claude Desktop Host -> Claude Code CLI -> GitHub + Linear`.
+- If repo/runtime/GitHub/Linear/docs differ, live repo/runtime is the highest factual source and GitHub + Linear are the active execution/evidence systems.
+- Apply this file's Definition of Done together with the global evidence gate: diff/PR + fresh verification + review verdict.
 
-### Execution Model (MVP)
+### Execution Model
 
 - Agents always work on an isolated branch inside a worktree.
 - The main branch held by the human/operator in the terminal remains `develop`; it is a pull/test/human validation surface, not an agent implementation surface.
 - Agent output returns to `develop` through PR/merge; then the human pulls and tests on `develop`.
 - `master` only receives fix/no-bug/release-ready results from `develop`.
-- Backend nuance: PHASE0 baseline freeze is the current MVP-phase protection for the main working tree and applies to agent-driven edits; agents must not edit the main working tree and must use worktree branches from `develop`.
+- Backend nuance: the main working tree is the human validation surface; agents must not edit it directly and must use isolated worktree branches from `develop`.
