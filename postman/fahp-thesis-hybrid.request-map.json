@@ -22,8 +22,9 @@
     },
     {
       "name": "Validation / Dedicated / WFA Live",
-      "endpoint": "/api/analysis/fuzzy-ahp/wfa?lat={{wfa_lat}}&lon={{wfa_lon}}&radius_meters={{wfa_radius_meters}}",
+      "endpoint": "/api/analysis/fuzzy-ahp/wfa",
       "purpose": "live_validation",
+      "queryVariables": ["wfa_lat", "wfa_lon", "wfa_radius_meters"],
       "sampleFile": "postman/samples/dedicated-wfa-live.json"
     }
   ]

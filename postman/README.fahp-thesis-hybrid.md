@@ -35,16 +35,16 @@ This request exists to prove canonical live-provider WFA behavior.
 
 ## WFA caveat
 Legacy WFA comparison output is not live telemetry.
-Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa with required query inputs `lat={{wfa_lat}}`, `lon={{wfa_lon}}`, and `radius_meters={{wfa_radius_meters}}`.
+Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa.
 
 ## Dedicated WFA status
 Dedicated WFA status: Needs Verification
 
 ## Dedicated WFA request inputs
 The live-provider validation request must be run with Postman variables, not secrets:
-- `lat={{wfa_lat}}`
-- `lon={{wfa_lon}}`
-- `radius_meters={{wfa_radius_meters}}`
+- `wfa_lat`
+- `wfa_lon`
+- `wfa_radius_meters`
 
 ## Rerun workflow
 1. Open Postman MCP collection `Infinite Track` / folder `FuzzyAhp`.

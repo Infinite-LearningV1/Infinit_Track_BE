@@ -46,8 +46,9 @@ describe('INF-170 hybrid FAHP thesis evidence contract', () => {
         },
         {
           name: 'Validation / Dedicated / WFA Live',
-          endpoint: '/api/analysis/fuzzy-ahp/wfa?lat={{wfa_lat}}&lon={{wfa_lon}}&radius_meters={{wfa_radius_meters}}',
+          endpoint: '/api/analysis/fuzzy-ahp/wfa',
           purpose: 'live_validation',
+          queryVariables: ['wfa_lat', 'wfa_lon', 'wfa_radius_meters'],
           sampleFile: 'postman/samples/dedicated-wfa-live.json'
         }
       ]
@@ -58,10 +59,10 @@ describe('INF-170 hybrid FAHP thesis evidence contract', () => {
     const readme = fs.readFileSync(readmePath, 'utf8');
 
     expect(readme).toContain('Legacy WFA comparison output is not live telemetry.');
-    expect(readme).toContain('Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa with required query inputs `lat={{wfa_lat}}`, `lon={{wfa_lon}}`, and `radius_meters={{wfa_radius_meters}}`.');
+    expect(readme).toContain('Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa.');
     expect(readme).toContain('Dedicated WFA status: Needs Verification');
-    expect(readme).toContain('lat={{wfa_lat}}');
-    expect(readme).toContain('lon={{wfa_lon}}');
-    expect(readme).toContain('radius_meters={{wfa_radius_meters}}');
+    expect(readme).toContain('wfa_lat');
+    expect(readme).toContain('wfa_lon');
+    expect(readme).toContain('wfa_radius_meters');
   });
 });
