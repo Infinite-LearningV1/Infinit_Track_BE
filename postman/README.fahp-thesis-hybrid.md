@@ -35,14 +35,20 @@ This request exists to prove canonical live-provider WFA behavior.
 
 ## WFA caveat
 Legacy WFA comparison output is not live telemetry.
-Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa.
+Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa with required query inputs `lat={{wfa_lat}}`, `lon={{wfa_lon}}`, and `radius_meters={{wfa_radius_meters}}`.
 
 ## Dedicated WFA status
-Dedicated WFA status: Pending fresh run
+Dedicated WFA status: Needs Verification
+
+## Dedicated WFA request inputs
+The live-provider validation request must be run with Postman variables, not secrets:
+- `lat={{wfa_lat}}`
+- `lon={{wfa_lon}}`
+- `radius_meters={{wfa_radius_meters}}`
 
 ## Rerun workflow
 1. Open Postman MCP collection `Infinite Track` / folder `FuzzyAhp`.
 2. Run the three thesis comparison requests and save the exact response bodies into `postman/samples/legacy-*.json`.
-3. Run `Validation / Dedicated / WFA Live`.
+3. Run `Validation / Dedicated / WFA Live` with the required `wfa_lat`, `wfa_lon`, and `wfa_radius_meters` Postman variables.
 4. If the dedicated request proves `geoapify_live`, save the exact response body into `postman/samples/dedicated-wfa-live.json` and update the status to `Ready`.
 5. If the dedicated request does not prove the live-provider path in the current cycle, leave the status as `Needs Verification` and record the reason.
