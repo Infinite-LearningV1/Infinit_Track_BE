@@ -39,6 +39,8 @@ Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-a
 
 ## Dedicated WFA status
 Dedicated WFA status: Needs Verification
+Last verified request: Validation / Dedicated / WFA Live
+Reason: authenticated live execution blocked by Claude Code auto mode before current-cycle geoapify_live proof could be captured
 
 ## Dedicated WFA request inputs
 The live-provider validation request must be run with Postman variables, not secrets:
