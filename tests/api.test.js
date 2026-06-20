@@ -64,10 +64,10 @@ describe('FAHP Dynamic Test Endpoint', () => {
     expect(res.body.data).not.toHaveProperty('interpretation');
   });
 
-  it('POST /api/wfa/test-ahp returns Rendah with canonical CR', async () => {
+  it('POST /api/wfa/test-ahp returns Cukup with canonical CR', async () => {
     const body = {
-      scenario: 'WFA - Rendah',
-      expected: 'Rendah',
+      scenario: 'WFA - Cukup',
+      expected: 'Cukup',
       place_data: {
         properties: {
           name: 'Remote Industrial Yard',
@@ -85,9 +85,9 @@ describe('FAHP Dynamic Test Endpoint', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('success', true);
     expect(res.body.data).toMatchObject({
-      scenario: 'WFA - Rendah',
-      expected: 'Rendah',
-      category: 'Rendah',
+      scenario: 'WFA - Cukup',
+      expected: 'Cukup',
+      category: 'Cukup',
       match: true
     });
     expect(res.body.data.cr).toBeCloseTo(0.058, 3);

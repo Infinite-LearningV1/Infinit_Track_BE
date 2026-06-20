@@ -21,8 +21,15 @@ function selectWeights(matrixTFN) {
 
 // --- Time utilities for Smart Auto Checkout weighted prediction ---
 function minutesSinceMidnightWIB(dateLike) {
-  const j = toJakartaTime(dateLike);
-  return j.getHours() * 60 + j.getMinutes();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(new Date(dateLike));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return Number(values.hour) * 60 + Number(values.minute);
 }
 
 function clampCheckout(targetDate, candidate, timeIn, endBoundaryStr) {

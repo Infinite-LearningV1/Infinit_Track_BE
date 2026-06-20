@@ -25,7 +25,7 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
 - `data.map_context` and `data.today_locations` are not part of the dashboard analytics contract in this phase.
 - Clients that need today/live map points must call `/api/attendance/today-locations` directly.
 
-## Fuzzy AHP endpoints contract
+## Fuzzy AHP Endpoints Contract
 - `GET /api/analysis/fuzzy-ahp` remains temporarily supported as the legacy combined endpoint for existing clients; compatibility is transition-only.
 - Canonical dedicated production endpoints are:
   - `GET /api/analysis/fuzzy-ahp/discipline`
