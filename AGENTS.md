@@ -1,8 +1,8 @@
 # AGENTS — Backend (Infinit_Track_BE)
 
-> Draft Fase 1. Tujuan placement: root repo Backend sebagai `AGENTS.md`.
-> Merujuk ke NORTH_STAR_ROADMAP.md untuk arah + wave + boundary. CLAUDE.md repo tetap berlaku untuk governance detail.
-> Human-curated. Agent mengisi detail, tidak mengubah arah.
+> Active agent operating guide for the Infinite Track backend repository.
+> Official operating model: `Cowork -> Claude Desktop Host -> Claude Code CLI -> GitHub + Linear`.
+> `CLAUDE.md` remains the detailed governance and runtime gate; this file is the concise repo-local agent routing guide.
 
 ## Role repo
 Backend = sumber kebenaran akhir attendance, auth/session, booking approval, reporting, scheduled jobs. Upstream untuk semua client. Stack: Node.js (ESM) + Express + Sequelize + MySQL, TZ Asia/Jakarta.
@@ -24,6 +24,13 @@ Backend = sumber kebenaran akhir attendance, auth/session, booking approval, rep
 - Backend final authority; client adalah request originator.
 - Canonical runtime = droplet Docker Compose pull image DOCR by BACKEND_IMAGE_TAG, host Nginx di depan, managed MySQL di belakang. `.do/app*.yaml` & k8s = legacy kecuali bukti runtime berkata lain.
 - Promotion: feature/* → develop (review) → master (release). Jangan push feature langsung ke master.
+
+## ACTIVE_CONTEXT_FLOW
+- Cowork captures product collaboration and high-level intent.
+- Claude Desktop Host holds PM/cockpit context and decides routing.
+- Claude Code CLI executes repo work in isolated worktrees.
+- GitHub PRs and Linear issues are the active evidence/status systems.
+- Source-of-truth order: live repo/runtime > GitHub PR/diff/checks > Linear issue context > active cockpit docs > archived docs.
 
 ## TEST_STRATEGY
 - Verifikasi sah: `npm run lint`, `npm test` (jest, ESM via --experimental-vm-modules).
