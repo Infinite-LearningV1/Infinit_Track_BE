@@ -2,6 +2,7 @@ import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { validateHistoricalDateWindowQuery } from '../utils/historicalDateWindow.js';
 import { assertSafeUrl } from '../utils/url.js';
 
 // Remove the file system setup as we're switching to Cloudinary
@@ -32,6 +33,7 @@ export const upload = multer({
 
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TODAY_LOCATIONS_LIMIT_MAX = 500;
 
 const parseStrictDateOnly = (value) => {
   if (typeof value !== 'string' || !DATE_ONLY_PATTERN.test(value)) return null;
@@ -48,6 +50,28 @@ const parseStrictDateOnly = (value) => {
   }
 
   return parsed;
+};
+
+const validateTodayLocationsQueryKeys = (_value, { req }) => {
+  const unsupportedQueryKey = Object.keys(req.query ?? {}).find((key) => key !== 'limit');
+
+  if (unsupportedQueryKey) {
+    throw new Error('today-locations accepts only limit query parameter');
+  }
+
+  return true;
+};
+
+const validateTodayLocationsLimit = (value) => {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+    throw new Error('limit must be a positive integer');
+  }
+
+  if (Number.parseInt(value, 10) > TODAY_LOCATIONS_LIMIT_MAX) {
+    throw new Error(`limit must be at most ${TODAY_LOCATIONS_LIMIT_MAX}`);
+  }
+
+  return true;
 };
 
 export const safeUrlField = (field, { required = false, message } = {}) => {
@@ -588,4 +612,27 @@ export const locationEventValidation = [
 
       return true;
     })
+];
+
+export const todayLocationsValidation = [
+  query().custom(validateTodayLocationsQueryKeys),
+  query('limit').optional().custom(validateTodayLocationsLimit),
+  validate
+];
+
+export const dashboardAnalyticsValidation = [
+  query().custom((_, { req }) => {
+    const message = validateHistoricalDateWindowQuery({
+      period: req.query.period ?? '30d',
+      from: req.query.from ?? null,
+      to: req.query.to ?? null
+    });
+
+    if (message) {
+      throw new Error(message);
+    }
+
+    return true;
+  }),
+  validate
 ];

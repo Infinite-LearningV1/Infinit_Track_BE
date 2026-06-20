@@ -18,7 +18,8 @@ This document should not be used to justify new App Platform deployment work unl
 ## Current Deployment Model
 
 ### Phase 1: Publish image to DOCR
-- GitHub Actions publishes backend image from branch `master`
+- `docker-deploy.yml` is a manual publish-only workflow
+- `deploy-staging.yml` also builds and pushes the immutable image as part of staging rollout for non-PR events
 - Registry: `registry.digitalocean.com/infinit-track`
 - Repository: `infinit-track-backend`
 - Published tags: immutable SHA tag + rolling `latest`
@@ -47,7 +48,8 @@ They are not part of the supported active backend deploy path and should be trea
 - boundary between artifact publishing and runtime deployment
 
 ### What this document does not claim
-- that GitHub Actions already deploys the runtime to the droplet
+- that the publish-only workflow (`docker-deploy.yml`) deploys the runtime to the droplet by itself
+- that production rollout is already automated in the same way the staging droplet workflow is
 - that Kubernetes is an active deployment path
 
 ## Deployment Readiness Checklist
@@ -68,11 +70,11 @@ They are not part of the supported active backend deploy path and should be trea
 ## Verification Expectations
 
 ### Minimum verification for publish-only phase
-- [ ] DOCR workflow pushes SHA tag successfully
-- [ ] DOCR workflow pushes `latest` successfully
+- [ ] `docker-deploy.yml` pushes SHA tag successfully when manually dispatched
+- [ ] `docker-deploy.yml` pushes `latest` successfully when manually dispatched
 - [ ] image appears in `registry.digitalocean.com/infinit-track/infinit-track-backend`
-- [ ] no runtime deployment is implied by the publish workflow summary
-- [ ] historical App Platform workflow remains manual-only and does not trigger from `master`
+- [ ] publish-only workflow summary does not imply a droplet restart
+- [ ] no App Platform deployment workflow is treated as active backend runtime truth
 
 ### Minimum verification for runtime pull phase
 - [ ] droplet can authenticate to the registry

@@ -10,63 +10,128 @@ import { toJakartaTime } from '../utils/geofence.js';
 import fuzzyAhpEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout, processBatchRecords } from '../utils/jobHelper.js';
-import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
-import { extentWeightsTFN } from '../analytics/fahp.extent.js';
-import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
+
+function isManageableTask(task) {
+  return Boolean(task && (typeof task.destroy === 'function' || typeof task.stop === 'function'));
+}
+
+function assertManageableTask(task, scheduleName) {
+  if (!isManageableTask(task)) {
+    throw new Error(`Auto checkout schedule ${scheduleName} did not return manageable cron task handle`);
+  }
+
+  return task;
+}
+
+function stopScheduledTask(task) {
+  if (typeof task?.destroy === 'function') {
+    task.destroy();
+    return;
+  }
+
+  if (typeof task?.stop === 'function') {
+    task.stop();
+  }
+}
+
+function stopStartedTasks(tasks) {
+  const stopFailures = [];
+
+  for (const task of [...tasks].reverse()) {
+    try {
+      stopScheduledTask(task);
+    } catch (error) {
+      stopFailures.push({ task, error });
+      logger.warn('Auto checkout schedule rollback failed:', error);
+    }
+  }
+
+  return stopFailures;
+}
+
+function createRollbackFailureError(scheduleError, stopFailures) {
+  return new AggregateError(
+    [scheduleError, ...stopFailures.map(({ error }) => error)],
+    'Auto checkout scheduling failed and rollback did not stop all task handles'
+  );
+}
 
 export const startAutoCheckoutJob = () => {
-  logger.info('Missed checkout flagger scheduled to run every 30 minutes');
-  cron.schedule(
-    '*/30 * * * *',
-    async () => {
-      try {
-        await executeJobWithTimeout(
-          'MissedCheckoutFlagger',
-          runMissedCheckoutFlagger,
-          3 * 60 * 1000
-        ); // 3 min timeout
-      } catch (error) {
-        logger.error('Missed checkout flagger failed:', error);
-      }
-    },
-    {
-      scheduled: true,
-      timezone: 'Asia/Jakarta'
+  const startedTasks = [];
+
+  try {
+    logger.info('Missed checkout flagger scheduled to run every 30 minutes');
+    const missedCheckoutTask = assertManageableTask(
+      cron.schedule(
+        '*/30 * * * *',
+        async () => {
+          try {
+            await executeJobWithTimeout(
+              'MissedCheckoutFlagger',
+              runMissedCheckoutFlagger,
+              3 * 60 * 1000
+            ); // 3 min timeout
+          } catch (error) {
+            logger.error('Missed checkout flagger failed:', error);
+          }
+        },
+        {
+          scheduled: true,
+          timezone: 'Asia/Jakarta'
+        }
+      ),
+      'missedCheckout'
+    );
+    startedTasks.push(missedCheckoutTask);
+
+    // INF-130 #6 reviewed, kept as is, batching acceptable (timing tolerance 10 min)
+    // Nightly Smart Auto Checkout for yesterday (H-1)
+    logger.info('Smart Auto Checkout (FAHP+DOW) scheduled to run daily at 23:45');
+    const smartAutoCheckoutTask = assertManageableTask(
+      cron.schedule(
+        '45 23 * * *',
+        async () => {
+          try {
+            await executeJobWithTimeout(
+              'SmartAutoCheckout',
+              async () => {
+                // Get current Jakarta time properly
+                const now = new Date();
+                const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+                const jakartaTime = new Date(jakartaTimeString);
+
+                // Calculate yesterday (H-1) in Jakarta timezone
+                const yesterday = new Date(jakartaTime);
+                yesterday.setDate(jakartaTime.getDate() - 1);
+                const targetDate = yesterday.toISOString().split('T')[0];
+
+                return runSmartAutoCheckoutForDate(targetDate);
+              },
+              10 * 60 * 1000 // 10 min timeout for smart checkout
+            );
+          } catch (e) {
+            logger.error('Smart Auto Checkout nightly failed:', e);
+          }
+        },
+        {
+          scheduled: true,
+          timezone: 'Asia/Jakarta'
+        }
+      ),
+      'smartAutoCheckout'
+    );
+    startedTasks.push(smartAutoCheckoutTask);
+
+    return startedTasks;
+  } catch (error) {
+    const stopFailures = stopStartedTasks(startedTasks);
+
+    if (stopFailures.length > 0) {
+      throw createRollbackFailureError(error, stopFailures);
     }
-  );
 
-  // Nightly Smart Auto Checkout for yesterday (H-1)
-  logger.info('Smart Auto Checkout (FAHP+DOW) scheduled to run daily at 23:45');
-  cron.schedule(
-    '45 23 * * *',
-    async () => {
-      try {
-        await executeJobWithTimeout(
-          'SmartAutoCheckout',
-          async () => {
-            // Get current Jakarta time properly
-            const now = new Date();
-            const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
-            const jakartaTime = new Date(jakartaTimeString);
-
-            // Calculate yesterday (H-1) in Jakarta timezone
-            const yesterday = new Date(jakartaTime);
-            yesterday.setDate(jakartaTime.getDate() - 1);
-            const targetDate = yesterday.toISOString().split('T')[0];
-
-            return await runSmartAutoCheckoutForDate(targetDate);
-          },
-          10 * 60 * 1000 // 10 min timeout for smart checkout
-        );
-      } catch (e) {
-        logger.error('Smart Auto Checkout nightly failed:', e);
-      }
-    },
-    {
-      scheduled: true,
-      timezone: 'Asia/Jakarta'
-    }
-  );
+    throw error;
+  }
 };
 
 export const triggerAutoCheckout = async () => {
@@ -83,16 +148,19 @@ export const triggerAutoCheckout = async () => {
 // ================= SMART AUTO CHECKOUT (FAHP + DOW) =================
 
 function getFahpWeights() {
-  const weights = extentWeightsTFN(SMART_AC_PAIRWISE_TFN);
-  // Optional CR logging for diagnostics
-  try {
-    const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
-    const { CR } = computeCR(crisp);
-    logger.info(`Smart Auto Checkout FAHP CR=${CR.toFixed(3)}`);
-  } catch (e) {
-    logger.debug(`CR computation failed: ${e?.message || e}`);
+  const weightsObj = fuzzyAhpEngine.getSmartAcAhpWeights();
+  const weights = [
+    weightsObj.history,
+    weightsObj.checkin_pattern,
+    weightsObj.context,
+    weightsObj.transition
+  ];
+
+  if (Number.isFinite(weightsObj.consistency_ratio)) {
+    logger.info(`Smart Auto Checkout FAHP CR=${weightsObj.consistency_ratio.toFixed(3)}`);
   }
-  return weights; // [w_hist, w_checkin, w_context, w_transition]
+
+  return weights;
 }
 
 function median(numbers) {

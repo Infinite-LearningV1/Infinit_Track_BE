@@ -1,3 +1,7 @@
+# Legacy/historical backend artifact only.
+# Canonical backend runtime is the droplet-hosted Docker Compose stack that pulls
+# registry.digitalocean.com/infinit-track/infinit-track-backend behind host Nginx.
+# Do not treat this App Platform spec as the active backend deployment source of truth.
 name: infinit-track-staging
 region: sgp1
 

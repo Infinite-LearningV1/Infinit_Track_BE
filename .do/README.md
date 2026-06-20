@@ -1,209 +1,80 @@
-# DigitalOcean App Platform Deployment (Historical Reference)
+# DigitalOcean App Platform Backend Specs (Legacy)
 
-## 📋 Overview
+## Overview
 
-Dokumen ini menyimpan referensi historis untuk backend DigitalOcean App Platform, bukan deployment truth aktif.
+File `.do/app.yaml` dan `.do/app-production.yaml` disimpan sebagai artefak historical untuk backend App Platform; backend canonical saat ini bukan lagi App Platform dan file-file ini bukan deployment truth aktif.
 
 Active backend deployment truth saat ini adalah:
 
 - `.github/workflows/ci.yml` untuk validation gate
 - `.github/workflows/docker-deploy.yml` untuk publish image ke DOCR
-- Droplet + Docker Compose sebagai runtime aktif
+- droplet-hosted Docker Compose sebagai runtime aktif
 
-Gunakan dokumen ini hanya jika jalur App Platform memang sengaja diaktifkan kembali.
+Gunakan dokumen ini hanya jika jalur App Platform memang sengaja diaktifkan kembali dan diverifikasi ulang.
 
-## 🚀 Deployment Methods
+Canonical runtime backend saat ini adalah:
 
-### Method 1: Via DigitalOcean Dashboard (Manual)
+- DOCR image `registry.digitalocean.com/infinit-track/infinit-track-backend`
+- droplet-hosted Docker Compose runtime
+- host Nginx di depan container
+- managed MySQL di belakang runtime
 
-1. **Login ke DigitalOcean Dashboard**
+Gunakan workflow GitHub Actions droplet rollout sebagai source of truth operasional:
 
-   - Buka https://cloud.digitalocean.com/
-   - Navigate ke "Apps"
+- `.github/workflows/deploy-staging.yml`
+- `.github/workflows/deploy-production.yml`
+- `deploy/scripts/verify-droplet-api.sh`
+- `scripts/smoke-test.js`
 
-2. **Create New App**
+Contoh env penting yang tetap harus konsisten dengan runtime canonical saat ini:
 
-   - Click "Create App"
-   - Pilih "GitHub" sebagai source
-   - Authorize GitHub dan pilih repository `Infinit_Track_BE`
-   - Pilih branch `master` (atau branch staging Anda)
+```env
+GEOAPIFY_API_KEY=<your-geoapify-key>
+```
 
-3. **Upload App Spec**
+## What This Folder Is For
 
-   - Pilih opsi "Edit Your App Spec"
-   - Copy-paste isi dari `.do/app.yaml`
-   - Update `github.repo` dengan username GitHub Anda
+- Menyimpan snapshot konfigurasi backend App Platform lama
+- Membantu audit drift antara topologi lama vs runtime canonical saat ini
+- Menjadi referensi historis bila perlu menelusuri konfigurasi environment lama
 
-4. **Configure Environment Variables (CRITICAL)**
+## What This Folder Is Not
 
-   Set environment variables berikut di Dashboard → Apps → Settings → Environment Variables:
+Folder ini bukan panduan deploy backend aktif, bukan checklist verifikasi live host, dan bukan source of truth untuk host staging/production yang berjalan sekarang.
 
-   **Database (Required):**
+## Current Health Semantics
 
-   ```
-   DB_HOST=<your-db-host>
-   DB_NAME=<your-db-name>
-   DB_USER=<your-db-user>
-   DB_PASS=<your-db-password>
-   ```
+Walau spesifikasi App Platform ini legacy, kontrak health backend aktif tetap seperti berikut:
 
-   **JWT (Required):**
+- `/livez` = process liveness
+- `/health` = dependency readiness
 
-   ```
-   JWT_SECRET=<generate-random-secure-string>
-   ```
+Ready response contoh:
 
-   **Optional Services:**
+```json
+{"status":"OK","ready":true,"components":{"database":"ready","scheduler":"ready"},"missing":[],"timestamp":"..."}
+```
 
-   ```
-   GEOAPIFY_API_KEY=<your-geoapify-key>
-   ```
+Not ready response contoh:
 
-   **Media Storage:**
+```json
+{"status":"NOT_READY","ready":false,"components":{"database":"not_ready","scheduler":"ready"},"missing":["database"],"timestamp":"..."}
+```
 
-   ```env
-   SPACES_ENDPOINT=sgp1.digitaloceanspaces.com
-   SPACES_REGION=sgp1
-   SPACES_BUCKET=infinite-track-staging-sgp1
-   SPACES_ACCESS_KEY_ID=<your-spaces-access-key>
-   SPACES_SECRET_ACCESS_KEY=<your-spaces-secret-key>
-   ```
+Artinya:
 
-   **Optional transitional legacy cleanup:**
+- `/health` mengembalikan HTTP `200` hanya saat dependency startup benar-benar siap
+- `/health` mengembalikan HTTP `503` saat ada dependency belum siap
+- payload readiness harus tetap memuat `"components"` dan `"missing"`
+- operator harus memperhatikan `missing` array untuk menentukan blocker startup
 
-   ```env
-   CLOUDINARY_CLOUD_NAME=<your-cloudinary-cloud-name>
-   CLOUDINARY_API_KEY=<your-cloudinary-api-key>
-   CLOUDINARY_API_SECRET=<your-cloudinary-api-secret>
-   ```
+## Migration Note
 
-5. **Deploy**
-   - Review konfigurasi
-   - Click "Create Resources"
-   - Tunggu hingga deployment selesai (~5-10 menit)
+Jika suatu saat file `.do/app*.yaml` dipakai lagi untuk eksperimen, perlakukan itu sebagai jalur baru yang harus diverifikasi ulang terhadap:
 
-### Method 2: Historical GitHub Actions path
+- `CLAUDE.md`
+- `README.md`
+- workflow deploy aktif
+- runtime evidence dari host canonical
 
-The old `.github/workflows/deploy-staging.yml` App Platform deployment path is retained only as a manual historical marker.
-
-Active backend release flow now uses:
-
-1. `.github/workflows/ci.yml` for lint/test validation.
-2. `.github/workflows/docker-deploy.yml` to publish the backend image to DOCR.
-3. Droplet + Docker Compose runtime pull using an explicit `BACKEND_IMAGE_TAG`.
-
-## 🔒 Environment Variables Security
-
-### ⚠️ JANGAN commit secrets ke repository!
-
-**Secrets harus diset di:**
-
-- ✅ DigitalOcean Dashboard (untuk manual deploy)
-- ✅ GitHub Environments Secrets (untuk CI/CD)
-- ❌ JANGAN di `.env` file yang di-commit
-- ❌ JANGAN di `app.yaml` langsung
-
-## 🏥 Health Check
-
-Jika App Platform diaktifkan kembali, gunakan endpoint `/health` sebagai health check target:
-
-- **Success Response:** `{"status":"OK","timestamp":"..."}`
-- **HTTP Status:** 200
-
-## 📊 Monitoring & Logs
-
-### Via DigitalOcean Dashboard
-
-1. **Runtime Logs:**
-
-   - Dashboard → Apps → Your App → Runtime Logs
-   - Lihat console output dari aplikasi
-
-2. **Build Logs:**
-
-   - Dashboard → Apps → Your App → Activity
-   - Lihat log build process
-
-3. **Metrics:**
-   - Dashboard → Apps → Your App → Insights
-   - Monitor CPU, Memory, Request rate
-
-## 🔄 Update Deployment
-
-### Manual Deploy via Dashboard
-
-1. Dashboard → Apps → Your App
-2. Click "Create Deployment"
-3. Pilih branch/commit
-4. Click "Deploy"
-
-## 🎯 Verifikasi Setelah Deploy
-
-Checklist yang harus dilakukan:
-
-1. **Health Check**
-
-   ```bash
-   curl https://your-app-url.ondigitalocean.app/health
-   ```
-
-   Expected: `{"status":"OK",...}`
-
-2. **API Docs**
-
-   ```bash
-   curl https://your-app-url.ondigitalocean.app/docs
-   ```
-
-   Should return Swagger UI
-
-3. **Database Connection**
-
-   - Check Runtime Logs untuk "Database connected successfully"
-   - Jika error, verifikasi DB credentials di Environment Variables
-
-4. **CORS Configuration**
-
-   - Test API call dari frontend staging
-   - Verifikasi `CORS_ORIGIN` sudah diset dengan benar
-
-5. **Automated Jobs**
-   - Check logs untuk "All automated attendance jobs have been scheduled"
-
-## 🐛 Troubleshooting
-
-### Deploy Failed - Build Error
-
-- Check Build Logs di Activity tab
-- Biasanya issue: dependency tidak terinstall atau syntax error
-- Fix: pastikan `package.json` up-to-date
-
-### Deploy Success tapi Health Check Failed
-
-- Check Runtime Logs
-- Kemungkinan:
-  - Database connection gagal (cek DB_HOST, DB_USER, DB_PASS)
-  - Missing environment variable (cek JWT_SECRET)
-  - Port binding issue (pastikan PORT=3000)
-
-### 500 Internal Server Error
-
-- Check Runtime Logs untuk error details
-- Common issues:
-  - Missing JWT_SECRET
-  - Database connection timeout
-  - Missing required environment variables
-
-## 📝 Notes
-
-- **Instance Size:** Staging menggunakan `basic-xxs` (cost-effective)
-- **Region:** Singapore (`sgp1`) - sesuaikan jika perlu
-- **Auto-scaling:** Disabled untuk staging (manual scale via dashboard jika perlu)
-- **Database:** Pastikan menggunakan managed database DO atau external DB yang accessible
-
-## 🔗 Useful Links
-
-- [DO App Platform Docs](https://docs.digitalocean.com/products/app-platform/)
-- [App Spec Reference](https://docs.digitalocean.com/products/app-platform/reference/app-spec/)
-- [Environment Variables](https://docs.digitalocean.com/products/app-platform/how-to/use-environment-variables/)
-
+Sampai ada bukti runtime yang berubah, droplet + DOCR tetap menjadi jalur deploy backend resmi.

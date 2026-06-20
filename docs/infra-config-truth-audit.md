@@ -38,7 +38,7 @@ This means staging deployment can succeed or fail depending on which surface an 
 | `DEFAULT_SHIFT_END` | `.env.example`, `k8s/configmap.yaml` | `src/controllers/attendance.controller.js`, `src/jobs/autoCheckout.job.js` | default fallback used | env-driven if set | not set in CI | only partially documented | same drift as above |
 | Fuzzy AHP consistency threshold | code constant | `src/utils/fuzzyAhpEngine.js`, `src/controllers/analysis.controller.js` | fixed at `0.10` | fixed at `0.10` | fixed in tests | response exposes threshold value | no env-backed runtime knob; keep deploy surfaces from reintroducing one |
 | `GEOAPIFY_API_KEY` | `.env.example`, `.do/app*.yaml`, `.do/README.md` | `src/controllers/booking.controller.js`, `src/controllers/wfa.controller.js` | env-driven | env-driven | not required in current CI | docs mention Geoapify | canonical name aligned; App Platform specs remain historical |
-| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | `.env.example`, CI | `src/config/cloudinary.js`, user controller diagnostics | env-driven | env-driven | CI sets all 3 test values | docs mention Cloudinary | `.do/*.yaml` and `.do/README.md` still use `CLOUDINARY_URL` instead |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | `.env.example`, CI, `.do/app*.yaml` | `src/config/cloudinary.js`, user controller diagnostics | env-driven | env-driven | CI sets all 3 test values | docs mention Cloudinary | canonical variable names are aligned; `.do/*` remains a historical backend deploy surface rather than active runtime truth |
 | `PORT`, `NODE_ENV`, `TZ`, `LOG_LEVEL` | `.env.example`, compose, `.do/app*.yaml`, Dockerfile | runtime code + logger | default/local env | compose and Dockerfile both set values | CI sets only test-specific env | consistent enough | low drift |
 
 ## Surface-by-surface findings
@@ -73,13 +73,10 @@ This means staging deployment can succeed or fail depending on which surface an 
 ## Drift and ambiguity report
 
 ### Blocking
-1. **Cloudinary contract mismatch**
-   - runtime reads 3 separate variables
-   - `.do/*.yaml` declare `CLOUDINARY_URL`
-2. **Compose local DB assumption may not match droplet staging DB truth**
+1. **Compose local DB assumption may not match droplet staging DB truth**
    - compose uses `DB_HOST=db`
    - droplet target likely needs an explicit external DB host
-3. **No single staging env source-of-truth artifact exists**
+2. **No single staging env source-of-truth artifact exists**
    - `.env.example` is local-first
    - compose is local-compose-first
    - `.do/*.yaml` are App Platform-first
@@ -115,6 +112,6 @@ This means staging deployment can succeed or fail depending on which surface an 
 - follow-up issue: classify `.do/*.yaml` as historical / obsolete for backend target or reconcile them with the active runtime contract
 
 ## Severity summary
-- Blocking: 4
+- Blocking: 2
 - Risky: 4
 - Informational: 3

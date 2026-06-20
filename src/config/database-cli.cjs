@@ -22,7 +22,9 @@ const envPath = resolveEnvPath();
 
 dotenv.config(envPath ? { path: envPath } : undefined);
 
-const getPort = () => (process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : undefined);
+const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
+const sslEnabled = process.env.DB_SSL === 'true';
+const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
 
 module.exports = {
   development: {
@@ -30,17 +32,16 @@ module.exports = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
-    port: getPort(),
+    port: dbPort,
     dialect: 'mysql',
     migrationStorageTableName: 'sequelizemeta',
     dialectOptions: {
       charset: 'utf8mb4',
-      ssl:
-        process.env.DB_SSL === 'true'
-          ? {
-              rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'
-            }
-          : false
+      ssl: sslEnabled
+        ? {
+            rejectUnauthorized: sslRejectUnauthorized
+          }
+        : false
     }
   },
   staging: {
@@ -48,16 +49,15 @@ module.exports = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
-    port: getPort(),
+    port: dbPort,
     dialect: 'mysql',
     dialectOptions: {
       charset: 'utf8mb4',
-      ssl:
-        process.env.DB_SSL === 'true'
-          ? {
-              rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'
-            }
-          : false
+      ssl: sslEnabled
+        ? {
+            rejectUnauthorized: sslRejectUnauthorized
+          }
+        : false
     }
   },
   production: {
@@ -65,16 +65,15 @@ module.exports = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
-    port: getPort(),
+    port: dbPort,
     dialect: 'mysql',
     dialectOptions: {
       charset: 'utf8mb4',
-      ssl:
-        process.env.DB_SSL === 'true'
-          ? {
-              rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'
-            }
-          : false
+      ssl: sslEnabled
+        ? {
+            rejectUnauthorized: sslRejectUnauthorized
+          }
+        : false
     }
   }
 };

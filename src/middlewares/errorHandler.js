@@ -1,15 +1,23 @@
 import logger from '../utils/logger.js';
 import config from '../config/index.js';
 
+const PUBLIC_ERROR_CODES = new Set(['E_OPERATIONAL_SETTINGS_INVALID']);
+
 export const errorHandler = (err, req, res, _next) => {
-  // Log error with context
-  logger.error({
+  const logPayload = {
     message: err.message,
+    code: err.code,
     stack: err.stack,
     path: req.path,
     method: req.method,
     ip: req.ip
-  });
+  };
+
+  if (err.code === 'E_OPERATIONAL_SETTINGS_INVALID' && Array.isArray(err.details)) {
+    logPayload.details = err.details;
+  }
+
+  logger.error(logPayload);
 
   // Sequelize validation errors
   if (err.name === 'SequelizeValidationError') {
@@ -53,6 +61,14 @@ export const errorHandler = (err, req, res, _next) => {
         ? 'Internal server error'
         : err.message || 'Internal server error'
   };
+
+  if (PUBLIC_ERROR_CODES.has(err.code)) {
+    response.code = err.code;
+  }
+
+  if (err.code === 'E_OPERATIONAL_SETTINGS_INVALID' && Array.isArray(err.details)) {
+    response.details = err.details;
+  }
 
   // Only include stack trace in development
   if (config.env === 'development') {

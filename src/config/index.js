@@ -8,11 +8,14 @@ if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
   throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
 }
 
+const env = process.env.NODE_ENV || 'development';
+const corsOrigin = process.env.CORS_ORIGIN || (env === 'production' ? '' : '*');
+
 export default {
   port: process.env.PORT || 3000,
-  env: process.env.NODE_ENV || 'development',
+  env,
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: corsOrigin,
     credentials: true
   },
   jwt: {
@@ -34,7 +37,7 @@ export default {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     host: process.env.DB_HOST,
-    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : undefined,
+    port: parseInt(process.env.DB_PORT || '3306', 10),
     dialect: 'mysql',
     ssl: String(process.env.DB_SSL || 'false').toLowerCase() === 'true',
     sslRejectUnauthorized:

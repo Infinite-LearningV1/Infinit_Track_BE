@@ -1,4 +1,7 @@
-# Replace <your-dockerhub-username> with your actual Docker Hub username
+# Legacy/historical backend artifact only.
+# Canonical backend runtime is the droplet-hosted Docker Compose stack that pulls
+# registry.digitalocean.com/infinit-track/infinit-track-backend behind host Nginx.
+# Do not treat this manifest as the active backend deployment source of truth.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,7 +26,7 @@ spec:
     spec:
       initContainers:
         - name: migrate
-          image: <your-dockerhub-username>/infinit-track-backend:latest
+          image: registry.digitalocean.com/infinit-track/infinit-track-backend:latest
           command: ["node", "scripts/migrate.js"]
           envFrom:
             - configMapRef:
@@ -32,9 +35,9 @@ spec:
                 name: infinit-track-secrets
       containers:
         - name: app
-          image: <your-dockerhub-username>/infinit-track-backend:latest
+          image: registry.digitalocean.com/infinit-track/infinit-track-backend:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 3005
           envFrom:
             - configMapRef:
                 name: infinit-track-config
@@ -49,15 +52,15 @@ spec:
               cpu: "500m"
           livenessProbe:
             httpGet:
-              path: /health
-              port: 3000
+              path: /livez
+              port: 3005
             initialDelaySeconds: 30
             periodSeconds: 15
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /health
-              port: 3000
+              port: 3005
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3

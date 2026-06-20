@@ -17,7 +17,7 @@ RUN apk add --no-cache dumb-init tzdata && \
 
 ENV NODE_ENV=production \
     TZ=Asia/Jakarta \
-    PORT=3000
+    PORT=3005
 
 WORKDIR /app
 
@@ -31,9 +31,9 @@ RUN mkdir -p logs && chown -R node:node /app
 
 USER node
 
-EXPOSE 3000
+EXPOSE 3005
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3005/health || exit 1
 
 ENTRYPOINT ["dumb-init", "node", "src/server.js"]

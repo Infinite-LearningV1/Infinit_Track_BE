@@ -16,25 +16,25 @@ describe('WFA Recommendation FAHP Logic', () => {
     userLocation: { lat: -6.2, lon: 106.8 }
   };
 
-  it('memberi label "Sangat Rendah" untuk lokasi tidak cocok dan jauh', async () => {
+  it('memberi label "Cukup" untuk lokasi tidak cocok dan jauh', async () => {
     const place = {
       ...basePlace,
       properties: { name: 'Remote Park', categories: ['park'], distance: 3000, amenity_score: 10 }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Rendah');
+    expect(result.label).toBe('Cukup');
   });
 
-  it('memberi label "Rendah" untuk lokasi kurang cocok', async () => {
+  it('memberi label "Baik" untuk lokasi kurang cocok', async () => {
     const place = {
       ...basePlace,
       properties: { name: 'Small Mall', categories: ['mall'], distance: 2500, amenity_score: 30 }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Sedang');
+    expect(result.label).toBe('Baik');
   });
 
-  it('memberi label "Sedang" untuk lokasi rata-rata', async () => {
+  it('memberi label "Baik" untuk lokasi rata-rata', async () => {
     const place = {
       ...basePlace,
       properties: {
@@ -45,24 +45,24 @@ describe('WFA Recommendation FAHP Logic', () => {
       }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Tinggi');
+    expect(result.label).toBe('Baik');
   });
 
-  it('memberi label "Tinggi" untuk lokasi baik', async () => {
+  it('memberi label "Baik" untuk lokasi baik', async () => {
     const place = {
       ...basePlace,
       properties: { name: 'Hotel Meeting', categories: ['hotel'], distance: 800, amenity_score: 70 }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Tinggi');
+    expect(result.label).toBe('Baik');
   });
 
-  it('memberi label "Sangat Tinggi" untuk cafe dekat dengan fasilitas bagus', async () => {
+  it('memberi label "Sangat Baik" untuk cafe dekat dengan fasilitas bagus', async () => {
     const place = {
       ...basePlace,
       properties: { name: 'Coffee Lab', categories: ['cafe'], distance: 200, amenity_score: 90 }
     };
     const result = await fuzzyEngine.calculateWfaScore(place);
-    expect(result.label).toBe('Sangat Tinggi');
+    expect(result.label).toBe('Sangat Baik');
   });
 });

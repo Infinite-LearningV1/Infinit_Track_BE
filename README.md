@@ -26,7 +26,7 @@ Sistem ini memiliki empat pilar fungsionalitas utama yang membuatnya lebih dari 
 
 - Merekomendasikan lokasi WFA di sekitar pengguna.
 - Setiap lokasi dinilai oleh **FAHP murni** untuk menghasilkan **Skor Kelayakan**.
-- **Suitability Labels:** 5 tingkat (Sangat Rendah → Sangat Tinggi) berbasis interval sama.
+- **Suitability Labels:** 4 tingkat (Rendah, Cukup, Baik, Sangat Baik) dengan ambang interval sama 0–25–50–75.
 - **Multi-criteria Analysis (default):** Location type, Distance, Amenities.
 
 ### **⚡ 3. Proses Otomatis Malam Hari (Cron Jobs)**
@@ -53,8 +53,8 @@ Sistem ini memiliki empat pilar fungsionalitas utama yang membuatnya lebih dari 
 
 ### **🧠 Decision Engine**
 
-- **FAHP (Pure):** TFN pairwise → Fuzzy Geometric Mean (Buckley) → centroid defuzzification → normalized weights (∑w=1)
-- **Consistency Check:** CR dihitung dari matriks defuzzifikasi (eigenvalue approximation)
+- **FAHP (Pure):** TFN pairwise → synthetic extent → degree of possibility → minimum possibility → normalized crisp weights (∑w=1)
+- **Consistency Check:** CR dihitung dari matriks TFN yang didefuzzifikasi (eigenvalue approximation)
 
 ### **☁️ External Services**
 
@@ -62,7 +62,7 @@ Sistem ini memiliki empat pilar fungsionalitas utama yang membuatnya lebih dari 
 
 ### **🛠️ Development Tools**
 
-- **Swagger/OpenAPI**, **ESLint + Prettier**, **PM2**
+- **Swagger/OpenAPI**, **ESLint + Prettier**, **Docker Compose**
 
 ## 4. Panduan Setup & Instalasi
 
@@ -117,17 +117,23 @@ LOG_LEVEL=info
 
 ### **🗄️ 4.3 Setup Database**
 
-```bash
-# Pastikan MySQL/MariaDB berjalan
-# Buat database baru (manual di MySQL)
-CREATE DATABASE v1_infinite_track;
+Pastikan MySQL/MariaDB sudah berjalan, lalu siapkan database lokal dari terminal dengan urutan berikut:
 
-# Jalankan migrasi untuk membuat semua tabel
+```bash
+# Buat database baru lewat terminal menggunakan MySQL/MariaDB client
+mysql -u your_db_user -p -e "CREATE DATABASE v1_infinite_track;"
+
+# Import baseline schema terlebih dahulu
+mysql -u your_db_user -p v1_infinite_track < v1_infinite_track.sql
+
+# Jalankan migrasi incremental setelah baseline schema tersedia
 npm run migrate
 
 # (Opsional) Isi data awal dengan seeder
 npm run seed
 ```
+
+> **Catatan:** Untuk database lokal yang benar-benar kosong, jalur bootstrap yang saat ini tervalidasi adalah import `v1_infinite_track.sql` terlebih dahulu, lalu jalankan `npm run migrate`, karena migrasi bersifat incremental dan mengasumsikan tabel inti seperti `attendance` sudah ada.
 
 ### **🚀 4.4 Jalankan Server**
 
@@ -138,29 +144,42 @@ npm run dev
 # Production mode
 npm start
 
-# Dengan PM2 (production deployment)
-npm run prod:pm2
+# Local Docker Compose runtime verification
+bash ./test-production.sh --local-base-url http://127.0.0.1:3005 --public-base-url http://127.0.0.1:3005
 ```
 
 Server akan berjalan di `http://localhost:3005` (atau port yang ditentukan di `.env`).
 
+Endpoint health memiliki dua fungsi berbeda:
+
+- `GET /livez` memverifikasi proses backend masih hidup.
+- `GET /health` memverifikasi dependency startup sudah siap, terutama database dan scheduler.
+- Backend masih dapat start tetapi mengembalikan HTTP `503` dari `/health` jika database atau scheduler belum siap.
+
+> **Catatan Docker Desktop Windows:** `docker-compose.yml` repo ini menggunakan `network_mode: host`. Pada Docker Desktop Windows, aktifkan **Enable host networking** di **Docker Desktop Settings → Resources → Network** sebelum `http://127.0.0.1:3005` dapat diakses dari host. Jika dependency seperti container MySQL manual dijalankan di luar Compose, dependency tersebut mungkin perlu dijalankan ulang setelah Docker Desktop restart.
+
 ### **✅ 4.5 Verifikasi Setup**
 
 ```bash
-# Health check
+# Liveness check: proses backend hidup
+curl http://localhost:3005/livez
+
+# Readiness check: database dan scheduler siap
 curl http://localhost:3005/health
 
-# API documentation
+# Swagger UI (requires authenticated Admin/Management session)
 open http://localhost:3005/docs
 
-# Test timezone configuration
-curl http://localhost:3005/api/attendance/test-timezone
+# Raw OpenAPI contract (requires authenticated Admin/Management token)
+curl -H "Authorization: Bearer <admin_or_management_token>" http://localhost:3005/docs/openapi.yaml
 ```
+
+Respons `/health` yang sehat mengembalikan `ready: true`, `components.database: "ready"`, dan `components.scheduler: "ready"`.
 
 ## 5. Dokumentasi API (Endpoint Utama)
 
-Dokumentasi API interaktif yang lengkap tersedia melalui **Swagger UI** saat server berjalan di:
-**🌐 `http://localhost:3005/docs`**
+Dokumentasi API interaktif tersedia melalui **Swagger UI**, tetapi route `/docs` dan `/docs/openapi.yaml`
+bersifat internal-only dan memerlukan sesi `Admin` atau `Management` yang terautentikasi.
 
 ### **📋 5.1 Endpoint Overview**
 
@@ -184,27 +203,24 @@ Dokumentasi API interaktif yang lengkap tersedia melalui **Swagger UI** saat ser
 | **🧠 WFA Intelligence**      |
 | `GET`                        | `/api/wfa/recommendations`        | Rekomendasi lokasi WFA dengan Fuzzy AHP               | Pengguna         |
 | `GET`                        | `/api/wfa/ahp-config`             | Konfigurasi algoritma AHP                             | Admin            |
-| `POST`                       | `/api/wfa/test-ahp`               | Test AHP algorithm (debugging)                        | Admin            |
 | **📊 Analytics & Reports**   |
 | `GET`                        | `/api/summary`                    | **[ENHANCED]** Laporan komprehensif + Indeks Disiplin | Admin/Management |
 | `GET`                        | `/api/discipline/user/:id`        | Indeks kedisiplinan individual                        | Admin/Management |
 | `GET`                        | `/api/discipline/all`             | Overview disiplin semua karyawan                      | Admin            |
-| **🤖 Job Management**        |
-| `GET`                        | `/api/jobs/status`                | Status semua automated jobs                           | Admin            |
-| `POST`                       | `/api/jobs/trigger/general-alpha` | **[NEW]** Trigger manual alpha job                    | Admin            |
-| `POST`                       | `/api/jobs/trigger/wfa-bookings`  | **[NEW]** Trigger manual WFA resolution               | Admin            |
-| `POST`                       | `/api/jobs/trigger/auto-checkout` | **[NEW]** Trigger manual auto-checkout                | Admin            |
-| `POST`                       | `/api/jobs/trigger/all`           | **[NEW]** Trigger semua jobs sekaligus                | Admin            |
+| `GET`                        | `/api/analysis/fuzzy-ahp`         | Analisis bobot fuzzy AHP                              | Admin/Management |
+| **⚙️ Operational Settings**  |
+| `GET`                        | `/api/settings/operational`       | Membaca konfigurasi operasional aplikasi              | Admin/Management |
+| `PATCH`                      | `/api/settings/operational`       | Mengubah konfigurasi operasional aplikasi             | Admin/Management |
 | **👥 User Management**       |
 | `GET`                        | `/api/users`                      | Mengelola semua pengguna (CRUD)                       | Admin            |
 | `POST`                       | `/api/users`                      | Buat user baru                                        | Admin            |
 | `PATCH`                      | `/api/users/:id`                  | Update data user                                      | Admin            |
 | `DELETE`                     | `/api/users/:id`                  | Hapus user                                            | Admin            |
 | **📋 Reference Data**        |
-| `GET`                        | `/api/roles`                      | Daftar semua roles                                    | Authenticated    |
-| `GET`                        | `/api/positions`                  | Daftar semua positions                                | Authenticated    |
-| `GET`                        | `/api/divisions`                  | Daftar semua divisions                                | Authenticated    |
-| `GET`                        | `/api/locations`                  | Daftar office locations                               | Authenticated    |
+| `GET`                        | `/api/roles`                      | Daftar semua roles                                    | Admin/Management |
+| `GET`                        | `/api/programs`                   | Daftar semua program                                  | Admin/Management |
+| `GET`                        | `/api/positions`                  | Daftar semua positions                                | Admin/Management |
+| `GET`                        | `/api/divisions`                  | Daftar semua divisions                                | Admin/Management |
 
 ### **🎯 5.2 Featured Endpoints**
 
@@ -224,7 +240,7 @@ GET /api/bookings/history?status=approved&sort_by=schedule_date&sort_order=DESC&
         "schedule_date": "2025-07-15",
         "status": "approved",
         "suitability_score": 87.5,
-        "suitability_label": "Sangat Direkomendasikan",
+        "suitability_label": "Sangat Baik",
         "location": {
           "description": "Starbucks Mall Panakkukang",
           "latitude": -5.1477,
@@ -263,7 +279,7 @@ GET /api/summary?period=monthly&start_date=2025-07-01&end_date=2025-07-31
         "total_present": 22,
         "total_late": 3,
         "discipline_score": 85.5,
-        "discipline_label": "Sangat Disiplin"
+        "discipline_label": "Sangat Baik"
       }
     ]
   }
@@ -345,18 +361,22 @@ src/
 // Core Intelligence Components
 Fuzzy AHP Engine
 ├── WFA Recommendation System
-│   ├── Location Type Scoring (70% weight)
-│   ├── Distance Factor (23% weight)
-│   └── Amenity Assessment (7% weight)
+│   ├── Location Type
+│   ├── Distance Factor
+│   └── Amenity Score
 ├── Discipline Index Calculator
-│   ├── Attendance Rate (40% weight)
-│   ├── Punctuality Score (35% weight)
-│   └── Consistency Analysis (25% weight)
+│   ├── Alpha Rate
+│   ├── Lateness Severity
+│   ├── Lateness Frequency
+│   └── Work Focus
 └── Smart Auto-Checkout Predictor
-    ├── Check-in Time Pattern (40% weight)
-    ├── Historical Hours (35% weight)
-    └── Work Duration Context (25% weight)
+    ├── Historical Pattern
+    ├── Check-in Pattern
+    ├── Context Signal
+    └── Transition Signal
 ```
+
+Bobot setiap komponen dihitung dari pairwise TFN backend menggunakan Chang’s Extent Analysis.
 
 ### **⚡ 6.3 Automated Job Processing**
 
@@ -371,29 +391,30 @@ Jobs Schedule
 
 ## FAHP (Fuzzy AHP) Engine
 
-- Method: TFN → FGM (Buckley) → defuzzify (centroid) → normalize (∑w=1) → CR check.
-- Normalization: min–max to [0,1] with benefit/cost; labeling equal-interval (5 classes).
+- Method: TFN → synthetic extent → degree of possibility → minimum possibility → normalized crisp weights (∑w=1) → CR check.
+- Normalization: min–max to [0,1] with benefit/cost; labeling equal-interval 4 bucket (`Rendah`, `Cukup`, `Baik`, `Sangat Baik`).
 - Public APIs:
   - `calculateWfaScore(place)` → `{ score(0..100), label, breakdown, weights, CR, warning? }`
   - `calculateDisciplineIndex(metrics)` → `{ score(0..100), label, breakdown, weights, CR, warning? }`
-  - `getWfaAhpWeights()`, `getDisciplineAhpWeights()` → `{... , consistency_ratio}`
+  - `getWfaAhpWeights()`, `getDisciplineAhpWeights()`, `getSmartAcAhpWeights()` → `{ ...weights, consistency_ratio, consistency_index, lambda_max }`
+  - `GET /api/analysis/fuzzy-ahp` → dashboard payload with `generated_at`, `window.start_at`, and `window.end_at` emitted as millisecond-precision WIB timestamps (`+07:00`).
 - Configuration: TFN scales and pairwise matrices in `src/analytics/config.fahp.js`.
-- Consistency: CR computed from defuzzified matrix; threshold is fixed in backend code at `0.10` because it is a theoretical FAHP guardrail, not an operational setting.
-- Auto-checkout: prediction removed; system flags likely-missed-checkout using time tolerance only.
+- Consistency: CR, CI, and λmax are computed from the defuzzified matrix; threshold is fixed in backend code at `0.10` because it is a theoretical FAHP guardrail, not an operational setting.
+- WFA analysis uses the static location catalog assumptions (`amenity_score=50`, `distance=1000`) when runtime visit telemetry is not applied; the response exposes `scope`, `window_applied`, and `data_source` to make that boundary explicit.
+- Auto-checkout: Smart Auto Checkout uses FAHP weighted prediction from historical, check-in, contextual, and transition signals; CR/CI/λmax are exposed as consistency diagnostics.
 
 ## 7. Fuzzy AHP Intelligence System
 
 ### **🎯 7.1 WFA Suitability Scoring**
 
-Setiap lokasi WFA dinilai menggunakan 5-tier scoring system:
+Setiap lokasi WFA dinilai menggunakan 4 bucket equal-interval:
 
-| **Suitability Label**     | **Score Range** | **Business Action**   |
-| ------------------------- | --------------- | --------------------- |
-| `Sangat Direkomendasikan` | 85-100          | Auto-approve kandidat |
-| `Direkomendasikan`        | 70-84           | Standard approval     |
-| `Cukup Direkomendasikan`  | 55-69           | Manual review needed  |
-| `Kurang Direkomendasikan` | 40-54           | Likely rejection      |
-| `Tidak Direkomendasikan`  | 0-39            | Auto-reject           |
+| **Suitability Label** | **Score Range** | **Business Action**           |
+| --------------------- | --------------- | ----------------------------- |
+| `Sangat Baik`         | 75-100          | Kandidat paling sesuai        |
+| `Baik`                | 50-74.99        | Kandidat sesuai               |
+| `Cukup`               | 25-49.99        | Perlu review tambahan         |
+| `Rendah`              | 0-24.99         | Kesesuaian rendah             |
 
 ### **📊 7.2 Discipline Index Components**
 
@@ -425,101 +446,103 @@ const disciplineFactors = {
 
 ### **🚀 8.1 CD Architecture Overview**
 
-Infinit Track Backend menggunakan **GitOps-style deployment** dengan DigitalOcean App Platform dan GitHub Actions untuk continuous deployment otomatis.
+Infinit Track Backend menggunakan **GitOps-style deployment** berbasis **DigitalOcean Container Registry (DOCR) + droplet-hosted Docker Compose runtime + host Nginx**. Image backend dibangun di CI, dipush ke `registry.digitalocean.com/infinit-track/infinit-track-backend`, lalu runtime droplet menarik image immutable melalui `BACKEND_IMAGE_TAG`.
 
 ```
-Development → Staging (Auto) → Production (Manual)
-     ↓              ↓                    ↓
-  Feature      Integration         Live Users
-  Testing       Testing            Real Data
+Development → Image Build → Staging Droplet → Production Droplet
+     ↓             ↓              ↓                    ↓
+  Feature      Immutable SHA   Integration         Live Users
+  Testing        Artifact       Verification        Real Data
 ```
 
 **Key Features:**
 
-- ✅ Automated staging deployment on push to `master`
-- ✅ Manual production deployment dengan approval workflow
-- ✅ Automated migrations dengan rollback safety
-- ✅ Health checks dan smoke tests otomatis
-- ✅ Zero-downtime deployments
-- ✅ Instant rollback capabilities
+- ✅ Canonical runtime backend ada di droplet, bukan App Platform
+- ✅ Image release dipin oleh `BACKEND_IMAGE_TAG`
+- ✅ Manual/CI deploy harus diverifikasi lewat `/livez` dan `/health`
+- ✅ Managed MySQL tetap terpisah per environment
+- ✅ Smoke/readiness verification adalah release gate, bukan best-effort check
+- ✅ Rollback dilakukan dengan mengembalikan tag image terakhir yang sehat
 
 ### **📋 8.2 Quick Start - First Deployment**
 
-#### **Step 1: Setup DigitalOcean**
+#### **Step 1: Prepare Runtime Targets**
+
+- Siapkan droplet target yang menjalankan Docker Compose backend.
+- Siapkan host Nginx yang mengarah ke container backend di droplet tersebut.
+- Siapkan managed MySQL per environment.
+- Pastikan runtime target menarik image dari DOCR, bukan build lokal ad-hoc.
+
+#### **Step 2: Configure GitHub Secrets & Environment Variables**
 
 ```bash
-# 1. Create DO apps (via dashboard)
-# - Staging: infinit-track-staging
-# - Production: infinit-track-production
-
-# 2. Get App IDs
-doctl apps list
-
-# 3. Configure environment variables (via DO Dashboard)
-# See: docs/ENVIRONMENT_VARIABLES.md
-```
-
-#### **Step 2: Configure GitHub Secrets**
-
-```bash
-# Repository Secrets (Settings → Secrets → Actions)
+# Shared repository secret
 DIGITALOCEAN_ACCESS_TOKEN=<your-do-token>
 
-# Environment Secrets (Settings → Environments)
-# staging environment:
-DO_APP_ID_STAGING=<staging-app-id>
+# Staging workflow input
+STAGING_SSH_PRIVATE_KEY=<private-key-for-root@168.144.33.33>
 
-# production environment (with required reviewers):
-DO_APP_ID_PRODUCTION=<production-app-id>
+# Production workflow inputs
+PRODUCTION_SSH_PRIVATE_KEY=<private-key-for-production-host>
+PRODUCTION_SSH_HOST=<production-ssh-host>
+PRODUCTION_SSH_USER=<production-ssh-user>
+PRODUCTION_DEPLOY_PATH=<absolute-path-to-backend-compose-runtime>
+PRODUCTION_PUBLIC_DOMAIN=<production-public-domain>
+PRODUCTION_PUBLIC_BASE_URL=<production-public-base-url>
+PRODUCTION_EXPECTED_IP=<production-public-ip>
 ```
 
-#### **Step 3: Deploy!**
+#### **Step 3: Deploy**
 
 ```bash
-# Staging (automatic)
+# Staging / release-candidate flow
 git add .
-git commit -m "Add new feature"
+git commit -m "Deploy-ready change"
 git push origin master
-# → GitHub Actions automatically deploys to staging
+# → push ke master memicu workflow staging:
+#   lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate
 
-# Production (manual, requires approval)
-# Go to GitHub Actions → Deploy to Production → Run workflow
-# Type: deploy-to-production
-# → Requires reviewer approval → Deploys to production
+# Optional: run staging workflow manually from GitHub Actions
+# → workflow_dispatch pada "Deploy to Staging"
+
+# Production / approved release flow
+# Trigger workflow "Deploy to Production" secara manual,
+# isi konfirmasi deploy-to-production,
+# lalu workflow menjalankan lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate.
 ```
 
 ### **🎯 8.3 Deployment Workflows**
 
-#### **Staging Deployment (Automatic)**
+#### **Staging Deployment**
 
-Triggers on every push to `master`:
+Canonical staging release should do this in order:
 
 ```yaml
 1. ✅ Lint Code
 2. ✅ Run Tests
-3. ✅ Deploy to DO App Platform
-4. ✅ Run Database Migrations
-5. ✅ Execute Smoke Tests
-6. ✅ Health Check Verification
+3. ✅ Build and push immutable DOCR image
+4. ✅ Update droplet runtime to selected BACKEND_IMAGE_TAG
+5. ✅ Run migrations against staging database
+6. ✅ Verify /livez and /health as blocking checks
 ```
 
-**Staging URL:** `https://infinit-track-staging.ondigitalocean.app`
+Staging host is environment-specific and must come from the GitHub staging environment (`STAGING_PUBLIC_BASE_URL`, `STAGING_PUBLIC_DOMAIN`, `STAGING_EXPECTED_IP`). Never hard-code the canonical production host into the staging workflow.
 
-#### **Production Deployment (Manual)**
+#### **Production Deployment**
 
-Manual trigger with confirmation + approval:
+Canonical production release should do this in order:
 
 ```yaml
-1. ✅ Validate Confirmation ("deploy-to-production")
+1. ✅ Validate release input / approval gate
 2. ✅ Lint & Test
-3. ⏸️  Wait for Approval (required reviewers)
-4. ✅ Deploy to Production
-5. ✅ Run Migrations
-6. ✅ Smoke Tests
-7. ✅ 30-minute monitoring window
+3. ✅ Build or select immutable DOCR image
+4. ✅ Update production droplet runtime to selected BACKEND_IMAGE_TAG
+5. ✅ Run migrations against production database
+6. ✅ Verify /livez and /health as blocking checks
+7. ✅ Observe logs/metrics on the live host after release
 ```
 
-**Production URL:** `https://api.yourdomain.com`
+**Production host:** gunakan host canonical production yang benar-benar aktif di runtime; jangan treat placeholder domain sebagai source of truth.
 
 ### **🔒 8.4 Security & Environment Separation**
 
@@ -547,23 +570,28 @@ Manual trigger with confirmation + approval:
 Every deployment includes:
 
 ```bash
-# 1. Health Endpoint
-GET /health
-# Expected: {"status":"OK","timestamp":"..."}
+# 1. Process Liveness
+GET /livez
+# Expected: HTTP 200 with {"status":"OK","timestamp":"..."}
 
-# 2. Database Connection
+# 2. Dependency Readiness
+GET /health
+# Ready: HTTP 200 with {"status":"OK","ready":true,...}
+# Not ready: HTTP 503 with {"status":"NOT_READY","missing":[...],...}
+
+# 3. Database Connection
 # Logs: "Database connected successfully"
 
-# 3. Security Headers
+# 4. Security Headers
 # X-Content-Type-Options, X-Frame-Options, etc.
 
-# 4. Authentication
+# 5. Authentication
 # Protected endpoints return 401 without auth
 
-# 5. CORS Configuration
+# 6. CORS Configuration
 # Proper origin whitelisting
 
-# 6. Response Time
+# 7. Response Time
 # Average < 1 second
 ```
 
@@ -572,24 +600,29 @@ GET /health
 Automated tests after each deployment:
 
 ```bash
-# Run locally
-npm run smoke-test https://staging-api.app
+# Run locally against the current staging host
+npm run smoke-test "$STAGING_PUBLIC_BASE_URL"
 
 # Included in GitHub Actions automatically
-# Tests: Health, Docs, CORS, Security, Auth, Performance
+# Tests: Liveness, Readiness, Docs, CORS, Security, Auth, Performance
 ```
 
 #### **First 5 Things to Check Post-Deploy**
 
-1. **✅ Health Endpoint**
+1. **✅ Liveness & Readiness**
 
    ```bash
-   curl https://api.yourdomain.com/health
+   curl "$STAGING_PUBLIC_BASE_URL/livez"
+   curl "$STAGING_PUBLIC_BASE_URL/health"
    ```
+
+   - `/livez` should return HTTP `200`
+   - `/health` should return HTTP `200` only when startup dependencies are ready
+   - If dependencies are missing, `/health` should return HTTP `503` and a `missing` array
 
 2. **✅ Runtime Logs**
 
-   - Check DO Dashboard → Runtime Logs
+   - Check the droplet container logs (`docker compose logs app --tail=200`)
    - Look for "Database connected successfully"
    - No error logs
 
@@ -611,14 +644,13 @@ npm run smoke-test https://staging-api.app
 
 #### **Quick Rollback (5 minutes)**
 
-**Via DigitalOcean Dashboard:**
+**Via droplet runtime:**
 
-```
-1. Dashboard → Apps → Your App
-2. Deployments tab
-3. Find last good deployment
-4. Click "Redeploy"
-5. Monitor health checks
+```bash
+export BACKEND_IMAGE_TAG=<last-known-good-sha>
+docker compose pull app
+docker compose up -d --force-recreate app
+./deploy/scripts/verify-droplet-api.sh
 ```
 
 #### **Git Rollback**
@@ -641,7 +673,7 @@ git push origin master
 ```bash
 # Only if migration caused issues
 1. Stop application (prevent further writes)
-2. Restore from backup (DO Dashboard)
+2. Restore from managed database backup (DigitalOcean database tooling)
 3. Rollback application code
 4. Restart application
 5. Verify functionality
@@ -651,7 +683,7 @@ git push origin master
 
 Comprehensive guides tersedia di folder `docs/`:
 
-- **🏗️ [DigitalOcean Setup](./.do/README.md)** - App Platform configuration
+- **🏗️ [DigitalOcean Setup](./docs/droplet-docr-runtime.md)** - Canonical droplet + DOCR runtime procedure
 - **🔐 [Environment Variables](./docs/ENVIRONMENT_VARIABLES.md)** - Complete ENV guide
 - **🗄️ [Database Migrations](./docs/DATABASE_MIGRATION.md)** - Migration best practices
 - **🔒 [Security Checklist](./docs/SECURITY_CHECKLIST.md)** - Pre/post deploy security
@@ -674,8 +706,8 @@ npm run smoke-test <url>     # Test deployed instance
 npm run migrate:undo         # Rollback last migration (dev only)
 
 # Production Monitoring
-curl https://api.yourdomain.com/health                  # Health check
-curl https://api.yourdomain.com/api/jobs/status         # Check cron jobs
+curl "$PRODUCTION_PUBLIC_BASE_URL/health" # Health check
+curl -H "Authorization: Bearer <admin_or_management_token>" "$PRODUCTION_PUBLIC_BASE_URL/docs/openapi.yaml" # Internal OpenAPI contract
 ```
 
 ### **🎯 8.9 Development Workflow Best Practices**
@@ -691,14 +723,14 @@ git push origin feature/new-feature
 # → Tests run automatically
 # → Code review by team
 
-# 3. Merge to Master
-# → Staging deploys automatically
-# → Verify in staging
+# 3. Promote reviewed code to master
+# → Push/merge to master triggers staging droplet rollout automatically
+# → Verify canonical staging host after rollout completes
 
 # 4. Production Deploy (when ready)
-# → Manual trigger via GitHub Actions
-# → Approval from reviewer
-# → Monitor for 30 minutes
+# → Manual trigger via GitHub Actions: "Deploy to Production"
+# → Type deploy-to-production for confirmation
+# → Monitor live host and logs after smoke gate passes
 ```
 
 ### **🔧 8.10 Troubleshooting Deployment Issues**
@@ -718,13 +750,13 @@ git push origin feature/new-feature
 #### **Production Health Check Failed**
 
 ```bash
-# Check DigitalOcean logs
-1. Dashboard → Apps → Runtime Logs
-2. Look for error messages
+# Check droplet/runtime logs
+1. SSH to the target droplet
+2. Review `docker compose logs app --tail=200`
 3. Common issues:
    - DB connection → Verify DB_HOST, DB_PASS
-   - Missing ENV → Check environment variables
-   - Migration failed → Check Build Logs
+   - Missing ENV → Check environment variables / env file
+   - Migration failed → Review deploy workflow and container command output
 ```
 
 #### **CORS Errors**
@@ -774,9 +806,10 @@ npm run health:check
 
 ```bash
 # Health check endpoints
-GET /health                    # Basic server health
-GET /api/attendance/test-timezone  # Timezone configuration
-GET /api/jobs/status          # Automated jobs status
+GET /livez               # Process liveness
+GET /health              # Dependency readiness
+GET /docs                # Internal Swagger UI (authenticated Admin/Management session required)
+GET /docs/openapi.yaml   # Internal OpenAPI contract (authenticated Admin/Management token required)
 ```
 
 ### **📝 10.2 Logging System**
@@ -812,21 +845,21 @@ npm run db:reset
 #### Timezone Issues
 
 ```bash
-# Verify timezone configuration
-curl http://localhost:3005/api/attendance/test-timezone
+# Verify service health and internal contract access
+curl http://localhost:3005/health
+curl -H "Authorization: Bearer <admin_or_management_token>" http://localhost:3005/docs/openapi.yaml
 
 # Check database timezone settings
 npm run db:timezone:check
 ```
 
-#### Job Processing Issues
+#### Operational Readiness Issues
 
 ```bash
-# Check cron job status
-GET /api/jobs/status
-
-# Manual trigger for debugging
-POST /api/jobs/trigger/all
+# Verify hardened operational surfaces
+GET /health
+GET /api/settings/operational    # authenticated Admin/Management
+GET /api/attendance/today-locations # authenticated user
 ```
 
 ## 11. Contributing & Development Guidelines
@@ -889,11 +922,11 @@ try {
 
 ### **📚 Additional Documentation**
 
-- **📖 API Reference:** [`/docs`](http://localhost:3005/docs) (Swagger UI)
+- **📖 API Reference:** [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md) and local Swagger UI at `http://localhost:3005/docs` (authenticated `Admin`/`Management` session required)
 - **🚀 CD & Deployment:**
   - [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md) - Complete production deployment guide
   - [`docs/GITHUB_ACTIONS_SETUP.md`](docs/GITHUB_ACTIONS_SETUP.md) - GitHub Actions CI/CD setup
-  - [`.do/README.md`](.do/README.md) - DigitalOcean App Platform configuration
+  - [`docs/droplet-docr-runtime.md`](docs/droplet-docr-runtime.md) - Canonical droplet + DOCR runtime procedure
 - **🔐 Security & Configuration:**
   - [`docs/ENVIRONMENT_VARIABLES.md`](docs/ENVIRONMENT_VARIABLES.md) - Environment variables reference
   - [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md) - Security best practices
@@ -907,9 +940,10 @@ try {
 
 ### **🔗 Quick Links**
 
-- **Health Check:** [`http://localhost:3005/health`](http://localhost:3005/health)
-- **API Documentation:** [`http://localhost:3005/docs`](http://localhost:3005/docs)
-- **OpenAPI Spec:** [`http://localhost:3005/docs/openapi.yaml`](http://localhost:3005/docs/openapi.yaml)
+- **Process Liveness:** [`http://localhost:3005/livez`](http://localhost:3005/livez)
+- **Dependency Readiness:** [`http://localhost:3005/health`](http://localhost:3005/health)
+- **Swagger UI (authenticated `Admin`/`Management` session required):** `http://localhost:3005/docs`
+- **Raw OpenAPI (authenticated `Admin`/`Management` token required):** `http://localhost:3005/docs/openapi.yaml`
 
 ---
 

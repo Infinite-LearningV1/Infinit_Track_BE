@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import YAML from 'yamljs';
@@ -6,8 +7,10 @@ import swaggerUi from 'swagger-ui-express';
 
 import config from './config/index.js';
 import routes from './routes/index.js';
+import { verifyToken } from './middlewares/authJwt.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { requestLogger } from './middlewares/requestLogger.js';
+import roleGuard from './middlewares/roleGuard.js';
 import {
   securityHeaders,
   additionalSecurity,
@@ -16,6 +19,10 @@ import {
 } from './middlewares/security.js';
 
 const app = express();
+
+if (config.env === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Validate CORS configuration on startup
 validateCorsOrigin();
@@ -49,8 +56,14 @@ app.use(cookieParser());
 app.use('/uploads', express.static('uploads'));
 
 // Swagger documentation
-const swaggerDoc = YAML.load('./docs/openapi.yaml');
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+const docsAccess = [verifyToken, roleGuard(['Admin', 'Management'])];
+const openApiPath = path.resolve(process.cwd(), 'docs/openapi.yaml');
+const swaggerDoc = YAML.load(openApiPath);
+app.get('/docs/openapi.yaml', ...docsAccess, (_req, res) => {
+  res.type('application/yaml');
+  res.sendFile(openApiPath);
+});
+app.use('/docs', ...docsAccess, swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 
 app.use(routes);
 app.use(errorHandler);

@@ -5,6 +5,26 @@ import logger from '../utils/logger.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import { calculateDistance } from '../utils/geofence.js';
 
+function getGeoapifyApiKey(context) {
+  if (process.env.GEOAPIFY_API_KEY) {
+    return process.env.GEOAPIFY_API_KEY;
+  }
+
+  if (process.env.GEOAPIFY_KEY) {
+    logger.warn(`Using legacy GEOAPIFY_KEY fallback for ${context}; migrate to GEOAPIFY_API_KEY.`);
+    return process.env.GEOAPIFY_KEY;
+  }
+
+  return null;
+}
+
+function redactGeoapifyParams(params) {
+  return {
+    ...params,
+    apiKey: '[REDACTED]'
+  };
+}
+
 /**
  * Get WFA recommendations based on user location
  * Uses Geoapify API to find nearby places and applies Unified Fuzzy AHP scoring
@@ -65,9 +85,9 @@ export const getWfaRecommendations = async (req, res, next) => {
     }
 
     // Langkah B: Panggil API Geoapify
-    const geoapifyApiKey = process.env.GEOAPIFY_API_KEY;
+    const geoapifyApiKey = getGeoapifyApiKey('WFA recommendations');
     if (!geoapifyApiKey) {
-      logger.error('GEOAPIFY_API_KEY not found in environment variables');
+      logger.error('Geoapify API key not found for WFA recommendations. Set GEOAPIFY_API_KEY.');
       return res.status(500).json({
         success: false,
         code: 'E_CONFIG',
@@ -84,7 +104,9 @@ export const getWfaRecommendations = async (req, res, next) => {
       apiKey: geoapifyApiKey,
       lang: 'en'
     };
-    logger.info(`Calling Geoapify API with params: ${JSON.stringify(geoapifyParams)}`);
+    logger.info(
+      `Calling Geoapify API with params: ${JSON.stringify(redactGeoapifyParams(geoapifyParams))}`
+    );
 
     // Retry function for API calls
     const makeGeoapifyRequest = async (retryCount = 0) => {
@@ -173,12 +195,12 @@ export const getWfaRecommendations = async (req, res, next) => {
         scoredRecommendations.push(scoredPlace);
       } catch (error) {
         logger.warn(`Failed to score place ${place.properties?.name || 'unknown'}:`, error.message);
-        // Include place with default score if scoring fails
+        const fallbackScore = 25;
         scoredRecommendations.push({
           ...place,
           scoring_details: {
-            final_score: 50,
-            label: 'Cukup Direkomendasikan',
+            final_score: fallbackScore,
+            label: fuzzyEngine.getWfaScoreLabel(fallbackScore),
             breakdown: { error: error.message },
             distance_meters: place.properties?.distance || 1000
           }
@@ -291,7 +313,7 @@ export const getWfaRecommendations = async (req, res, next) => {
           recommendations_returned: sortedRecommendations.length
         },
         fahp_methodology: {
-          approach: 'Pure FAHP (TFN + Buckley + centroid)',
+          approach: 'Pure FAHP (TFN + Chang extent)',
           criteria_weights: ahpWeights
         }
       },
@@ -365,7 +387,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
         },
         consistency_ratio: ahpWeights.consistency_ratio,
         is_consistent: ahpWeights.consistency_ratio <= 0.1,
-        method: 'FAHP (TFN + Buckley + centroid) - Comprehensive Amenity Assessment',
+        method: 'Fuzzy AHP dengan Chang’s Extent Analysis',
         criteria_explanation: {
           location_type:
             'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)',
@@ -373,7 +395,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
             'Penilaian komprehensif fasilitas: WiFi, informasi bisnis, brand recognition, payment options, aksesibilitas, dan keragaman kategori',
           distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
         },
-        weight_calculation: 'Menggunakan AHP library dengan expert judgment matrix',
+        weight_calculation: 'Pembobotan kriteria berbasis pairwise TFN dengan Chang’s Extent Analysis',
         scoring_method: 'Weighted scoring model dengan normalisasi 0-100'
       },
       message: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
@@ -390,34 +412,37 @@ export const getWfaAhpConfig = async (req, res, next) => {
  */
 export const testFuzzyAhp = async (req, res, next) => {
   try {
-    const { place_data, custom_weights } = req.body;
+    const { place_data, custom_weights, scenario, expected } = req.body;
 
-    // Validasi input
     if (!place_data) {
       return res.status(400).json({
         success: false,
         message: 'Parameter place_data wajib diisi untuk testing'
       });
-    } // Gunakan custom weights jika disediakan, atau default weights
-    const weights = custom_weights || fuzzyEngine.getWfaAhpWeights();
+    }
 
-    // Test scoring dengan data yang disediakan
+    const usesCustomWeights = custom_weights != null;
+    const weights = usesCustomWeights ? custom_weights : fuzzyEngine.getWfaAhpWeights();
     const testResult = await fuzzyEngine.calculateWfaScore(place_data, weights);
+    const category = testResult.label;
+    const normalizedExpected = typeof expected === 'string' ? expected.trim() : null;
 
     res.status(200).json({
       success: true,
       data: {
-        test_result: testResult,
-        interpretation: {
-          score_range: '0-100',
-          score_meaning:
-            testResult.score >= 70
-              ? 'Recommended'
-              : testResult.score >= 50
-                ? 'Acceptable'
-                : 'Not recommended',
-          consistency_check: weights.consistency_ratio <= 0.1 ? 'Consistent' : 'Inconsistent'
-        }
+        scenario: scenario || place_data.properties?.name || 'WFA Test',
+        weights: {
+          location_type: Number((weights.location_type ?? testResult.weights?.[0] ?? 0).toFixed(4)),
+          distance_factor: Number((weights.distance_factor ?? testResult.weights?.[1] ?? 0).toFixed(4)),
+          amenity_score: Number((weights.amenity_score ?? testResult.weights?.[2] ?? 0).toFixed(4))
+        },
+        cr: usesCustomWeights
+          ? null
+          : testResult.CR ?? Number((weights.consistency_ratio ?? 0).toFixed(3)),
+        score: testResult.score,
+        category,
+        expected: normalizedExpected,
+        match: normalizedExpected ? category === normalizedExpected : false
       },
       message: 'Test Fuzzy AHP berhasil'
     });
@@ -446,8 +471,9 @@ export const debugGeoapifyApi = async (req, res, next) => {
     const longitude = parseFloat(lng);
     const searchRadius = parseInt(radius);
 
-    const geoapifyApiKey = process.env.GEOAPIFY_API_KEY;
+    const geoapifyApiKey = getGeoapifyApiKey('WFA Geoapify debug endpoint');
     if (!geoapifyApiKey) {
+      logger.error('Geoapify API key not found for WFA Geoapify debug endpoint. Set GEOAPIFY_API_KEY.');
       return res.status(500).json({
         success: false,
         message: 'GEOAPIFY_API_KEY tidak ditemukan'
@@ -488,7 +514,7 @@ export const debugGeoapifyApi = async (req, res, next) => {
 
     for (const testCase of testCases) {
       try {
-        logger.info(`Running ${testCase.name} with params:`, testCase.params);
+        logger.info(`Running ${testCase.name} with params:`, redactGeoapifyParams(testCase.params));
 
         const response = await axios.get('https://api.geoapify.com/v2/places', {
           params: testCase.params,
@@ -503,7 +529,7 @@ export const debugGeoapifyApi = async (req, res, next) => {
 
         results.push({
           test_name: testCase.name,
-          params_used: testCase.params,
+          params_used: redactGeoapifyParams(testCase.params),
           results_count: features.length,
           sample_places: features.slice(0, 3).map((place) => ({
             name: place.properties?.name || 'Unnamed',
@@ -521,7 +547,7 @@ export const debugGeoapifyApi = async (req, res, next) => {
       } catch (error) {
         results.push({
           test_name: testCase.name,
-          params_used: testCase.params,
+          params_used: redactGeoapifyParams(testCase.params),
           error: error.message,
           status: 'FAILED',
           response_status: error.response?.status || 'NO_RESPONSE'

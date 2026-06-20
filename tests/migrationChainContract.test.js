@@ -3,7 +3,10 @@ import path from 'path';
 import { jest } from '@jest/globals';
 
 const migrationsDir = path.resolve(process.cwd(), 'src/models/migrations');
-const readFile = (name) => fs.readFileSync(path.join(migrationsDir, name), 'utf8');
+
+function readMigrationFile(name) {
+  return fs.readFileSync(path.join(migrationsDir, name), 'utf8');
+}
 
 describe('migration chain contract', () => {
   beforeEach(() => {
@@ -23,41 +26,40 @@ describe('migration chain contract', () => {
     expect(typeof migration.default?.down || typeof migration.down).toBe('function');
   });
 
-  test('legacy cloudinary migrations export callable up/down methods', async () => {
-    const migrationCjs = await import('../src/models/migrations/20240619000000-update-photos-for-cloudinary.cjs');
-    const migrationJs = await import('../src/models/migrations/20240619000000-update-photos-for-cloudinary.js');
+  test('legacy cloudinary migration exports callable up/down methods through the CommonJS file', async () => {
+    const migration = await import('../src/models/migrations/20240619000000-update-photos-for-cloudinary.cjs');
 
-    expect(typeof migrationCjs.default?.up || typeof migrationCjs.up).toBe('function');
-    expect(typeof migrationCjs.default?.down || typeof migrationCjs.down).toBe('function');
-    expect(typeof migrationJs.default?.up || typeof migrationJs.up).toBe('function');
-    expect(typeof migrationJs.default?.down || typeof migrationJs.down).toBe('function');
+    expect(typeof migration.default?.up || typeof migration.up).toBe('function');
+    expect(typeof migration.default?.down || typeof migration.down).toBe('function');
   });
 
   test('legacy create-user migration is documented as a no-op stub rather than an empty commented file', () => {
-    const source = readFile('20240525120000-create-user.cjs');
+    const source = readMigrationFile('20240525120000-create-user.cjs');
 
     expect(source).toContain('module.exports');
     expect(source).toContain('async up');
     expect(source).toContain('async down');
   });
 
-  test('legacy cloudinary JS migration keeps the guarded ESM/CommonJS export pattern', () => {
-    const source = readFile('20240619000000-update-photos-for-cloudinary.js');
+  test('migration files use CommonJS-only exports for sequelize-cli compatibility', () => {
+    const cloudinary = readMigrationFile('20240619000000-update-photos-for-cloudinary.cjs');
+    const uniqueAttendance = readMigrationFile('20260403000000-add-unique-constraint-attendance.cjs');
+    const photoMetadata = readMigrationFile('20260422000000-add-photo-storage-metadata.cjs');
+    const attendanceDateIndex = readMigrationFile('20260423010000-add-attendance-date-index.cjs');
+    const operationalSettings = readMigrationFile('20260424000000-bootstrap-operational-settings.cjs');
+    const authSessions = readMigrationFile('20260511000000-create-auth-sessions.cjs');
 
-    expect(source).toContain('export default migration');
-    expect(source).toContain("typeof module !== 'undefined'");
-  });
-
-  test('modern JS migrations keep the guarded ESM/CommonJS export pattern', () => {
-    const uniqueAttendance = readFile('20260403000000-add-unique-constraint-attendance.js');
-    const photoMetadata = readFile('20260422000000-add-photo-storage-metadata.js');
-    const operationalSettings = readFile('20260424000000-bootstrap-operational-settings.js');
-
-    expect(uniqueAttendance).toContain('export default migration');
-    expect(uniqueAttendance).toContain("typeof module !== 'undefined'");
-    expect(photoMetadata).toContain('export default migration');
-    expect(photoMetadata).toContain("typeof module !== 'undefined'");
-    expect(operationalSettings).toContain('export default migration');
-    expect(operationalSettings).toContain("typeof module !== 'undefined'");
+    expect(cloudinary).toContain('module.exports');
+    expect(cloudinary).not.toContain('export default');
+    expect(uniqueAttendance).toContain('module.exports');
+    expect(uniqueAttendance).not.toContain('export default');
+    expect(photoMetadata).toContain('module.exports');
+    expect(photoMetadata).not.toContain('export default');
+    expect(attendanceDateIndex).toContain('module.exports');
+    expect(attendanceDateIndex).not.toContain('export default');
+    expect(operationalSettings).toContain('module.exports');
+    expect(operationalSettings).not.toContain('export default');
+    expect(authSessions).toContain('module.exports');
+    expect(authSessions).not.toContain('export default');
   });
 });

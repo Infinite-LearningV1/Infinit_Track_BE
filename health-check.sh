@@ -14,7 +14,105 @@ print_success() { echo -e "${GREEN}[OK] $1${NC}"; }
 print_warning() { echo -e "${YELLOW}[WARN] $1${NC}"; }
 print_error() { echo -e "${RED}[FAIL] $1${NC}"; }
 
-APP_URL="${APP_URL:-http://localhost:${PORT:-3000}}"
+APP_URL="${APP_URL:-http://localhost:${PORT:-3005}}"
+LIVEZ_URL="${LIVEZ_URL:-${APP_URL}/livez}"
+READINESS_URL="${READINESS_URL:-${APP_URL}/health}"
+CRITICAL_FAILURES=0
+HTTP_PROBE_DEPS_READY=true
+
+record_failure() {
+    CRITICAL_FAILURES=$((CRITICAL_FAILURES + 1))
+}
+
+ensure_http_probe_dependencies() {
+    if ! command -v curl &> /dev/null; then
+        print_error "curl is required to run health probes"
+        HTTP_PROBE_DEPS_READY=false
+    fi
+
+    if ! command -v python3 &> /dev/null; then
+        print_error "python3 is required to validate health JSON contracts"
+        HTTP_PROBE_DEPS_READY=false
+    fi
+
+    if [ "$HTTP_PROBE_DEPS_READY" = false ]; then
+        record_failure
+        return 1
+    fi
+
+    return 0
+}
+
+check_http_contract() {
+    local url="$1"
+    local label="$2"
+    local mode="$3"
+    local response_file
+    local status
+    local body
+
+    response_file="$(mktemp)"
+
+    if ! status="$(curl --silent --show-error --output "$response_file" --write-out "%{http_code}" "$url")"; then
+        rm -f "$response_file"
+        print_error "$label probe failed for $url"
+        return 1
+    fi
+
+    if ! body="$(python3 - "$response_file" "$status" "$mode" <<'PY'
+import json
+import sys
+
+response_file, status_code, mode = sys.argv[1:]
+status_code = int(status_code)
+
+with open(response_file, 'r', encoding='utf-8') as handle:
+    raw_body = handle.read()
+
+try:
+    data = json.loads(raw_body)
+except json.JSONDecodeError as exc:
+    print(f"invalid JSON: {exc}", file=sys.stderr)
+    print(raw_body, file=sys.stderr)
+    sys.exit(1)
+
+if status_code != 200:
+    print(f"unexpected HTTP {status_code}", file=sys.stderr)
+    print(json.dumps(data, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+
+if data.get('status') != 'OK':
+    print("unexpected status field", file=sys.stderr)
+    print(json.dumps(data, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+
+if mode == 'readiness':
+    if data.get('ready') is not True:
+        print("readiness flag is not true", file=sys.stderr)
+        print(json.dumps(data, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(data.get('components'), dict):
+        print("readiness components missing", file=sys.stderr)
+        print(json.dumps(data, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(data.get('missing'), list):
+        print("readiness missing array absent", file=sys.stderr)
+        print(json.dumps(data, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+
+print(json.dumps(data, ensure_ascii=False))
+PY
+)"; then
+        rm -f "$response_file"
+        print_error "$label returned an invalid health contract"
+        return 1
+    fi
+
+    rm -f "$response_file"
+    print_success "$label passed"
+    echo "  $body"
+    return 0
+}
 
 echo "Infinite Track Backend - Health Check"
 echo "======================================"
@@ -24,28 +122,14 @@ echo ""
 
 # 1. API Health
 print_header "API HEALTH"
-RESPONSE=""
-
-if command -v curl &> /dev/null; then
-    RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health" 2>/dev/null)
-elif command -v wget &> /dev/null; then
-    wget -q --spider "$APP_URL/health" 2>/dev/null
-    WGET_EXIT=$?
-    if [ "$WGET_EXIT" -eq 0 ]; then
-        RESPONSE="200"
-    else
-        RESPONSE="000"
+if ensure_http_probe_dependencies; then
+    if ! check_http_contract "$LIVEZ_URL" "API liveness" "liveness"; then
+        record_failure
     fi
-else
-    print_warning "Neither curl nor wget is available; skipping API health probe"
-fi
 
-if [ -z "$RESPONSE" ]; then
-    print_warning "API health probe skipped"
-elif [ "$RESPONSE" = "200" ]; then
-    print_success "API is healthy (HTTP $RESPONSE)"
-else
-    print_error "API is not responding (HTTP ${RESPONSE:-000})"
+    if ! check_http_contract "$READINESS_URL" "API readiness" "readiness"; then
+        record_failure
+    fi
 fi
 
 # 2. Environment Detection
@@ -100,4 +184,9 @@ if command -v kubectl &> /dev/null; then
 fi
 
 echo ""
+if [ "$CRITICAL_FAILURES" -gt 0 ]; then
+    print_error "Health check failed with ${CRITICAL_FAILURES} critical issue(s)."
+    exit 1
+fi
+
 echo "Health check complete."

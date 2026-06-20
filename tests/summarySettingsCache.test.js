@@ -5,7 +5,7 @@ const mockAttendanceFindAll = jest.fn();
 const mockAttendanceFindAndCountAll = jest.fn();
 const mockFuzzyCalculate = jest.fn(async () => ({
   score: 88,
-  label: 'Sangat Tinggi',
+  label: 'Sangat Baik',
   breakdown: {}
 }));
 
@@ -20,8 +20,12 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   },
   User: {},
   Role: {},
+  Division: {},
   Location: {},
+  LocationEvent: {},
+  Photo: {},
   AttendanceCategory: {},
+  Booking: {},
   AttendanceStatus: {},
   Settings: {
     findAll: mockSettingsFindAll
@@ -41,7 +45,12 @@ jest.unstable_mockModule('../src/utils/workHourFormatter.js', () => ({
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
   default: {
     calculateDisciplineIndex: mockFuzzyCalculate,
-    getDisciplineLabel: jest.fn(() => 'Sedang')
+    getDisciplineLabel: jest.fn((score) => {
+      if (score < 25) return 'Rendah';
+      if (score < 50) return 'Cukup';
+      if (score < 75) return 'Baik';
+      return 'Sangat Baik';
+    })
   }
 }));
 
@@ -93,6 +102,7 @@ const arrangeAttendanceFindAllForSummary = () => {
   mockAttendanceFindAll
     .mockResolvedValueOnce([])
     .mockResolvedValueOnce([])
+    .mockResolvedValueOnce(buildSummaryRows())
     .mockResolvedValueOnce([
       {
         time_in: new Date('2026-04-23T01:15:00.000Z'),
@@ -132,7 +142,7 @@ describe('summary settings cache', () => {
 
     const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
 
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const req = { query: { period: '30d', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
 
@@ -155,7 +165,7 @@ describe('summary settings cache', () => {
 
     const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
 
-    const req = { query: { period: 'daily', page: '1', limit: '10' } };
+    const req = { query: { period: '30d', page: '1', limit: '10' } };
     const res = buildRes();
     const next = jest.fn();
 

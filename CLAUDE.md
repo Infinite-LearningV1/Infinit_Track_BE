@@ -38,7 +38,7 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — checkout → Node 18 → `np
 - `/api/users` → `user.controller.js` | `/api/bookings` → `booking.controller.js`
 - `/api/wfa` → `wfa.controller.js` | `/api/summary` → `summary.controller.js`
 - `/api/discipline` → `discipline.controller.js` | `/api` → `referenceData.controller.js`
-- `/health` — health check
+- `/livez` — process liveness | `/health` — dependency readiness
 
 **Database**: MySQL via Sequelize 6 (`src/config/database.js`, timezone `+07:00`). Models in `src/models/*.js`, associations in `src/models/index.js`.
 
@@ -51,7 +51,7 @@ CI: GitHub Actions (`.github/workflows/ci.yml`) — checkout → Node 18 → `np
 
 **Timezone**: All business logic uses **WIB (Asia/Jakarta, UTC+7)** — set in server.js, Sequelize config, and scheduled job runtime.
 
-**Deployment**: Repository-managed deployment configuration is defined in `.do/app*.yaml` rather than root-level `docker-compose.yml`/`Dockerfile` artifacts. Use `DB_HOST=localhost` for local development; in managed or containerized environments, set `DB_HOST` to the database service hostname provided by that platform.
+**Deployment**: Canonical backend runtime is the droplet-hosted Docker Compose stack that pulls `registry.digitalocean.com/infinit-track/infinit-track-backend` by immutable `BACKEND_IMAGE_TAG`, with host Nginx in front of the container and managed MySQL behind it. Treat `.do/app*.yaml` and `k8s/` as legacy or historical backend paths unless current runtime evidence explicitly says otherwise. Use `DB_HOST=localhost` for local development; on the canonical droplet runtime, set `DB_HOST` to the managed database hostname for that environment.
 
 ## Search & Research Routing
 
@@ -181,3 +181,26 @@ A task is done **only when**:
 - `/backend-attendance-inspection` — attendance correctness inspection for final-state, mutation safety, job-driven attendance, timezone, and idempotency risks
 - `/backend-auth-contract-inspection` — auth contract inspection for token, session, cookie, RBAC, role resolution, and middleware-route boundary checks
 - `backend-contract-reviewer` — read-only subagent for contract compliance review
+
+## Active Host Context Sync
+
+### Shared Context (Cross-Repo)
+
+- Before cross-contract work, read the cockpit shared context outside this backend repository (`Deploy Infinite Track/Infinite Track/shared-context/`).
+  - `API_CONTRACT.md`
+  - `GLOBAL_STATUS.md`
+  - `ROUTING_POLICY.md`
+  - `QUALITY_GATE.md`
+  - `DECISIONS.md`
+  - `RISK_REGISTER.md`
+- Official operating model: `Cowork -> Claude Desktop Host -> Claude Code CLI -> GitHub + Linear`.
+- If repo/runtime/GitHub/Linear/docs differ, live repo/runtime is the highest factual source and GitHub + Linear are the active execution/evidence systems.
+- Apply this file's Definition of Done together with the global evidence gate: diff/PR + fresh verification + review verdict.
+
+### Execution Model
+
+- Agents always work on an isolated branch inside a worktree.
+- The main branch held by the human/operator in the terminal remains `develop`; it is a pull/test/human validation surface, not an agent implementation surface.
+- Agent output returns to `develop` through PR/merge; then the human pulls and tests on `develop`.
+- `master` only receives fix/no-bug/release-ready results from `develop`.
+- Backend nuance: the main working tree is the human validation surface; agents must not edit it directly and must use isolated worktree branches from `develop`.

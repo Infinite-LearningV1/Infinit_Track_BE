@@ -5,6 +5,7 @@ import {
   buildSmartAcFahpPayload,
   buildWfaAnalysis,
   buildWfaFahpPayload,
+  formatWibDateTime,
   getAnalysisWindow
 } from '../services/fuzzyAhpAnalysis.service.js';
 
@@ -83,15 +84,18 @@ export const getFuzzyAhpAnalysis = async (req, res, next) => {
     }
 
     const { startAt, endAt } = getAnalysisWindow(period);
-
     let result;
 
-    if (type === 'discipline') {
-      result = await buildDisciplineAnalysis({ startAt, endAt });
-    } else if (type === 'wfa') {
-      result = await buildWfaAnalysis({ startAt, endAt });
-    } else {
-      result = await buildSmartAcAnalysis({ startAt, endAt });
+    switch (type) {
+      case 'discipline':
+        result = await buildDisciplineAnalysis({ startAt, endAt });
+        break;
+      case 'wfa':
+        result = await buildWfaAnalysis({ startAt, endAt });
+        break;
+      default:
+        result = await buildSmartAcAnalysis({ startAt, endAt });
+        break;
     }
 
     return res.status(200).json({
@@ -99,11 +103,11 @@ export const getFuzzyAhpAnalysis = async (req, res, next) => {
       data: {
         type,
         period,
-        generated_at: endAt.toISOString(),
+        generated_at: formatWibDateTime(endAt),
         timezone: 'Asia/Jakarta',
         window: {
-          start_at: startAt.toISOString(),
-          end_at: endAt.toISOString()
+          start_at: formatWibDateTime(startAt),
+          end_at: formatWibDateTime(endAt)
         },
         ...result
       },

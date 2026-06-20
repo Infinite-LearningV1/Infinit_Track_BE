@@ -12,20 +12,19 @@ import {
   BookingStatus,
   User,
   Role,
-  LocationEvent,
-  Photo
+  LocationEvent
 } from '../models/index.js';
 import {
   calculateDistance,
   getJakartaTime,
   getJakartaDateString,
-  getCurrentTimeForDB,
-  toJakartaTime
+  getCurrentTimeForDB
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
 import { getOperationalSettings } from '../utils/settings.js';
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
+import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
@@ -34,9 +33,6 @@ import {
 import { runGeneralAlphaForDate } from '../jobs/createGeneralAlpha.job.js';
 import logger from '../utils/logger.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
-import { extentWeightsTFN } from '../analytics/fahp.extent.js';
-import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
-import { SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
 
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
@@ -49,7 +45,9 @@ export const testWeightedPrediction = async (req, res) => {
       weights,
       targetDate,
       timeIn,
-      fallbackEndStr = '18:00:00'
+      fallbackEndStr = '18:00:00',
+      scenario,
+      expected_range
     } = req.body || {};
 
     if (!targetDate || !timeIn) {
@@ -63,20 +61,34 @@ export const testWeightedPrediction = async (req, res) => {
     const parseTime = (value, dateStr) => {
       if (!value) return null;
       if (typeof value === 'string') {
-        // Accept "HH:mm:ss" or full ISO
         if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
           return new Date(`${dateStr}T${value}+07:00`);
         }
       }
       return new Date(value);
     };
-    const toWIBTimeString = (date) => {
+    const toWIBClock = (date) => {
       if (!date) return null;
-      const d = toJakartaTime(date);
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      const ss = String(d.getSeconds()).padStart(2, '0');
-      return `${hh}:${mm}:${ss}`;
+      const shifted = new Date(new Date(date).getTime() + 7 * 60 * 60 * 1000);
+      const hh = String(shifted.getUTCHours()).padStart(2, '0');
+      const mm = String(shifted.getUTCMinutes()).padStart(2, '0');
+      return `${hh}:${mm}`;
+    };
+    const clockToMinutes = (value) => {
+      if (typeof value !== 'string') return null;
+      const match = value.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+      if (!match) return null;
+      return Number(match[1]) * 60 + Number(match[2]);
+    };
+    const isWithinExpectedRange = (clock, range) => {
+      if (!clock || typeof range !== 'string') return false;
+      const parts = range.split('-').map((item) => item.trim());
+      if (parts.length !== 2) return false;
+      const actual = clockToMinutes(clock);
+      const start = clockToMinutes(parts[0]);
+      const end = clockToMinutes(parts[1]);
+      if (actual == null || start == null || end == null) return false;
+      return actual >= start && actual <= end;
     };
     const cand = {
       HIST: parseTime(candidates.HIST, targetDate),
@@ -85,13 +97,16 @@ export const testWeightedPrediction = async (req, res) => {
       TRANSITION: parseTime(candidates.TRANSITION, targetDate)
     };
 
-    // Determine weights: use provided or default FAHP SMART_AC weights (extent method)
-    const defaultWeights = extentWeightsTFN(SMART_AC_PAIRWISE_TFN);
-    const W = Array.isArray(weights) && weights.length === 4 ? weights : defaultWeights;
-
-    // Compute CR for diagnostics
-    const crisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
-    const { CR } = computeCR(crisp);
+    const smartAcWeights = fuzzyEngine.getSmartAcAhpWeights();
+    const defaultWeights = [
+      smartAcWeights.history,
+      smartAcWeights.checkin_pattern,
+      smartAcWeights.context,
+      smartAcWeights.transition
+    ];
+    const usesCustomWeights = Array.isArray(weights) && weights.length === 4;
+    const W = usesCustomWeights ? weights : defaultWeights;
+    const CR = usesCustomWeights ? null : smartAcWeights.consistency_ratio;
 
     const predicted = fuzzyEngine.weightedPrediction(
       cand,
@@ -100,26 +115,23 @@ export const testWeightedPrediction = async (req, res) => {
       parseTime(timeIn, targetDate),
       fallbackEndStr
     );
+    const predictedCheckout = predicted ? toWIBClock(predicted) : null;
+    const normalizedExpectedRange = typeof expected_range === 'string' ? expected_range.trim() : null;
 
     return res.status(200).json({
       success: true,
       data: {
-        input: {
-          candidates: {
-            HIST: toWIBTimeString(cand.HIST),
-            CHECKIN: toWIBTimeString(cand.CHECKIN),
-            CONTEXT: toWIBTimeString(cand.CONTEXT),
-            TRANSITION: toWIBTimeString(cand.TRANSITION)
-          },
-          weights: W,
-          targetDate,
-          timeIn: toWIBTimeString(parseTime(timeIn, targetDate)),
-          fallbackEndStr
+        scenario: scenario || 'Smart Auto Checkout Test',
+        weights: {
+          HIST: Number((W[0] ?? 0).toFixed(4)),
+          CHECKIN: Number((W[1] ?? 0).toFixed(4)),
+          CONTEXT: Number((W[2] ?? 0).toFixed(4)),
+          TRANSITION: Number((W[3] ?? 0).toFixed(4))
         },
-        result_time: predicted ? toWIBTimeString(predicted) : null,
-        CR: parseFloat(CR.toFixed(3)),
-        CR_threshold: 0.1,
-        is_consistent: CR <= 0.1
+        cr: CR == null ? null : Number(CR.toFixed(3)),
+        predicted_checkout: predictedCheckout,
+        expected_range: normalizedExpectedRange,
+        match: normalizedExpectedRange ? isWithinExpectedRange(predictedCheckout, normalizedExpectedRange) : false
       },
       message: 'Smart Auto Checkout weighted prediction'
     });
@@ -663,6 +675,7 @@ export const checkIn = async (req, res, next) => {
       time_in: wibTimeForDB, // SAVE WIB TIME
       attendance_date: todayDate,
       notes: notes,
+      work_hour: 0,
       created_at: wibTimeForDB, // SAVE WIB TIME
       updated_at: wibTimeForDB // SAVE WIB TIME
     };
@@ -863,7 +876,8 @@ export const getAttendanceStatus = async (req, res, next) => {
 
     // Cek hari libur menggunakan date-holidays
     const hd = new Holidays(holidayRegion);
-    const isHoliday = hd.isHoliday(effectiveNow);
+    const holidayInfo = hd.isHoliday(effectiveNow);
+    const isHoliday = Boolean(holidayInfo);
     const isWeekend = effectiveNow.getDay() === 0 || effectiveNow.getDay() === 6; // Sunday = 0, Saturday = 6
     const isHolidayOrWeekend = isHoliday || isWeekend;
 
@@ -913,7 +927,18 @@ export const getAttendanceStatus = async (req, res, next) => {
     }); // Tentukan active_mode dan active_location
     let active_mode, active_location;
 
-    if (todayBooking) {
+    if (currentAttendance?.location?.attendance_category) {
+      active_mode = currentAttendance.location.attendance_category.category_name;
+      active_location = {
+        location_id: currentAttendance.location.location_id,
+        latitude: parseFloat(currentAttendance.location.latitude),
+        longitude: parseFloat(currentAttendance.location.longitude),
+        radius: currentAttendance.location.radius,
+        description: currentAttendance.location.description,
+        address: currentAttendance.location.address,
+        category: currentAttendance.location.attendance_category.category_name
+      };
+    } else if (todayBooking) {
       active_mode = 'Work From Anywhere';
       active_location = {
         location_id: todayBooking.location.location_id,
@@ -1234,92 +1259,11 @@ export const deleteAttendance = async (req, res, next) => {
  */
 export const getTodayLocations = async (req, res, next) => {
   try {
-    const todayDate = getJakartaDateString();
-
-    const rows = await Attendance.findAll({
-      where: {
-        attendance_date: todayDate,
-        time_in: {
-          [Op.not]: null
-        }
-      },
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id_users', 'full_name'],
-          include: [
-            {
-              model: Photo,
-              as: 'photo_file',
-              attributes: ['photo_url'],
-              required: false
-            }
-          ]
-        },
-        {
-          model: Location,
-          as: 'location',
-          attributes: ['latitude', 'longitude'],
-          required: false
-        },
-        {
-          model: AttendanceCategory,
-          as: 'attendance_category',
-          attributes: ['category_name']
-        }
-      ],
-      order: [['time_in', 'ASC']]
-    });
-
-    const heroMapStatusByCategory = {
-      WFO: 'WFO',
-      WFH: 'WFH',
-      WFA: 'WFA',
-      'Work From Office': 'WFO',
-      'Work From Home': 'WFH',
-      'Work From Anywhere': 'WFA'
-    };
-
-    const locations = rows
-      .map((attendance) => {
-        const latitude =
-          attendance.location?.latitude != null ? parseFloat(attendance.location.latitude) : null;
-        const longitude =
-          attendance.location?.longitude != null ? parseFloat(attendance.location.longitude) : null;
-        const categoryName = attendance.attendance_category?.category_name;
-        const status = categoryName ? heroMapStatusByCategory[categoryName] ?? null : null;
-
-        if (
-          latitude == null ||
-          longitude == null ||
-          Number.isNaN(latitude) ||
-          Number.isNaN(longitude) ||
-          !status
-        ) {
-          return null;
-        }
-
-        return {
-          user_id: attendance.user?.id_users,
-          full_name: attendance.user?.full_name || 'Unknown User',
-          photo: attendance.user?.photo_file?.photo_url || null,
-          status,
-          check_in_time: formatTimeOnly(attendance.time_in),
-          latitude,
-          longitude
-        };
-      })
-      .filter(Boolean);
+    const data = await buildTodayLocationsSnapshot({ limit: req.query?.limit });
 
     return res.status(200).json({
       success: true,
-      data: {
-        date: todayDate,
-        timezone: 'Asia/Jakarta',
-        total_users: locations.length,
-        locations
-      },
+      data,
       message: 'Today locations retrieved successfully'
     });
   } catch (error) {
