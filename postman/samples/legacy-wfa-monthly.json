@@ -1,0 +1,1199 @@
+{
+  "success": true,
+  "data": {
+    "type": "wfa",
+    "period": "monthly",
+    "generated_at": "2026-06-20T10:48:44.000Z",
+    "timezone": "Asia/Jakarta",
+    "window": {
+      "start_at": "2026-05-31T17:00:00.000Z",
+      "end_at": "2026-06-20T10:48:44.000Z"
+    },
+    "entity_kind": "place",
+    "consistency": {
+      "CR": 0.058,
+      "CI": 0,
+      "lambda_max": 0,
+      "threshold": 0.1,
+      "is_consistent": true,
+      "verdict": "Matriks perbandingan konsisten (CR < 0.10)"
+    },
+    "weights": {
+      "criteria": [
+        "location_type",
+        "distance_factor",
+        "amenity_score"
+      ],
+      "values": [
+        0.8205461382121108,
+        0.17945386178788933,
+        0
+      ],
+      "method": "Chang's Extent Analysis"
+    },
+    "distribution": {
+      "Sangat Tinggi": 2,
+      "Tinggi": 1,
+      "Sedang": 93,
+      "Rendah": 0,
+      "Sangat Rendah": 0
+    },
+    "ranking": [
+      {
+        "id": 111,
+        "name": "Cafe Kopi Kenangan - Collaborative Work Space",
+        "score": 94.02,
+        "label": "Sangat Tinggi",
+        "breakdown": {
+          "location_type": "cafe",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 1
+      },
+      {
+        "id": 115,
+        "name": "Digital Library with Co-working Facilities",
+        "score": 81.71,
+        "label": "Sangat Tinggi",
+        "breakdown": {
+          "location_type": "library",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 2
+      },
+      {
+        "id": 113,
+        "name": "Hotel Business Center with Wi-Fi and Meeting Facilities",
+        "score": 73.5,
+        "label": "Tinggi",
+        "breakdown": {
+          "location_type": "hotel",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 3
+      },
+      {
+        "id": 16,
+        "name": "",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 4
+      },
+      {
+        "id": 55,
+        "name": "",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 5
+      },
+      {
+        "id": 116,
+        "name": "",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 6
+      },
+      {
+        "id": 92,
+        "name": "Aceh, Sumatra, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 7
+      },
+      {
+        "id": 64,
+        "name": "Baloi Permai, Batam, Riau Islands, Sumatra, 29463, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 8
+      },
+      {
+        "id": 103,
+        "name": "Baloi Permai, Batam, Riau Islands, Sumatra, 29463, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 9
+      },
+      {
+        "id": 105,
+        "name": "Baloi Permai, Batam, Riau Islands, Sumatra, 29463, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 10
+      },
+      {
+        "id": 75,
+        "name": "Batam, Riau Islands, Sumatra, 29437, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 11
+      },
+      {
+        "id": 20,
+        "name": "Batu Besar, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 12
+      },
+      {
+        "id": 74,
+        "name": "Batu Besar, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 13
+      },
+      {
+        "id": 59,
+        "name": "Bengkong Laut, Batam, Riau Islands, Sumatra, 29458, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 14
+      },
+      {
+        "id": 85,
+        "name": "Bogor Barat, Bogor, West Java, Java, 16117, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 15
+      },
+      {
+        "id": 94,
+        "name": "Bukit Cermin, Tanjung Pinang, Riau Islands, Sumatra, 29112, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 16
+      },
+      {
+        "id": 102,
+        "name": "Cikarang Kota, Cikarang, Kab Bekasi, West Java, Java, 17383, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 17
+      },
+      {
+        "id": 97,
+        "name": "Ciptaland, Tiban Indah, Batam, Riau Islands, Sumatra, 29423, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 18
+      },
+      {
+        "id": 66,
+        "name": "Default WFH Location",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 19
+      },
+      {
+        "id": 104,
+        "name": "Default WFH Location",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 20
+      },
+      {
+        "id": 108,
+        "name": "Default WFH Location",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 21
+      },
+      {
+        "id": 58,
+        "name": "Diruma jegu",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 22
+      },
+      {
+        "id": 174,
+        "name": "Existing booking seed for smoke gate",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 23
+      },
+      {
+        "id": 110,
+        "name": "Family Office - Remote Work Location in Palu",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 24
+      },
+      {
+        "id": 101,
+        "name": "Gang Dame, Petisah, Medan Petisah, City of Medan, North Sumatra, Sumatra, 20118, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 25
+      },
+      {
+        "id": 88,
+        "name": "Gedung Tiberias, Jalan Jenderal Sudirman, Baloi, Pangkalan Petai, Batam, Riau Islands, Sumatra, 29462, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 26
+      },
+      {
+        "id": 90,
+        "name": "Gereja Eleos, 8A, Jalan Tumapel, 09, Kel Kauman, Kec Klojen, Kota Malang, Kiduldalem, Malang, Kota Malang, East Java, Java, 65119, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 27
+      },
+      {
+        "id": 84,
+        "name": "Hang Nadim Batam International Airport, Jl.Hang Kesturi, Batu Besar, Batam, Riau Islands, Sumatra, 29466, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 28
+      },
+      {
+        "id": 51,
+        "name": "hhhh",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 29
+      },
+      {
+        "id": 13,
+        "name": "Jalan Hang Jebat, Nongsa, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 30
+      },
+      {
+        "id": 26,
+        "name": "Jalan Hang Tuah, Batu Besar, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 31
+      },
+      {
+        "id": 76,
+        "name": "Jalan Labuan Gorap, Kampung Jabi, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 32
+      },
+      {
+        "id": 80,
+        "name": "Jalan Raja Isa, Baloi Permai, Batam, Riau Islands, Sumatra, 29463, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 33
+      },
+      {
+        "id": 93,
+        "name": "Jalan Raya Buyut Kaifah, Sukajadi, Kab Bekasi, West Java, Java, 17630, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 34
+      },
+      {
+        "id": 83,
+        "name": "Jalan Sempur Kaler, Bogor Tengah, Bogor, West Java, Java, 16128, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 35
+      },
+      {
+        "id": 60,
+        "name": "Jl.Tiban 2, Tiban Mutiara View, Tiban Indah, Batam, Riau Islands, Sumatra, 29427, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 36
+      },
+      {
+        "id": 9,
+        "name": "Kabobona, Sigi Regency, Central Sulawesi, Sulawesi, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 37
+      },
+      {
+        "id": 70,
+        "name": "Kampung Belian, Batam, Riau Islands, Sumatra, 24961, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 38
+      },
+      {
+        "id": 1,
+        "name": "Kantor Pusat Infinite Learning",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 39
+      },
+      {
+        "id": 99,
+        "name": "Kebun Handil, Jambi, Sumatra, 36136, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 40
+      },
+      {
+        "id": 81,
+        "name": "Kepri Mall, Jalan Jenderal Sudirman, Baloi, Pangkalan Petai, Batam, Riau Islands, Sumatra, 29462, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 41
+      },
+      {
+        "id": 14,
+        "name": "Kutai Kartanegara, East Kalimantan, Kalimantan, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 42
+      },
+      {
+        "id": 109,
+        "name": "Maluku, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 43
+      },
+      {
+        "id": 78,
+        "name": "Mataram, Kec. Selaparang, West Nusa Tenggara, Lesser Sunda Islands, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 44
+      },
+      {
+        "id": 86,
+        "name": "Medan Perjuangan, City of Medan, North Sumatra, Sumatra, 20222, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 45
+      },
+      {
+        "id": 12,
+        "name": "Nongsa Digital Park, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 46
+      },
+      {
+        "id": 11,
+        "name": "Nongsa, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 47
+      },
+      {
+        "id": 77,
+        "name": "Nongsa, Batam, Riau Islands, Sumatra, 29467, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 48
+      },
+      {
+        "id": 18,
+        "name": "Palu, Kecamatan Palu Timur, Palu, Central Sulawesi, Sulawesi, 94112, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 49
+      },
+      {
+        "id": 79,
+        "name": "Pancoran, South Jakarta, Special capital Region of Jakarta, Java, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 50
+      },
+      {
+        "id": 69,
+        "name": "Pantai Gelam, Batam, Riau Islands, Sumatra, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 51
+      },
+      {
+        "id": 10,
+        "name": "Parkir Pintu Utara Stasiun Bekasi, Jalan Perjuangan, Proyek, Margajaya, Bekasi, West Java, Java, 17141, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 52
+      },
+      {
+        "id": 72,
+        "name": "Patam Lestari, Batam, Riau Islands, Sumatra, 29427, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 53
+      },
+      {
+        "id": 63,
+        "name": "Penajam Paser Utara, East Kalimantan, Kalimantan, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 54
+      },
+      {
+        "id": 71,
+        "name": "Perumahan Bengkong Indah Bawah, Bengkong Harapan, Batam, Riau Islands, Sumatra, 29458, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 55
+      },
+      {
+        "id": 96,
+        "name": "Perumahan Bengkong Indah Bawah, Bengkong Harapan, Batam, Riau Islands, Sumatra, 29458, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 56
+      },
+      {
+        "id": 62,
+        "name": "Perumahan Bengkong Indah Bawah, Bengkong Indah, Batam, Riau Islands, Sumatra, 29458, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 57
+      },
+      {
+        "id": 98,
+        "name": "Petisah Tengah, Petisah, Medan Petisah, City of Medan, North Sumatra, Sumatra, 20112, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 58
+      },
+      {
+        "id": 114,
+        "name": "Premium Home Office Setup",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 59
+      },
+      {
+        "id": 112,
+        "name": "Professional Coworking Space in Batam Center",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 60
+      },
+      {
+        "id": 73,
+        "name": "PT. Mitra Karya Sarana, D1 No. 2, Jalan Raja Isa, Baloi Permai, Batam, Riau Islands, Sumatra, 29444, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 61
+      },
+      {
+        "id": 89,
+        "name": "Relokasi Pasar Johar, Jalan Banjir Kanal Timur, RW 02, Sambirejo, Gayamsari, Semarang, Central Java, Java, 50162, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 62
+      },
+      {
+        "id": 87,
+        "name": "Riau, Sumatra, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 63
+      },
+      {
+        "id": 34,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 64
+      },
+      {
+        "id": 45,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 65
+      },
+      {
+        "id": 46,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 66
+      },
+      {
+        "id": 47,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 67
+      },
+      {
+        "id": 49,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 68
+      },
+      {
+        "id": 50,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 69
+      },
+      {
+        "id": 126,
+        "name": "Ruko",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 70
+      },
+      {
+        "id": 19,
+        "name": "Rumah John Doe",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 71
+      },
+      {
+        "id": 54,
+        "name": "Rumah Makan",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 72
+      },
+      {
+        "id": 53,
+        "name": "Rumah pak ustadz",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 73
+      },
+      {
+        "id": 3,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 74
+      },
+      {
+        "id": 4,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 75
+      },
+      {
+        "id": 5,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 76
+      },
+      {
+        "id": 6,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 77
+      },
+      {
+        "id": 7,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 78
+      },
+      {
+        "id": 8,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 79
+      },
+      {
+        "id": 17,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 80
+      },
+      {
+        "id": 24,
+        "name": "Rumah utama",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 81
+      },
+      {
+        "id": 100,
+        "name": "RW 01, Harapan Mulya, Kemayoran, Central Jakarta, Special capital Region of Jakarta, Java, 10530, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 82
+      },
+      {
+        "id": 61,
+        "name": "Sadai, Batam, Riau Islands, Sumatra, 11223, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 83
+      },
+      {
+        "id": 67,
+        "name": "Salak, Lumajang, East Java, Java, 67354, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 84
+      },
+      {
+        "id": 169,
+        "name": "Same-day booking rejection negative",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 85
+      },
+      {
+        "id": 95,
+        "name": "Seberang Mesjid, Central Banjarmasin, Banjarmasin, South Kalimantan, Kalimantan, 70231, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 86
+      },
+      {
+        "id": 107,
+        "name": "Sukajadi, Batam, Riau Islands, Sumatra, 29462, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 87
+      },
+      {
+        "id": 106,
+        "name": "Tadulako, South Sulawesi, Sulawesi, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 88
+      },
+      {
+        "id": 91,
+        "name": "Tanah Terban, Karang Baru, Aceh Tamiang, Aceh, Sumatra, 24476, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 89
+      },
+      {
+        "id": 68,
+        "name": "Tanggerang, Jelai Hulu, Ketapang, West Kalimantan, Kalimantan, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 90
+      },
+      {
+        "id": 65,
+        "name": "Teluk Uma, Karimun, Riau Islands, Sumatra, 29663, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 91
+      },
+      {
+        "id": 129,
+        "name": "Test WFA Location for 2025-08-24",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 92
+      },
+      {
+        "id": 128,
+        "name": "Test WFA Location for 2025-08-25",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 93
+      },
+      {
+        "id": 82,
+        "name": "Tiban Lama, Batam, Riau Islands, Sumatra, 29422, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 94
+      },
+      {
+        "id": 160,
+        "name": "Unapproved WFA negative seed",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 95
+      },
+      {
+        "id": 15,
+        "name": "Universitas Tadulako, Jalan Masjid Darul Hikmah, Boyangapa, Kecamatan Mantikulore, Palu, Central Sulawesi, Sulawesi, 94119, Indonesia",
+        "score": 44.79,
+        "label": "Sedang",
+        "breakdown": {
+          "location_type": "other",
+          "amenity_score": 50,
+          "distance": 1000
+        },
+        "rank": 96
+      }
+    ],
+    "scope": "place_catalog_static",
+    "window_applied": false
+  },
+  "message": "Fuzzy AHP analysis retrieved successfully"
+}
