@@ -1,5 +1,49 @@
 import { jest } from '@jest/globals';
 
+describe('attendance duplicate contract', () => {
+  it('matches the daily attendance truth fields regardless of order', async () => {
+    const { matchesAttendanceDailyTruthFields } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(matchesAttendanceDailyTruthFields(['attendance_date', 'user_id'])).toBe(true);
+    expect(matchesAttendanceDailyTruthFields(['user_id'])).toBe(false);
+    expect(matchesAttendanceDailyTruthFields(['booking_id', 'attendance_date'])).toBe(false);
+  });
+
+  it('builds a deterministic duplicate-safe job summary for known created count', async () => {
+    const { buildDuplicateSafeJobSummary } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(
+      buildDuplicateSafeJobSummary({
+        label: 'general alpha',
+        requested: 2,
+        skipped: 3,
+        created: 2
+      })
+    ).toBe('Duplicate-safe general alpha insert completed. Requested: 2, created: 2, skipped: 3.');
+  });
+
+  it('builds a deterministic duplicate-safe job summary when created count is unavailable', async () => {
+    const { buildDuplicateSafeJobSummary } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(
+      buildDuplicateSafeJobSummary({
+        label: 'unused WFA alpha',
+        requested: 1,
+        skipped: 0,
+        created: null
+      })
+    ).toBe(
+      'Duplicate-safe unused WFA alpha insert completed. Requested: 1, skipped: 0, created count unavailable because ignoreDuplicates was used.'
+    );
+  });
+});
+
 describe('attendance duplicate helper', () => {
   it('detects duplicate attendance unique constraint errors', async () => {
     const { isAttendanceDuplicateConstraintError } = await import(
@@ -23,7 +67,7 @@ describe('attendance duplicate helper', () => {
 
     const err = createAttendanceConflictError();
     expect(err.status).toBe(409);
-    expect(err.message).toMatch(/attendance/i);
+    expect(err.message).toBe('Anda sudah melakukan check-in hari ini.');
   });
 });
 
