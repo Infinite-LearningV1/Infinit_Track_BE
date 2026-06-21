@@ -605,19 +605,41 @@ const buildSmartAcMetrics = async (user, startAt, endAt) => {
   });
 
   const latest = attendances[0] || null;
-  const event = latest
-    ? await LocationEvent.findOne({
-        where: {
-          user_id: user.id_users
-        }
+  const targetDate = latest?.attendance_date instanceof Date ? formatWibDateOnly(latest.attendance_date) : latest?.attendance_date;
+  const expectedLocation = latest
+    ? await resolveExpectedLocationEvidence({
+        attendance: latest,
+        userId: user.id_users,
+        targetDate
       })
     : null;
+  const eventStartAt = latest?.time_in
+    ? new Date(Math.max(new Date(latest.time_in).getTime(), startAt.getTime()))
+    : startAt;
+  const transitionDayEndAt = targetDate ? parseWibDateOnly(targetDate, true) : endAt;
+  const transitionUpperBoundAt = transitionDayEndAt.getTime() < endAt.getTime() ? transitionDayEndAt : endAt;
+  const transitionEvent =
+    latest?.time_in && expectedLocation?.location_id != null
+      ? await LocationEvent.findOne({
+          where: {
+            user_id: user.id_users,
+            event_type: 'EXIT',
+            location_id: expectedLocation.location_id,
+            event_timestamp: {
+              [Op.gte]: eventStartAt,
+              [Op.lte]: transitionUpperBoundAt
+            }
+          },
+          order: [['event_timestamp', 'DESC']]
+        })
+      : null;
+  const transitionCandidate = transitionEvent?.event_timestamp ? new Date(transitionEvent.event_timestamp) : null;
 
   return {
     history_checkout_minutes: latest?.time_out ? getJakartaMinutesOfDay(latest.time_out) : 0,
     checkin_pattern_minutes: latest?.time_in ? getJakartaMinutesOfDay(latest.time_in) : 0,
-    context_checkout_minutes: event?.event_timestamp ? getJakartaMinutesOfDay(event.event_timestamp) : 0,
-    transition_checkout_minutes: latest?.notes?.includes('TRANSITION') ? 15 : 0
+    context_checkout_minutes: transitionCandidate ? getJakartaMinutesOfDay(transitionCandidate) : 0,
+    transition_checkout_minutes: transitionCandidate ? getJakartaMinutesOfDay(transitionCandidate) : 0
   };
 };
 
