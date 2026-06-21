@@ -104,6 +104,7 @@ const makeRes = () => ({
 
 describe('analysis fuzzy ahp contract', () => {
   beforeEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
     allowRole = true;
 
@@ -305,19 +306,24 @@ describe('analysis fuzzy ahp contract', () => {
     );
   });
 
-  it('returns user-ranked analysis for smart_ac mode', async () => {
+  it('returns user-ranked analysis for smart_ac mode using the scoped transition event as both context and transition evidence', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-21T10:30:00.000Z'));
+
     mockUser.findAll.mockResolvedValue([{ id_users: 9, full_name: 'Sinta' }]);
     mockAttendance.findAll.mockResolvedValue([
       {
+        user_id: 9,
+        location_id: 5,
         time_in: '2026-04-21T01:00:00.000Z',
         time_out: '2026-04-21T10:00:00.000Z',
         attendance_date: '2026-04-21',
         work_hour: 8,
-        notes: '[Smart AC] pred=17:00:00, used=17:15:00, basis=HIST,TRANSITION, dur=08:15:00'
+        notes: '',
+        attendance_category: { category_name: 'WFO' }
       }
     ]);
     mockLocationEvent.findOne.mockResolvedValue({
-      event_timestamp: '2026-04-21T09:15:00.000Z'
+      event_timestamp: '2026-04-21T10:00:00.000Z'
     });
 
     const req = {
@@ -334,11 +340,29 @@ describe('analysis fuzzy ahp contract', () => {
     const response = res.json.mock.calls[0][0];
     const [rankedUser] = response.data.ranking;
 
+    expect(mockLocationEvent.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user_id: 9,
+          event_type: 'EXIT',
+          location_id: 5,
+          event_timestamp: expect.objectContaining({
+            [Op.gte]: expect.any(Date),
+            [Op.lte]: expect.any(Date)
+          })
+        }),
+        order: [['event_timestamp', 'DESC']]
+      })
+    );
+
+    const eventQuery = mockLocationEvent.findOne.mock.calls[0][0].where.event_timestamp;
+    expect(eventQuery[Op.lte].toISOString()).toBe('2026-04-21T10:30:00.000Z');
+
     expect(rankedUser.breakdown).toEqual({
       history_checkout_minutes: 1020,
       checkin_pattern_minutes: 480,
-      context_checkout_minutes: 975,
-      transition_checkout_minutes: 15
+      context_checkout_minutes: 1020,
+      transition_checkout_minutes: 1020
     });
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -376,6 +400,8 @@ describe('analysis fuzzy ahp contract', () => {
         })
       })
     );
+
+    jest.useRealTimers();
   });
 
   it('returns 200 with empty ranking and zeroed distribution when no valid entities exist', async () => {

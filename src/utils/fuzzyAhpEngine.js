@@ -4,7 +4,7 @@ import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { minMax } from '../analytics/normalization.js';
 import { labelEqualInterval } from '../analytics/labeling.js';
 import { WFA_PAIRWISE_TFN, DISC_PAIRWISE_TFN, SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
-import { calculateDistance, toJakartaTime } from './geofence.js';
+import { calculateDistance } from './geofence.js';
 
 // Simple memoization for FAHP weights
 let cachedWfaWeights = null;
@@ -83,6 +83,29 @@ function getWfaAhpWeights() {
   };
 }
 
+const parseFiniteNumber = (value, fieldName) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  throw new Error(`${fieldName} must be numeric`);
+};
+
+const categoryTokens = (categories = []) =>
+  categories.flatMap((category) =>
+    String(category)
+      .toLowerCase()
+      .split(/[._-]/)
+      .filter(Boolean)
+  );
+
 // --- Public API: calculateWfaScore(place, ahpWeights?) ---
 async function calculateWfaScore(placeDetails, ahpWeights = null) {
   try {
@@ -91,6 +114,7 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
 
     // r_loc: map simple categories to [0,1]
     const categories = placeDetails.properties?.categories || [];
+    const tokens = categoryTokens(categories);
     const name = (placeDetails.properties?.name || '').toLowerCase();
     const isCafe =
       categories.some((c) => c.includes('cafe') || c.includes('coffee')) ||
@@ -107,9 +131,17 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
       categories.some((c) => c.includes('restaurant') || c.includes('food')) ||
       name.includes('restaurant') ||
       name.includes('restoran');
+    const isLowSuitability =
+      tokens.some((token) => ['industrial', 'warehouse', 'factory', 'manufacturing', 'storage', 'yard'].includes(token)) ||
+      name.includes('industrial') ||
+      name.includes('warehouse') ||
+      name.includes('factory') ||
+      name.includes('manufacturing') ||
+      name.includes('storage');
 
     let loc01 = 0.4;
-    if (isCafe) loc01 = 1.0;
+    if (isLowSuitability) loc01 = 0.1;
+    else if (isCafe) loc01 = 1.0;
     else if (isLibrary) loc01 = 0.85;
     else if (isHotel) loc01 = 0.75;
     else if (isRestaurant) loc01 = 0.65;
@@ -131,13 +163,14 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
     } catch (e) {
       logger.debug(`Distance fallback failed: ${e.message}`);
     }
-    if (distanceMeters == null || Number.isNaN(distanceMeters)) distanceMeters = 1000;
+    if (distanceMeters == null) distanceMeters = 1000;
+    distanceMeters = parseFiniteNumber(distanceMeters, 'distance');
     const r_dist = minMax(distanceMeters, 0, 3000, 'cost');
 
     // Amenity score: expect 0..100 if provided; fallback simple inference
     let amen = 50;
     if (placeDetails.properties?.amenity_score != null) {
-      amen = Number(placeDetails.properties.amenity_score);
+      amen = parseFiniteNumber(placeDetails.properties.amenity_score, 'amenity_score');
     }
     const r_amen = Math.max(0, Math.min(1, amen / 100));
 
@@ -164,7 +197,11 @@ async function calculateWfaScore(placeDetails, ahpWeights = null) {
     return result;
   } catch (error) {
     logger.error('Error calculating WFA score (FAHP):', error);
-    return { score: 50, label: 'Sedang', breakdown: { error: error.message } };
+    return {
+      score: 0,
+      label: labelEqualInterval(0),
+      breakdown: { error: error.message }
+    };
   }
 }
 
