@@ -20,7 +20,7 @@ Exact verification commands run:
   - No snapshots
 
 Commit SHA(s):
-- `7ad5d2b`
+- `2624d83`
 
 Self-review notes:
 - Added the closure addendum template to the design spec exactly after the Expected Output section.
