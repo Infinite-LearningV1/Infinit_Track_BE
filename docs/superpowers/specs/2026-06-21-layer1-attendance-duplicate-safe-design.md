@@ -294,3 +294,13 @@ At the end of this pass, the repo should contain:
 
 > boundary clarification + duplicate-safe consistency closure,
 > not a redesign of the attendance system.
+
+## 13. Closure Addendum Template
+
+When implementation is complete, record:
+
+- request-path duplicate outcome stayed `409 conflict`
+- job-path duplicate outcome stayed idempotent skip/no-op
+- DB unique boundary stayed `attendance(user_id, attendance_date)`
+- fresh verification commands executed successfully
+- remaining hidden domain assumptions still deferred beyond duplicate-safe consistency
