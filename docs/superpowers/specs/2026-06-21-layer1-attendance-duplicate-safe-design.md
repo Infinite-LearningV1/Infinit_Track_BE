@@ -304,3 +304,8 @@ When implementation is complete, record:
 - DB unique boundary stayed `attendance(user_id, attendance_date)`
 - fresh verification commands executed successfully
 - remaining hidden domain assumptions still deferred beyond duplicate-safe consistency
+
+Closure note:
+- INF-16: final-state boundary remains request-visible and unchanged
+- INF-17: duplicate-safe consistency stays aligned across request/job paths
+- INF-20: hidden assumptions are still deferred and remain Needs Verification
