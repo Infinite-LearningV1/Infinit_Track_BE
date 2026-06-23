@@ -3,42 +3,43 @@
 Status: DONE
 
 ## Fact
-- Added a new shared duplicate-safe contract utility at `src/utils/attendanceDuplicateContract.js`.
-- Wired `src/utils/attendanceDuplicateError.js` to consume the shared contract constants/helper.
-- Added contract-level tests in `tests/attendanceDuplicateSafety.test.js` before implementation and verified they failed for the expected missing module/export reason.
-- Verified the targeted test suite passes after implementation.
+- Added a shared duplicate-safe contract utility at `src/utils/attendanceDuplicateContract.js`.
+- Updated `src/utils/attendanceDuplicateError.js` to use the shared contract helper.
+- Added a regression test in `tests/attendanceDuplicateSafety.test.js` that covers the real duplicate-key shape using `uq_attendance_user_date`.
+- Verified the targeted duplicate-safety suite, the full test suite, and lint after the fix.
 
 ## Assumption
-- The brief’s required message constant is intended to be the default conflict message for request-driven attendance duplicate errors.
+- The request-path attendance duplicate boundary should continue to resolve to HTTP 409 when the database surfaces the `uq_attendance_user_date` unique key in a duplicate error shape.
 
 ## Mismatch / Needs Verification
-- None for this task scope.
+- The earlier report text saying the targeted contract test failed before implementation is not directly evidenced in the current run history here. Mark that pre-implementation failure state as Needs Verification rather than asserted fact.
+- The earlier report text saying no broader test suite was run is inaccurate; `npm test` was run and passed in this session.
 
 ## Risk
-- Low. This change is behavior-preserving and only centralizes duplicate-safe contract logic.
-- It touches a shared utility used by attendance duplicate handling, so future refactors should keep the contract aligned with attendance job and check-in semantics.
+- Low. The change is behavior-preserving and only broadens duplicate detection to include the named attendance uniqueness boundary.
+- The helper remains limited to attendance duplicate handling, so future contract changes should stay aligned with the attendance table index/constraint name.
 
 ## Files changed
 - `src/utils/attendanceDuplicateContract.js`
 - `src/utils/attendanceDuplicateError.js`
 - `tests/attendanceDuplicateSafety.test.js`
+- `.superpowers/sdd/task-1-report.md`
 
 ## Verification plan and result
-- Command: `npm run lint`
-- Result: PASS (ESLint completed with no errors)
-- Command: `npm test`
-- Result: PASS (70 test suites passed, 464 tests passed)
 - Command: `npm test -- --runTestsByPath tests/attendanceDuplicateSafety.test.js --runInBand`
+- Result: PASS (18 tests passed in `tests/attendanceDuplicateSafety.test.js`)
+- Command: `npm run lint`
 - Result: PASS
+- Command: `npm test`
+- Result: PASS (70 test suites passed, 465 tests passed)
 
 ## Commit SHA(s)
-- Not committed in this run.
+- Pending final commit
 
 ## Self-review notes
-- The utility exports are focused and deterministic.
-- `isAttendanceDuplicateConstraintError` now delegates field matching to the shared contract helper instead of duplicating the field-set logic.
-- The default conflict message now comes from the shared contract constant, reducing divergence risk.
+- The duplicate helper now recognizes both field-based duplicate errors and the named attendance uniqueness boundary.
+- The regression test now covers the realistic `uq_attendance_user_date` shape that was missing before.
 
 ## Concerns
-- `npm ci` required `PUPPETEER_SKIP_DOWNLOAD=1` in this environment because the Puppeteer browser download failed during install.
-- No broader test suite was run for this task; only the targeted duplicate-safety suite was verified.
+- `npm test` emits the expected Node experimental VM Modules warning in this environment.
+- There is console noise from existing tests, but no failures.

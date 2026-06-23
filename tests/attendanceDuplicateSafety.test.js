@@ -45,6 +45,24 @@ describe('attendance duplicate contract', () => {
 });
 
 describe('attendance duplicate helper', () => {
+  it('detects duplicate attendance unique constraint errors from the uq_attendance_user_date key name', async () => {
+    const { isAttendanceDuplicateConstraintError } = await import(
+      '../src/utils/attendanceDuplicateError.js'
+    );
+
+    const error = {
+      name: 'SequelizeUniqueConstraintError',
+      fields: {},
+      errors: [],
+      parent: {
+        code: 'ER_DUP_ENTRY',
+        sqlMessage: "Duplicate entry '1-2026-04-14' for key 'uq_attendance_user_date'"
+      }
+    };
+
+    expect(isAttendanceDuplicateConstraintError(error)).toBe(true);
+  });
+
   it('detects duplicate attendance unique constraint errors', async () => {
     const { isAttendanceDuplicateConstraintError } = await import(
       '../src/utils/attendanceDuplicateError.js'
