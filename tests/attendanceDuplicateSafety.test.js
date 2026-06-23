@@ -114,6 +114,7 @@ describe('checkIn duplicate-safe behavior', () => {
   it('returns 409 when check-in pre-check finds existing attendance', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
+    const duplicateMessage = 'Anda sudah melakukan check-in hari ini.';
 
     const mockedAttendance = {
       findOne: jest.fn().mockResolvedValueOnce({ id_attendance: 10 }),
@@ -192,7 +193,10 @@ describe('checkIn duplicate-safe behavior', () => {
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false })
+      expect.objectContaining({
+        success: false,
+        message: duplicateMessage
+      })
     );
     expect(rollback).toHaveBeenCalled();
   });
@@ -200,6 +204,7 @@ describe('checkIn duplicate-safe behavior', () => {
   it('returns 409 when create hits unique constraint after passing pre-check', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
+    const duplicateMessage = 'Anda sudah melakukan check-in hari ini.';
 
     const mockedAttendance = {
       findOne: jest.fn().mockResolvedValueOnce(null),
@@ -299,6 +304,12 @@ describe('checkIn duplicate-safe behavior', () => {
 
     expect(mockedAttendance.create).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        message: duplicateMessage
+      })
+    );
     expect(next).not.toHaveBeenCalled();
     expect(rollback).toHaveBeenCalled();
   });
