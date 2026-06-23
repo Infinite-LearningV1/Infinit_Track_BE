@@ -63,6 +63,36 @@ describe('attendance duplicate helper', () => {
     expect(isAttendanceDuplicateConstraintError(error)).toBe(true);
   });
 
+  it('detects duplicate attendance unique constraint errors from qualified or indexed constraint names', async () => {
+    const { isAttendanceDuplicateConstraintError } = await import(
+      '../src/utils/attendanceDuplicateError.js'
+    );
+
+    expect(
+      isAttendanceDuplicateConstraintError({
+        name: 'SequelizeUniqueConstraintError',
+        fields: {},
+        errors: [],
+        parent: {
+          code: 'ER_DUP_ENTRY',
+          sqlMessage: "Duplicate entry '1-2026-04-14' for key 'attendance.uq_attendance_user_date'"
+        }
+      })
+    ).toBe(true);
+
+    expect(
+      isAttendanceDuplicateConstraintError({
+        name: 'SequelizeUniqueConstraintError',
+        fields: {},
+        errors: [],
+        parent: {
+          code: 'ER_DUP_ENTRY',
+          index: 'uq_attendance_user_date_idx'
+        }
+      })
+    ).toBe(true);
+  });
+
   it('detects duplicate attendance unique constraint errors', async () => {
     const { isAttendanceDuplicateConstraintError } = await import(
       '../src/utils/attendanceDuplicateError.js'
@@ -85,7 +115,7 @@ describe('attendance duplicate helper', () => {
 
     const err = createAttendanceConflictError();
     expect(err.status).toBe(409);
-    expect(err.message).toBe('Anda sudah melakukan check-in hari ini.');
+    expect(err.message).toBe('Terjadi konflik data kehadiran.');
   });
 });
 

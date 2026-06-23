@@ -1,5 +1,4 @@
 import {
-  ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE,
   matchesAttendanceDailyTruthFields,
   matchesAttendanceDailyTruthConstraintName
 } from './attendanceDuplicateContract.js';
@@ -38,8 +37,10 @@ export const isAttendanceDuplicateConstraintError = (error) => {
   return matchesAttendanceDailyTruthConstraintName(extractConstraintName(error));
 };
 
+const DEFAULT_ATTENDANCE_CONFLICT_MESSAGE = 'Terjadi konflik data kehadiran.';
+
 export const createAttendanceConflictError = (
-  message = ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
+  message = DEFAULT_ATTENDANCE_CONFLICT_MESSAGE
 ) => {
   const error = new Error(message);
   error.status = 409;
