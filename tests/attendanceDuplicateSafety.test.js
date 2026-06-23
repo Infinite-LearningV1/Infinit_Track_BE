@@ -122,12 +122,31 @@ describe('checkIn duplicate-safe behavior', () => {
   it('returns 409 when check-in pre-check finds existing attendance', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
-    const duplicateMessage = 'Anda sudah melakukan check-in hari ini.';
+    const duplicateMessage = 'SENTINEL_PRECHECK_DUPLICATE_MESSAGE';
 
     const mockedAttendance = {
       findOne: jest.fn().mockResolvedValueOnce({ id_attendance: 10 }),
       create: jest.fn()
     };
+
+    jest.unstable_mockModule('../src/utils/attendanceDuplicateContract.js', () => ({
+      ATTENDANCE_DAILY_TRUTH_FIELDS: ['user_id', 'attendance_date'],
+      ATTENDANCE_DAILY_TRUTH_CONSTRAINT_NAMES: ['uq_attendance_user_date'],
+      ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE: duplicateMessage,
+      matchesAttendanceDailyTruthFields: (fieldNames = []) => {
+        const availableFields = new Set(fieldNames.filter(Boolean));
+        return ['user_id', 'attendance_date'].every((field) => availableFields.has(field));
+      },
+      matchesAttendanceDailyTruthConstraintName: (constraintName = '') =>
+        ['uq_attendance_user_date'].includes(constraintName),
+      buildDuplicateSafeJobSummary: ({ label, requested, skipped, created = null }) => {
+        if (typeof created === 'number') {
+          return `Duplicate-safe ${label} insert completed. Requested: ${requested}, created: ${created}, skipped: ${skipped}.`;
+        }
+
+        return `Duplicate-safe ${label} insert completed. Requested: ${requested}, skipped: ${skipped}, created count unavailable because ignoreDuplicates was used.`;
+      }
+    }));
 
     jest.unstable_mockModule('../src/config/database.js', () => ({
       default: { transaction: jest.fn().mockResolvedValue({ rollback, commit }) }
@@ -212,7 +231,7 @@ describe('checkIn duplicate-safe behavior', () => {
   it('returns 409 when create hits unique constraint after passing pre-check', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
-    const duplicateMessage = 'Anda sudah melakukan check-in hari ini.';
+    const duplicateMessage = 'SENTINEL_DB_RACE_DUPLICATE_MESSAGE';
 
     const mockedAttendance = {
       findOne: jest.fn().mockResolvedValueOnce(null),
@@ -223,6 +242,25 @@ describe('checkIn duplicate-safe behavior', () => {
         parent: { code: 'ER_DUP_ENTRY' }
       })
     };
+
+    jest.unstable_mockModule('../src/utils/attendanceDuplicateContract.js', () => ({
+      ATTENDANCE_DAILY_TRUTH_FIELDS: ['user_id', 'attendance_date'],
+      ATTENDANCE_DAILY_TRUTH_CONSTRAINT_NAMES: ['uq_attendance_user_date'],
+      ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE: duplicateMessage,
+      matchesAttendanceDailyTruthFields: (fieldNames = []) => {
+        const availableFields = new Set(fieldNames.filter(Boolean));
+        return ['user_id', 'attendance_date'].every((field) => availableFields.has(field));
+      },
+      matchesAttendanceDailyTruthConstraintName: (constraintName = '') =>
+        ['uq_attendance_user_date'].includes(constraintName),
+      buildDuplicateSafeJobSummary: ({ label, requested, skipped, created = null }) => {
+        if (typeof created === 'number') {
+          return `Duplicate-safe ${label} insert completed. Requested: ${requested}, created: ${created}, skipped: ${skipped}.`;
+        }
+
+        return `Duplicate-safe ${label} insert completed. Requested: ${requested}, skipped: ${skipped}, created count unavailable because ignoreDuplicates was used.`;
+      }
+    }));
 
     jest.unstable_mockModule('../src/config/database.js', () => ({
       default: { transaction: jest.fn().mockResolvedValue({ rollback, commit }) }
