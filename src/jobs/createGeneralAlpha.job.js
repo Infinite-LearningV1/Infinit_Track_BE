@@ -6,6 +6,7 @@ import sequelize from '../config/database.js';
 import { User, Role, Attendance, Booking } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout } from '../utils/jobHelper.js';
+import { buildDuplicateSafeJobSummary } from '../utils/attendanceDuplicateContract.js';
 
 const buildGeneralAlphaRows = (userIds, targetDate, stampedDateTime, notes) => {
   return userIds.map((userId) => ({
@@ -186,7 +187,12 @@ const createGeneralAlphaRecords = async () => {
     });
 
     logger.info(
-      `Create general alpha records job completed. Alpha records created: ${created}, insert rows requested: ${insertRowsRequested}, skipped: ${skipped + wfaSkipped}`
+      buildDuplicateSafeJobSummary({
+        label: 'general alpha',
+        requested: insertRowsRequested,
+        created,
+        skipped: skipped + wfaSkipped
+      })
     );
   } catch (error) {
     logger.error('Error in create general alpha records job:', error.message, {
@@ -315,7 +321,12 @@ export const runGeneralAlphaForDate = async (targetDate) => {
     const skipped = result.skipped + wfaSkipped;
 
     logger.info(
-      `GENERAL alpha override completed for ${targetDate}. created=${result.created}, insertRowsRequested=${result.insertRowsRequested}, skipped=${skipped}`
+      buildDuplicateSafeJobSummary({
+        label: 'general alpha',
+        requested: result.insertRowsRequested,
+        created: result.created,
+        skipped
+      })
     );
     return { created: result.created, skipped, insertRowsRequested: result.insertRowsRequested };
   } catch (error) {

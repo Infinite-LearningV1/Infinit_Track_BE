@@ -928,7 +928,7 @@ describe('job duplicate-safe behavior', () => {
       expect.stringContaining('Alpha records created')
     );
     expect(mockedLogger.info).toHaveBeenCalledWith(
-      'Task A completed. Alpha insert rows requested: 1, Pre-insert skipped: 0. Actual created count unavailable with ignoreDuplicates.'
+      'Duplicate-safe unused WFA alpha insert completed. Requested: 1, skipped: 0, created count unavailable because ignoreDuplicates was used.'
     );
     expect(mockedLogger.error).not.toHaveBeenCalled();
   });
