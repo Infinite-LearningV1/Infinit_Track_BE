@@ -60,6 +60,10 @@ describe('createGeneralAlpha job idempotency and batching', () => {
     expect(result).toEqual({ created: 1, skipped: 2, insertRowsRequested: 1 });
     expect(mockAttendanceFindAll).toHaveBeenCalledTimes(1);
     expect(mockAttendanceBulkCreate).toHaveBeenCalledTimes(1);
+    const logger = (await import('../src/utils/logger.js')).default;
+    expect(logger.info).toHaveBeenCalledWith(
+      'Duplicate-safe general alpha insert completed. Requested: 1, created: 1, skipped: 2.'
+    );
     expect(mockAttendanceBulkCreate).toHaveBeenCalledWith(
       [expect.objectContaining({ user_id: 2, attendance_date: '2026-05-29', status_id: 3 })],
       expect.objectContaining({ ignoreDuplicates: true, transaction: 'tx' })

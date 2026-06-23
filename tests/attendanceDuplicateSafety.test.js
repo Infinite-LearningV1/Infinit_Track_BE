@@ -1,6 +1,98 @@
 import { jest } from '@jest/globals';
 
+describe('attendance duplicate contract', () => {
+  it('matches the daily attendance truth fields regardless of order', async () => {
+    const { matchesAttendanceDailyTruthFields } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(matchesAttendanceDailyTruthFields(['attendance_date', 'user_id'])).toBe(true);
+    expect(matchesAttendanceDailyTruthFields(['user_id'])).toBe(false);
+    expect(matchesAttendanceDailyTruthFields(['booking_id', 'attendance_date'])).toBe(false);
+  });
+
+  it('builds a deterministic duplicate-safe job summary for known created count', async () => {
+    const { buildDuplicateSafeJobSummary } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(
+      buildDuplicateSafeJobSummary({
+        label: 'general alpha',
+        requested: 2,
+        skipped: 3,
+        created: 2
+      })
+    ).toBe('Duplicate-safe general alpha insert completed. Requested: 2, created: 2, skipped: 3.');
+  });
+
+  it('builds a deterministic duplicate-safe job summary when created count is unavailable', async () => {
+    const { buildDuplicateSafeJobSummary } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(
+      buildDuplicateSafeJobSummary({
+        label: 'unused WFA alpha',
+        requested: 1,
+        skipped: 0,
+        created: null
+      })
+    ).toBe(
+      'Duplicate-safe unused WFA alpha insert completed. Requested: 1, skipped: 0, created count unavailable because ignoreDuplicates was used.'
+    );
+  });
+});
+
 describe('attendance duplicate helper', () => {
+  it('detects duplicate attendance unique constraint errors from the uq_attendance_user_date key name', async () => {
+    const { isAttendanceDuplicateConstraintError } = await import(
+      '../src/utils/attendanceDuplicateError.js'
+    );
+
+    const error = {
+      name: 'SequelizeUniqueConstraintError',
+      fields: {},
+      errors: [],
+      parent: {
+        code: 'ER_DUP_ENTRY',
+        sqlMessage: "Duplicate entry '1-2026-04-14' for key 'uq_attendance_user_date'"
+      }
+    };
+
+    expect(isAttendanceDuplicateConstraintError(error)).toBe(true);
+  });
+
+  it('detects duplicate attendance unique constraint errors from qualified or indexed constraint names', async () => {
+    const { isAttendanceDuplicateConstraintError } = await import(
+      '../src/utils/attendanceDuplicateError.js'
+    );
+
+    expect(
+      isAttendanceDuplicateConstraintError({
+        name: 'SequelizeUniqueConstraintError',
+        fields: {},
+        errors: [],
+        parent: {
+          code: 'ER_DUP_ENTRY',
+          sqlMessage: "Duplicate entry '1-2026-04-14' for key 'attendance.uq_attendance_user_date'"
+        }
+      })
+    ).toBe(true);
+
+    expect(
+      isAttendanceDuplicateConstraintError({
+        name: 'SequelizeUniqueConstraintError',
+        fields: {},
+        errors: [],
+        parent: {
+          code: 'ER_DUP_ENTRY',
+          index: 'uq_attendance_user_date_idx'
+        }
+      })
+    ).toBe(true);
+  });
+
   it('detects duplicate attendance unique constraint errors', async () => {
     const { isAttendanceDuplicateConstraintError } = await import(
       '../src/utils/attendanceDuplicateError.js'
@@ -23,7 +115,7 @@ describe('attendance duplicate helper', () => {
 
     const err = createAttendanceConflictError();
     expect(err.status).toBe(409);
-    expect(err.message).toMatch(/attendance/i);
+    expect(err.message).toBe('Terjadi konflik data kehadiran.');
   });
 });
 
@@ -49,14 +141,42 @@ describe('checkIn duplicate-safe behavior', () => {
     jest.useRealTimers();
   });
 
+  it('uses the same duplicate-safe conflict message for pre-check and DB-race duplicates', async () => {
+    const { ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE).toBe('Anda sudah melakukan check-in hari ini.');
+  });
+
   it('returns 409 when check-in pre-check finds existing attendance', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
+    const duplicateMessage = 'SENTINEL_PRECHECK_DUPLICATE_MESSAGE';
 
     const mockedAttendance = {
       findOne: jest.fn().mockResolvedValueOnce({ id_attendance: 10 }),
       create: jest.fn()
     };
+
+    jest.unstable_mockModule('../src/utils/attendanceDuplicateContract.js', () => ({
+      ATTENDANCE_DAILY_TRUTH_FIELDS: ['user_id', 'attendance_date'],
+      ATTENDANCE_DAILY_TRUTH_CONSTRAINT_NAMES: ['uq_attendance_user_date'],
+      ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE: duplicateMessage,
+      matchesAttendanceDailyTruthFields: (fieldNames = []) => {
+        const availableFields = new Set(fieldNames.filter(Boolean));
+        return ['user_id', 'attendance_date'].every((field) => availableFields.has(field));
+      },
+      matchesAttendanceDailyTruthConstraintName: (constraintName = '') =>
+        ['uq_attendance_user_date'].includes(constraintName),
+      buildDuplicateSafeJobSummary: ({ label, requested, skipped, created = null }) => {
+        if (typeof created === 'number') {
+          return `Duplicate-safe ${label} insert completed. Requested: ${requested}, created: ${created}, skipped: ${skipped}.`;
+        }
+
+        return `Duplicate-safe ${label} insert completed. Requested: ${requested}, skipped: ${skipped}, created count unavailable because ignoreDuplicates was used.`;
+      }
+    }));
 
     jest.unstable_mockModule('../src/config/database.js', () => ({
       default: { transaction: jest.fn().mockResolvedValue({ rollback, commit }) }
@@ -130,7 +250,10 @@ describe('checkIn duplicate-safe behavior', () => {
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false })
+      expect.objectContaining({
+        success: false,
+        message: duplicateMessage
+      })
     );
     expect(rollback).toHaveBeenCalled();
   });
@@ -138,6 +261,7 @@ describe('checkIn duplicate-safe behavior', () => {
   it('returns 409 when create hits unique constraint after passing pre-check', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
+    const duplicateMessage = 'SENTINEL_DB_RACE_DUPLICATE_MESSAGE';
 
     const mockedAttendance = {
       findOne: jest.fn().mockResolvedValueOnce(null),
@@ -148,6 +272,25 @@ describe('checkIn duplicate-safe behavior', () => {
         parent: { code: 'ER_DUP_ENTRY' }
       })
     };
+
+    jest.unstable_mockModule('../src/utils/attendanceDuplicateContract.js', () => ({
+      ATTENDANCE_DAILY_TRUTH_FIELDS: ['user_id', 'attendance_date'],
+      ATTENDANCE_DAILY_TRUTH_CONSTRAINT_NAMES: ['uq_attendance_user_date'],
+      ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE: duplicateMessage,
+      matchesAttendanceDailyTruthFields: (fieldNames = []) => {
+        const availableFields = new Set(fieldNames.filter(Boolean));
+        return ['user_id', 'attendance_date'].every((field) => availableFields.has(field));
+      },
+      matchesAttendanceDailyTruthConstraintName: (constraintName = '') =>
+        ['uq_attendance_user_date'].includes(constraintName),
+      buildDuplicateSafeJobSummary: ({ label, requested, skipped, created = null }) => {
+        if (typeof created === 'number') {
+          return `Duplicate-safe ${label} insert completed. Requested: ${requested}, created: ${created}, skipped: ${skipped}.`;
+        }
+
+        return `Duplicate-safe ${label} insert completed. Requested: ${requested}, skipped: ${skipped}, created count unavailable because ignoreDuplicates was used.`;
+      }
+    }));
 
     jest.unstable_mockModule('../src/config/database.js', () => ({
       default: { transaction: jest.fn().mockResolvedValue({ rollback, commit }) }
@@ -237,6 +380,12 @@ describe('checkIn duplicate-safe behavior', () => {
 
     expect(mockedAttendance.create).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        message: duplicateMessage
+      })
+    );
     expect(next).not.toHaveBeenCalled();
     expect(rollback).toHaveBeenCalled();
   });
@@ -809,7 +958,7 @@ describe('job duplicate-safe behavior', () => {
       expect.stringContaining('Alpha records created')
     );
     expect(mockedLogger.info).toHaveBeenCalledWith(
-      'Task A completed. Alpha insert rows requested: 1, Pre-insert skipped: 0. Actual created count unavailable with ignoreDuplicates.'
+      'Duplicate-safe unused WFA alpha insert completed. Requested: 1, skipped: 0, created count unavailable because ignoreDuplicates was used.'
     );
     expect(mockedLogger.error).not.toHaveBeenCalled();
   });

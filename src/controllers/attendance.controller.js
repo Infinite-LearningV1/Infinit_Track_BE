@@ -23,6 +23,9 @@ import {
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
 import { applySearch } from '../utils/searchHelper.js';
 import { getOperationalSettings } from '../utils/settings.js';
+import {
+  ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
+} from '../utils/attendanceDuplicateContract.js';
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
@@ -420,7 +423,7 @@ export const checkIn = async (req, res, next) => {
       await rollbackTransaction();
       return res.status(409).json({
         success: false,
-        message: 'Anda sudah melakukan check-in hari ini.'
+        message: ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
       });
     } // 2. Get Settings from Database
     const settings = await Settings.findAll({
@@ -707,7 +710,7 @@ export const checkIn = async (req, res, next) => {
         await rollbackTransaction();
         return res.status(409).json({
           success: false,
-          message: 'Anda sudah melakukan check-in hari ini.'
+          message: ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
         });
       }
 
