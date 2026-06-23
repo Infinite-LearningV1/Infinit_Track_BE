@@ -398,15 +398,6 @@ git add src/jobs/createGeneralAlpha.job.js src/jobs/resolveWfaBookings.job.js te
 git commit -m "refactor: align duplicate-safe job summaries"
 ```
 
-## Verification Evidence
-
-- `npm run lint` → PASS
-- `npm test` → PASS
-- `tests/attendanceDuplicateSafety.test.js` duplicate request conflict + duplicate job skip semantics remain green
-- `tests/createGeneralAlphaJobIdempotency.test.js` duplicate-safe general alpha summaries remain green
-- `tests/resolveWfaBookingsJobIdempotency.test.js` duplicate-safe unused WFA summaries remain green
-- Closure note: INF-16 / INF-17 / INF-20 mapping preserved, with remaining hidden assumptions still marked Needs Verification
-
 ### Task 4: Run full verification and write the closure note
 
 **Files:**
