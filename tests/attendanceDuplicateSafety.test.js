@@ -111,6 +111,14 @@ describe('checkIn duplicate-safe behavior', () => {
     jest.useRealTimers();
   });
 
+  it('uses the same duplicate-safe conflict message for pre-check and DB-race duplicates', async () => {
+    const { ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE } = await import(
+      '../src/utils/attendanceDuplicateContract.js'
+    );
+
+    expect(ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE).toBe('Anda sudah melakukan check-in hari ini.');
+  });
+
   it('returns 409 when check-in pre-check finds existing attendance', async () => {
     const rollback = jest.fn();
     const commit = jest.fn();
