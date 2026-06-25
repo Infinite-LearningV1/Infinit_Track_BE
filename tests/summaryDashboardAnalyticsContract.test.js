@@ -57,10 +57,9 @@ const responseShell = {
       executive_kpis: { from: '2026-04-01', to: '2026-04-15' },
       historical_trend: { from: '2026-04-01', to: '2026-04-15' },
       mode_mix: { from: '2026-04-01', to: '2026-04-15' },
-      fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-15' },
-      geofence_evidence_context: { from: '2026-04-01', to: '2026-04-15' }
+      fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-15' }
     },
-    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+    sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
   },
   executive_kpis: {
     attendance_rate: 0,
@@ -92,20 +91,6 @@ const responseShell = {
       wfo: 0,
       wfh: 0,
       wfa: 0
-    }
-  },
-  geofence_evidence_context: {
-    status: 'needs_data',
-    needs_data: true,
-    reason: 'NO_GEOFENCE_EVENTS',
-    authority: 'context_only',
-    final_attendance_authority: 'attendance_records',
-    window: { from: '2026-04-01', to: '2026-04-15' },
-    raw_counts: {
-      total_events: 0,
-      enter_events: 0,
-      exit_events: 0,
-      unique_users: 0
     }
   },
   fuzzy_ahp_snapshot: {
@@ -190,10 +175,9 @@ describe('summary dashboard analytics controller contract', () => {
           executive_kpis: { from: '2026-04-04', to: '2026-05-03' },
           historical_trend: { from: '2026-04-04', to: '2026-05-03' },
           mode_mix: { from: '2026-04-04', to: '2026-05-03' },
-          fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' },
-          geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' }
+          fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' }
         },
-        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+        sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
       }
     });
 

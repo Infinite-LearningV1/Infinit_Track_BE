@@ -1325,6 +1325,134 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/attendance/geofence-evidence:
+    get:
+      tags:
+        - Attendance
+      summary: Get geofence evidence snapshot
+      description: Retrieve context-only geofence evidence for a historical attendance window. This endpoint does not own live map snapshots and is not the final attendance authority; attendance records remain canonical.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, range, 30d, current_month, custom]
+            default: 30d
+          description: Historical evidence window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+            example: '2026-04-01'
+          description: Custom range start date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+            example: '2026-04-30'
+          description: Custom range end date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
+      responses:
+        '200':
+          description: Geofence evidence retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  requested_window:
+                    type: object
+                    properties:
+                      period:
+                        type: string
+                        example: custom
+                      from:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-01'
+                      to:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-30'
+                  executed_window:
+                    type: object
+                    properties:
+                      from:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-01'
+                      to:
+                        type: string
+                        format: date
+                        nullable: true
+                        example: '2026-04-30'
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [available, needs_data]
+                        example: available
+                      needs_data:
+                        type: boolean
+                        example: false
+                      reason:
+                        type: string
+                        nullable: true
+                        example: null
+                      authority:
+                        type: string
+                        example: context_only
+                      final_attendance_authority:
+                        type: string
+                        example: attendance_records
+                      window:
+                        type: object
+                        properties:
+                          from:
+                            type: string
+                            format: date
+                            nullable: true
+                            example: '2026-04-01'
+                          to:
+                            type: string
+                            format: date
+                            nullable: true
+                            example: '2026-04-30'
+                      raw_counts:
+                        type: object
+                        properties:
+                          total_events:
+                            type: integer
+                            example: 3
+                          enter_events:
+                            type: integer
+                            example: 1
+                          exit_events:
+                            type: integer
+                            example: 2
+                          unique_users:
+                            type: integer
+                            example: 2
+                  message:
+                    type: string
+                    example: 'Geofence evidence retrieved successfully'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/attendance:
     get:
       tags:
@@ -2465,7 +2593,7 @@ paths:
       tags:
         - Reports & Analytics
       summary: Get dashboard analytics aggregation
-      description: Retrieve dashboard-ready cockpit aggregates for attendance KPIs, historical trend, mode mix, geofence evidence context, and lightweight Fuzzy AHP snapshots for Admin or Management users. This endpoint does not own today/live map snapshots; use `/api/attendance/today-locations` for today locations.
+      description: Retrieve dashboard-ready cockpit historical aggregates for attendance KPIs, historical trend, mode mix, and lightweight Fuzzy AHP snapshots for Admin or Management users. This endpoint does not own geofence evidence or today/live map snapshots; use `/api/attendance/geofence-evidence` for geofence context and `/api/attendance/today-locations` for today locations.
       security:
         - bearerAuth: []
       parameters:
@@ -2578,7 +2706,7 @@ paths:
                                 example: '2026-04-30'
                           section_windows:
                             type: object
-                            description: Window efektif yang benar-benar dipakai untuk agregasi historis, geofence context, dan snapshot fuzzy AHP.
+                            description: Window efektif yang benar-benar dipakai untuk agregasi historis dan snapshot fuzzy AHP.
                             properties:
                               executive_kpis:
                                 type: object
@@ -2632,24 +2760,11 @@ paths:
                                     format: date
                                     nullable: true
                                     example: '2026-04-30'
-                              geofence_evidence_context:
-                                type: object
-                                properties:
-                                  from:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-01'
-                                  to:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-30'
                           sources:
                             type: array
                             items:
                               type: string
-                            example: [Attendance, AttendanceCategory, AttendanceStatus, LocationEvent]
+                            example: [Attendance, AttendanceCategory, AttendanceStatus]
                       executive_kpis:
                         type: object
                         properties:
@@ -2762,55 +2877,6 @@ paths:
                                 type: number
                                 format: float
                                 example: 33.33
-                      geofence_evidence_context:
-                        type: object
-                        description: Context-only geofence evidence for the selected window. Final attendance authority remains attendance records.
-                        properties:
-                          status:
-                            type: string
-                            enum: [available, needs_data]
-                            example: available
-                          needs_data:
-                            type: boolean
-                            example: false
-                          reason:
-                            type: string
-                            nullable: true
-                            example: null
-                          authority:
-                            type: string
-                            example: context_only
-                          final_attendance_authority:
-                            type: string
-                            example: attendance_records
-                          window:
-                            type: object
-                            properties:
-                              from:
-                                type: string
-                                format: date
-                                nullable: true
-                                example: '2026-04-01'
-                              to:
-                                type: string
-                                format: date
-                                nullable: true
-                                example: '2026-04-30'
-                          raw_counts:
-                            type: object
-                            properties:
-                              total_events:
-                                type: integer
-                                example: 3
-                              enter_events:
-                                type: integer
-                                example: 1
-                              exit_events:
-                                type: integer
-                                example: 2
-                              unique_users:
-                                type: integer
-                                example: 2
                       fuzzy_ahp_snapshot:
                         type: object
                         properties:

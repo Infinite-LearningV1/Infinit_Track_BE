@@ -280,15 +280,14 @@ describe('client-critical OpenAPI contract', () => {
       sources: {
         type: 'array',
         items: { type: 'string' },
-        example: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+        example: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
       }
     });
     expect(sectionWindows).toMatchObject({
       executive_kpis: { type: 'object' },
       historical_trend: { type: 'object' },
       mode_mix: { type: 'object' },
-      fuzzy_ahp_snapshot: { type: 'object' },
-      geofence_evidence_context: { type: 'object' }
+      fuzzy_ahp_snapshot: { type: 'object' }
     });
     expect(sectionWindows).not.toHaveProperty('map_context');
     expect(sectionWindows).not.toHaveProperty('today_locations');
@@ -316,30 +315,7 @@ describe('client-critical OpenAPI contract', () => {
       message: { type: 'string' },
       severity: { type: 'string' }
     });
-    expect(dataSchema.properties.geofence_evidence_context.properties).toMatchObject({
-      status: {
-        type: 'string',
-        enum: ['available', 'needs_data'],
-        example: 'available'
-      },
-      needs_data: {
-        type: 'boolean',
-        example: false
-      },
-      reason: {
-        type: 'string',
-        nullable: true,
-        example: null
-      },
-      authority: {
-        type: 'string',
-        example: 'context_only'
-      },
-      final_attendance_authority: {
-        type: 'string',
-        example: 'attendance_records'
-      }
-    });
+    expect(dataSchema.properties).not.toHaveProperty('geofence_evidence_context');
     expect(dataSchema.properties).not.toHaveProperty('today_locations');
     expect(dataSchema.properties).not.toHaveProperty('map_context');
     expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.status).toMatchObject({
@@ -350,6 +326,48 @@ describe('client-critical OpenAPI contract', () => {
       type: 'string',
       format: 'date-time',
       example: '2026-05-03T02:30:00.000Z'
+    });
+  });
+
+  test('documents attendance geofence evidence as a dedicated public contract', () => {
+    const geofenceOperation = openapi.paths['/api/attendance/geofence-evidence'].get;
+    const geofenceSchema = schemaAt(geofenceOperation);
+    const periodParameter = geofenceOperation.parameters.find((parameter) => parameter.name === 'period');
+    const fromParameter = geofenceOperation.parameters.find((parameter) => parameter.name === 'from');
+    const toParameter = geofenceOperation.parameters.find((parameter) => parameter.name === 'to');
+
+    expect(periodParameter.schema).toMatchObject({
+      type: 'string',
+      default: '30d'
+    });
+    expect(fromParameter.description).toContain('period=range');
+    expect(fromParameter.description).toContain('deprecated period=custom');
+    expect(toParameter.description).toContain('period=range');
+    expect(toParameter.description).toContain('deprecated period=custom');
+    expect(geofenceSchema.properties).toMatchObject({
+      success: { type: 'boolean', example: true },
+      requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
+      data: { type: 'object' },
+      message: {
+        type: 'string',
+        example: 'Geofence evidence retrieved successfully'
+      }
+    });
+    expect(geofenceSchema.properties.data.properties).toMatchObject({
+      status: { type: 'string', example: 'available' },
+      needs_data: { type: 'boolean', example: false },
+      reason: { type: 'string', nullable: true, example: null },
+      authority: { type: 'string', example: 'context_only' },
+      final_attendance_authority: { type: 'string', example: 'attendance_records' },
+      window: { type: 'object' },
+      raw_counts: { type: 'object' }
+    });
+    expect(geofenceSchema.properties.data.properties.raw_counts.properties).toMatchObject({
+      total_events: { type: 'integer', example: 3 },
+      enter_events: { type: 'integer', example: 1 },
+      exit_events: { type: 'integer', example: 2 },
+      unique_users: { type: 'integer', example: 2 }
     });
   });
 

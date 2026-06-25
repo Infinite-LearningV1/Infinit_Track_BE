@@ -28,6 +28,7 @@ import {
 } from '../utils/attendanceDuplicateContract.js';
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
+import { buildGeofenceEvidenceSnapshot } from '../utils/geofenceEvidenceSnapshot.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
@@ -1268,6 +1269,23 @@ export const getTodayLocations = async (req, res, next) => {
       success: true,
       data,
       message: 'Today locations retrieved successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getGeofenceEvidence = async (req, res, next) => {
+  try {
+    const { period = '30d', from = null, to = null } = req.query;
+    const snapshot = await buildGeofenceEvidenceSnapshot({ period, from, to });
+
+    return res.status(200).json({
+      success: true,
+      requested_window: snapshot.requested_window,
+      executed_window: snapshot.executed_window,
+      data: snapshot.data,
+      message: 'Geofence evidence retrieved successfully'
     });
   } catch (error) {
     next(error);
