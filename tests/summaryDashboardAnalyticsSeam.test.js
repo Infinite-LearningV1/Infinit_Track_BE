@@ -132,12 +132,6 @@ describe('summary dashboard analytics seam', () => {
       }
     ]);
 
-    mockLocationEventFindAll.mockResolvedValueOnce([
-      { user_id: 7, event_type: 'ENTER' },
-      { user_id: 8, event_type: 'EXIT' },
-      { user_id: 8, event_type: 'EXIT' }
-    ]);
-
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
       consistency: { CR: 0.021, threshold: 0.1, is_consistent: true },
       weights: {
@@ -191,16 +185,6 @@ describe('summary dashboard analytics seam', () => {
         }
       })
     );
-    expect(mockLocationEventFindAll).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          event_timestamp: {
-            [Op.gte]: new Date('2026-03-31T17:00:00.000Z'),
-            [Op.lt]: new Date('2026-04-03T17:00:00.000Z')
-          }
-        }
-      })
-    );
     expect(res.body).toMatchObject({
       success: true,
       requested_window: {
@@ -229,8 +213,7 @@ describe('summary dashboard analytics seam', () => {
             executive_kpis: { from: '2026-04-01', to: '2026-04-03' },
             historical_trend: { from: '2026-04-01', to: '2026-04-03' },
             mode_mix: { from: '2026-04-01', to: '2026-04-03' },
-            fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' },
-            geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' }
+            fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' }
           }
         },
         executive_kpis: {
@@ -260,20 +243,6 @@ describe('summary dashboard analytics seam', () => {
             wfo: 33.33,
             wfh: 33.33,
             wfa: 33.33
-          }
-        },
-        geofence_evidence_context: {
-          status: 'available',
-          needs_data: false,
-          reason: null,
-          authority: 'context_only',
-          final_attendance_authority: 'attendance_records',
-          window: { from: '2026-04-01', to: '2026-04-03' },
-          raw_counts: {
-            total_events: 3,
-            enter_events: 1,
-            exit_events: 2,
-            unique_users: 2
           }
         },
         fuzzy_ahp_snapshot: {
@@ -313,6 +282,7 @@ describe('summary dashboard analytics seam', () => {
       }
     });
     expect(res.body.data).not.toHaveProperty('today_locations');
+    expect(res.body.data).not.toHaveProperty('geofence_evidence_context');
     expect(res.body.data).not.toHaveProperty('map_context');
     expect(res.body.data.historical_trend.points).toEqual([
       {

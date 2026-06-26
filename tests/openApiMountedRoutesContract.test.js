@@ -32,7 +32,11 @@ describe('OpenAPI mounted route inventory contract', () => {
 
   test('documents mounted analysis and operational settings endpoints', () => {
     expect(publicPaths).toEqual(
-      expect.arrayContaining(['/api/analysis/fuzzy-ahp', '/api/settings/operational'])
+      expect.arrayContaining([
+        '/api/analysis/fuzzy-ahp',
+        '/api/analysis/fuzzy-ahp/dashboard',
+        '/api/settings/operational'
+      ])
     );
   });
 

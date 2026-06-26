@@ -280,15 +280,14 @@ describe('client-critical OpenAPI contract', () => {
       sources: {
         type: 'array',
         items: { type: 'string' },
-        example: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+        example: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
       }
     });
     expect(sectionWindows).toMatchObject({
       executive_kpis: { type: 'object' },
       historical_trend: { type: 'object' },
       mode_mix: { type: 'object' },
-      fuzzy_ahp_snapshot: { type: 'object' },
-      geofence_evidence_context: { type: 'object' }
+      fuzzy_ahp_snapshot: { type: 'object' }
     });
     expect(sectionWindows).not.toHaveProperty('map_context');
     expect(sectionWindows).not.toHaveProperty('today_locations');
@@ -316,30 +315,7 @@ describe('client-critical OpenAPI contract', () => {
       message: { type: 'string' },
       severity: { type: 'string' }
     });
-    expect(dataSchema.properties.geofence_evidence_context.properties).toMatchObject({
-      status: {
-        type: 'string',
-        enum: ['available', 'needs_data'],
-        example: 'available'
-      },
-      needs_data: {
-        type: 'boolean',
-        example: false
-      },
-      reason: {
-        type: 'string',
-        nullable: true,
-        example: null
-      },
-      authority: {
-        type: 'string',
-        example: 'context_only'
-      },
-      final_attendance_authority: {
-        type: 'string',
-        example: 'attendance_records'
-      }
-    });
+    expect(dataSchema.properties).not.toHaveProperty('geofence_evidence_context');
     expect(dataSchema.properties).not.toHaveProperty('today_locations');
     expect(dataSchema.properties).not.toHaveProperty('map_context');
     expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.status).toMatchObject({
@@ -350,6 +326,48 @@ describe('client-critical OpenAPI contract', () => {
       type: 'string',
       format: 'date-time',
       example: '2026-05-03T02:30:00.000Z'
+    });
+  });
+
+  test('documents attendance geofence evidence as a dedicated public contract', () => {
+    const geofenceOperation = openapi.paths['/api/attendance/geofence-evidence'].get;
+    const geofenceSchema = schemaAt(geofenceOperation);
+    const periodParameter = geofenceOperation.parameters.find((parameter) => parameter.name === 'period');
+    const fromParameter = geofenceOperation.parameters.find((parameter) => parameter.name === 'from');
+    const toParameter = geofenceOperation.parameters.find((parameter) => parameter.name === 'to');
+
+    expect(periodParameter.schema).toMatchObject({
+      type: 'string',
+      default: '30d'
+    });
+    expect(fromParameter.description).toContain('period=range');
+    expect(fromParameter.description).toContain('deprecated period=custom');
+    expect(toParameter.description).toContain('period=range');
+    expect(toParameter.description).toContain('deprecated period=custom');
+    expect(geofenceSchema.properties).toMatchObject({
+      success: { type: 'boolean', example: true },
+      requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
+      data: { type: 'object' },
+      message: {
+        type: 'string',
+        example: 'Geofence evidence retrieved successfully'
+      }
+    });
+    expect(geofenceSchema.properties.data.properties).toMatchObject({
+      status: { type: 'string', example: 'available' },
+      needs_data: { type: 'boolean', example: false },
+      reason: { type: 'string', nullable: true, example: null },
+      authority: { type: 'string', example: 'context_only' },
+      final_attendance_authority: { type: 'string', example: 'attendance_records' },
+      window: { type: 'object' },
+      raw_counts: { type: 'object' }
+    });
+    expect(geofenceSchema.properties.data.properties.raw_counts.properties).toMatchObject({
+      total_events: { type: 'integer', example: 3 },
+      enter_events: { type: 'integer', example: 1 },
+      exit_events: { type: 'integer', example: 2 },
+      unique_users: { type: 'integer', example: 2 }
     });
   });
 
@@ -603,22 +621,26 @@ describe('client-critical OpenAPI contract', () => {
     expect(divisionProperties).not.toHaveProperty('name');
   });
 
-  test('documents dedicated Fuzzy AHP endpoint paths and temporary legacy compatibility', () => {
+  test('documents dedicated Fuzzy AHP endpoint paths, dashboard recap adapter route, and temporary legacy compatibility', () => {
     expect(openapi.paths['/api/analysis/fuzzy-ahp']?.get).toBeDefined();
     expect(openapi.paths['/api/analysis/fuzzy-ahp']?.get.description).toContain('Fuzzy AHP analysis');
 
     for (const pathName of [
       '/api/analysis/fuzzy-ahp/discipline',
       '/api/analysis/fuzzy-ahp/wfa',
-      '/api/analysis/fuzzy-ahp/smart-ac'
+      '/api/analysis/fuzzy-ahp/smart-ac',
+      '/api/analysis/fuzzy-ahp/dashboard'
     ]) {
       const operation = openapi.paths[pathName]?.get;
       expect(operation).toBeDefined();
       expect(operation.security).toEqual([{ bearerAuth: [] }]);
       expect(operation.responses['401']).toBeDefined();
       expect(operation.responses['403']).toBeDefined();
-      expect(operation.description).toContain('legacy');
     }
+
+    expect(openapi.paths['/api/analysis/fuzzy-ahp/discipline'].get.description).toContain('legacy');
+    expect(openapi.paths['/api/analysis/fuzzy-ahp/wfa'].get.description).toContain('legacy');
+    expect(openapi.paths['/api/analysis/fuzzy-ahp/smart-ac'].get.description).toContain('legacy');
   });
 
   test('documents legacy combined FAHP as deprecated transition-only route compatibility', () => {
@@ -657,6 +679,42 @@ describe('client-critical OpenAPI contract', () => {
     expect(rankingProperties).toHaveProperty('predicted_time_out');
     expect(rankingProperties).toHaveProperty('evidence_summary');
     expect(rankingProperties).toHaveProperty('needs_data');
+  });
+
+  test('documents dashboard recap query contract and lightweight response envelope', () => {
+    const operation = openapi.paths['/api/analysis/fuzzy-ahp/dashboard'].get;
+    const responseSchema = schemaAt(operation);
+    const dataSchema = responseSchema.properties.data;
+    const typeParameter = operation.parameters.find((parameter) => parameter.name === 'type');
+
+    expect(typeParameter.required).toBe(true);
+    expect(typeParameter.schema.enum).toEqual(['discipline', 'wfa', 'smart_ac']);
+    expect(operation.parameters).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'period' }),
+        expect.objectContaining({ name: 'from' }),
+        expect.objectContaining({ name: 'to' })
+      ])
+    );
+    expect(operation.description.toLowerCase()).toContain('dashboard-specific');
+    expect(operation.description.toLowerCase()).toContain('monthly');
+    expect(operation.description.toLowerCase()).toContain('not expose the full dedicated detail payloads');
+    expect(dataSchema.properties).toMatchObject({
+      type: { type: 'string' },
+      generated_at: { type: 'string', format: 'date-time' },
+      timezone: { type: 'string', example: 'Asia/Jakarta' },
+      requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
+      status: { type: 'string', example: 'ready' },
+      needs_data: { type: 'boolean', example: false },
+      consistency: { type: 'object' },
+      criteria_weights: { type: 'array' },
+      ranking_preview: { type: 'object' },
+      distribution: { type: 'object' }
+    });
+    expect(dataSchema.properties).not.toHaveProperty('ranking');
+    expect(dataSchema.properties).not.toHaveProperty('weights');
+    expect(dataSchema.properties).not.toHaveProperty('entity_kind');
   });
 
 });

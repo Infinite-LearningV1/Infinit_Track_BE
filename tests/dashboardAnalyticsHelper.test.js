@@ -59,12 +59,6 @@ describe('dashboard analytics helper contract', () => {
       }
     ]);
 
-    mockLocationEventFindAll.mockResolvedValueOnce([
-      { user_id: 7, event_type: 'ENTER' },
-      { user_id: 8, event_type: 'EXIT' },
-      { user_id: 8, event_type: 'EXIT' }
-    ]);
-
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
       consistency: { CR: 0.021, threshold: 0.1, is_consistent: true },
       weights: {
@@ -132,13 +126,6 @@ describe('dashboard analytics helper contract', () => {
         order: [['attendance_date', 'ASC']]
       })
     );
-    expect(mockLocationEventFindAll).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attributes: ['user_id', 'event_type'],
-        order: [['event_timestamp', 'ASC']]
-      })
-    );
-
     const disciplineWindow = mockBuildDisciplineAnalysis.mock.calls[0][0];
     const wfaWindow = mockBuildWfaAnalysis.mock.calls[0][0];
     const smartAcWindow = mockBuildSmartAcAnalysis.mock.calls[0][0];
@@ -165,10 +152,9 @@ describe('dashboard analytics helper contract', () => {
         executive_kpis: { from: '2026-04-01', to: '2026-04-03' },
         historical_trend: { from: '2026-04-01', to: '2026-04-03' },
         mode_mix: { from: '2026-04-01', to: '2026-04-03' },
-        fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' },
-        geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' }
+        fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' }
       },
-      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
     });
 
     expect(result.executive_kpis).toEqual({
@@ -204,21 +190,7 @@ describe('dashboard analytics helper contract', () => {
 
     expect(result).not.toHaveProperty('today_locations');
 
-    expect(result.geofence_evidence_context).toEqual({
-      status: 'available',
-      needs_data: false,
-      reason: null,
-      authority: 'context_only',
-      final_attendance_authority: 'attendance_records',
-      window: { from: '2026-04-01', to: '2026-04-03' },
-      raw_counts: {
-        total_events: 3,
-        enter_events: 1,
-        exit_events: 2,
-        unique_users: 2
-      }
-    });
-
+    expect(result).not.toHaveProperty('geofence_evidence_context');
     expect(result).not.toHaveProperty('map_context');
 
     expect(result.fuzzy_ahp_snapshot).toEqual({
@@ -387,8 +359,7 @@ describe('dashboard analytics helper contract', () => {
       executive_kpis: { from: '2026-04-04', to: '2026-05-03' },
       historical_trend: { from: '2026-04-04', to: '2026-05-03' },
       mode_mix: { from: '2026-04-04', to: '2026-05-03' },
-      fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' },
-      geofence_evidence_context: { from: '2026-04-04', to: '2026-05-03' }
+      fuzzy_ahp_snapshot: { from: '2026-04-04', to: '2026-05-03' }
     });
     expect(result.fuzzy_ahp_snapshot).toEqual({
       discipline: {
@@ -419,20 +390,7 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       }
     });
-    expect(result.geofence_evidence_context).toEqual({
-      status: 'needs_data',
-      needs_data: true,
-      reason: 'NO_GEOFENCE_EVENTS',
-      authority: 'context_only',
-      final_attendance_authority: 'attendance_records',
-      window: { from: '2026-04-04', to: '2026-05-03' },
-      raw_counts: {
-        total_events: 0,
-        enter_events: 0,
-        exit_events: 0,
-        unique_users: 0
-      }
-    });
+    expect(result).not.toHaveProperty('geofence_evidence_context');
   });
 
   it('keeps early attendance present without inflating on-time metrics', async () => {
@@ -474,30 +432,6 @@ describe('dashboard analytics helper contract', () => {
     expect(result.historical_trend).toEqual({
       points: [{ date: '2026-04-01', on_time: 0, late: 0, alpha: 0, present: 2, wfo: 2, wfh: 0, wfa: 0 }]
     });
-  });
-
-  it('queries geofence evidence using Jakarta-day boundaries instead of UTC midnight', async () => {
-    mockAttendanceFindAll.mockResolvedValueOnce([]);
-    mockLocationEventFindAll.mockResolvedValueOnce([]);
-    mockBuildDisciplineAnalysis.mockResolvedValueOnce({ ranking: [] });
-    mockBuildWfaAnalysis.mockResolvedValueOnce({ ranking: [] });
-    mockBuildSmartAcAnalysis.mockResolvedValueOnce({ ranking: [] });
-    await buildDashboardAnalytics({
-      period: 'custom',
-      from: '2026-04-01',
-      to: '2026-04-03'
-    });
-
-    expect(mockLocationEventFindAll).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          event_timestamp: {
-            [Op.gte]: new Date('2026-03-31T17:00:00.000Z'),
-            [Op.lt]: new Date('2026-04-03T17:00:00.000Z')
-          }
-        }
-      })
-    );
   });
 
   it('returns stable empty-state cards, zero-filled points, and contextual empty geofence evidence', async () => {
@@ -545,21 +479,7 @@ describe('dashboard analytics helper contract', () => {
 
     expect(result).not.toHaveProperty('today_locations');
 
-    expect(result.geofence_evidence_context).toEqual({
-      status: 'needs_data',
-      needs_data: true,
-      reason: 'NO_GEOFENCE_EVENTS',
-      authority: 'context_only',
-      final_attendance_authority: 'attendance_records',
-      window: { from: '2026-04-01', to: '2026-04-03' },
-      raw_counts: {
-        total_events: 0,
-        enter_events: 0,
-        exit_events: 0,
-        unique_users: 0
-      }
-    });
-
+    expect(result).not.toHaveProperty('geofence_evidence_context');
     expect(result).not.toHaveProperty('map_context');
 
     expect(result.fuzzy_ahp_snapshot).toEqual({

@@ -18,7 +18,8 @@ import {
   logLocationEvent,
   getSmartEngineConfig,
   getEnhancedAutoCheckoutSettings,
-  getTodayLocations
+  getTodayLocations,
+  getGeofenceEvidence
 } from '../controllers/attendance.controller.js';
 import { verifyToken } from '../middlewares/authJwt.js';
 import roleGuard from '../middlewares/roleGuard.js';
@@ -27,7 +28,8 @@ import {
   checkOutValidation,
   validate,
   locationEventValidation,
-  todayLocationsValidation
+  todayLocationsValidation,
+  dashboardAnalyticsValidation
 } from '../middlewares/validator.js';
 
 const router = express.Router();
@@ -45,6 +47,12 @@ router.get(
   roleGuard(['Admin', 'Management']),
   todayLocationsValidation,
   getTodayLocations
+);
+router.get(
+  '/geofence-evidence',
+  roleGuard(['Admin', 'Management']),
+  dashboardAnalyticsValidation,
+  getGeofenceEvidence
 );
 
 router.post('/check-in', checkInValidation, validate, checkIn);

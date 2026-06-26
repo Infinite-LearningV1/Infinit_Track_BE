@@ -11,6 +11,7 @@ const dedicatedProductionPaths = [
   'GET /api/analysis/fuzzy-ahp/smart-ac'
 ];
 
+const dashboardRecapEndpointPath = 'GET /api/analysis/fuzzy-ahp/dashboard';
 const legacyCombinedEndpointPath = 'GET /api/analysis/fuzzy-ahp';
 const maximumAllowedMeaningfulLines = 10;
 
@@ -58,12 +59,22 @@ describe('Postman Fuzzy AHP documentation contract', () => {
     expect(fahpSection).toMatch(/Use the legacy combined endpoint only for explicit migration compatibility checks\./i);
   });
 
-  test('lists exactly the three dedicated production endpoint paths', () => {
+  test('lists exactly the three dedicated production endpoint paths plus the dashboard recap adapter route', () => {
     const dedicatedEndpointBullets = endpointBullets.filter(
       (endpointPath) => endpointPath !== legacyCombinedEndpointPath
     );
 
-    expect(dedicatedEndpointBullets).toEqual(dedicatedProductionPaths);
+    expect(dedicatedEndpointBullets).toEqual([
+      ...dedicatedProductionPaths,
+      dashboardRecapEndpointPath
+    ]);
+  });
+
+  test('documents the dashboard recap endpoint as recap-only, not a canonical detail surface', () => {
+    expect(endpointBullets).toContain(dashboardRecapEndpointPath);
+    expect(fahpSection).toMatch(
+      /`GET \/api\/analysis\/fuzzy-ahp\/dashboard` owns the lightweight monthly dashboard recap contract only; it is not the canonical detail-analysis surface\./i
+    );
   });
 
   test('does not expand the FAHP section into a standalone manual guide', () => {

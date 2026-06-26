@@ -1,24 +1,12 @@
 import { Op } from 'sequelize';
 
-import {
-  Attendance,
-  AttendanceCategory,
-  AttendanceStatus,
-  LocationEvent
-} from '../models/index.js';
+import { Attendance, AttendanceCategory, AttendanceStatus } from '../models/index.js';
 import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
   buildWfaAnalysis
 } from '../services/fuzzyAhpAnalysis.service.js';
-import {
-  addUtcDays,
-  buildEffectiveWindow,
-  buildJakartaDayStartUtc,
-  buildRequestedWindow,
-  enumerateDateRange,
-  formatDateOnly
-} from './historicalDateWindow.js';
+import { buildEffectiveWindow, buildRequestedWindow, enumerateDateRange } from './historicalDateWindow.js';
 
 const STATUS_ALPHA = new Set(['alpa', 'alpha']);
 const STATUS_LATE = new Set(['terlambat', 'late']);
@@ -41,8 +29,7 @@ const buildSectionWindows = (effectiveWindow) => ({
   executive_kpis: buildExecutedWindow(effectiveWindow),
   historical_trend: buildExecutedWindow(effectiveWindow),
   mode_mix: buildExecutedWindow(effectiveWindow),
-  fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow),
-  geofence_evidence_context: buildExecutedWindow(effectiveWindow)
+  fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow)
 });
 
 const buildEmptySnapshotCard = (effectiveWindow, generatedAt) => ({
@@ -140,43 +127,6 @@ const buildSnapshotCard = ({ analysis, effectiveWindow, generatedAt, allowedIds 
   };
 };
 
-const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
-  const uniqueUsers = new Set();
-  let enterEvents = 0;
-  let exitEvents = 0;
-
-  for (const event of locationEvents) {
-    if (event.user_id != null) {
-      uniqueUsers.add(String(event.user_id));
-    }
-
-    if (event.event_type === 'ENTER') {
-      enterEvents += 1;
-    }
-
-    if (event.event_type === 'EXIT') {
-      exitEvents += 1;
-    }
-  }
-
-  const hasEvents = locationEvents.length > 0;
-
-  return {
-    status: hasEvents ? 'available' : 'needs_data',
-    needs_data: !hasEvents,
-    reason: hasEvents ? null : 'NO_GEOFENCE_EVENTS',
-    authority: 'context_only',
-    final_attendance_authority: 'attendance_records',
-    window: buildExecutedWindow(effectiveWindow),
-    raw_counts: {
-      total_events: locationEvents.length,
-      enter_events: enterEvents,
-      exit_events: exitEvents,
-      unique_users: uniqueUsers.size
-    }
-  };
-};
-
 const buildInsights = ({ executiveKpis, modeMix }) => {
   const items = [];
   const rawCounts = executiveKpis.raw_counts;
@@ -220,11 +170,8 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
   const effectiveWindow = buildEffectiveWindow({ period, from, to });
   const historicalDates = enumerateDateRange(effectiveWindow.startDate, effectiveWindow.endDate);
   const generatedAt = new Date().toISOString();
-  const geofenceStartInclusive = buildJakartaDayStartUtc(effectiveWindow.startDateStr);
-  const geofenceEndExclusive = buildJakartaDayStartUtc(formatDateOnly(addUtcDays(effectiveWindow.endDate, 1)));
 
-  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] =
-    await Promise.all([
+  const [attendanceRows, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] = await Promise.all([
       Attendance.findAll({
         where: {
           attendance_date: {
@@ -245,16 +192,6 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
           }
         ],
         order: [['attendance_date', 'ASC']]
-      }),
-      LocationEvent.findAll({
-        where: {
-          event_timestamp: {
-            [Op.gte]: geofenceStartInclusive,
-            [Op.lt]: geofenceEndExclusive
-          }
-        },
-        attributes: ['user_id', 'event_type'],
-        order: [['event_timestamp', 'ASC']]
       }),
       buildDisciplineAnalysis({
         startAt: effectiveWindow.startDate,
@@ -380,10 +317,6 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
     })
   };
   const executedWindow = buildExecutedWindow(effectiveWindow);
-  const geofenceEvidenceContext = buildGeofenceEvidenceContext({
-    effectiveWindow,
-    locationEvents
-  });
 
   return {
     meta: {
@@ -392,7 +325,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       requested_window: requestedWindow,
       executed_window: executedWindow,
       section_windows: buildSectionWindows(effectiveWindow),
-      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
     },
     executive_kpis: executiveKpis,
     historical_trend: {
@@ -402,7 +335,6 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       totals: modeTotals,
       percentages
     },
-    geofence_evidence_context: geofenceEvidenceContext,
     fuzzy_ahp_snapshot: fuzzySnapshot,
     insights: buildInsights({
       executiveKpis,
