@@ -1,45 +1,24 @@
-# Task 1 Report — Layer 1 duplicate-safe utility
+# Task 1 Report — FAHP dashboard recap route red test
 
 Status: DONE
 
 ## Fact
-- Added a shared duplicate-safe contract utility at `src/utils/attendanceDuplicateContract.js`.
-- Updated `src/utils/attendanceDuplicateError.js` to use the shared contract helper.
-- Added a regression test in `tests/attendanceDuplicateSafety.test.js` that covers the real duplicate-key shape using `uq_attendance_user_date`.
-- Verified the targeted duplicate-safety suite, the full test suite, and lint after the fix.
+- Created `E:/test/Infinit_Track_BE/tests/analysisFuzzyAhpDashboardRecapRoute.test.js` as the Task 1 route-level red test for `GET /api/analysis/fuzzy-ahp/dashboard?type=...`.
+- Mirrored the existing route-test style used in `tests/analysisFuzzyAhpContract.test.js` and `tests/analysisFuzzyAhpDisciplineRoute.test.js`.
+- Kept validator mocking permissive for Task 1 by stubbing `fuzzyAhpDashboardRecapValidation` with pass-through middleware.
+- Verified the focused test fails red because the new dashboard recap route is not yet wired in `src/routes/analysis.routes.js`.
 
-## Assumption
-- The request-path attendance duplicate boundary should continue to resolve to HTTP 409 when the database surfaces the `uq_attendance_user_date` unique key in a duplicate error shape.
-
-## Mismatch / Needs Verification
-- The earlier report text saying the targeted contract test failed before implementation is not directly evidenced in the current run history here. Mark that pre-implementation failure state as Needs Verification rather than asserted fact.
-- The earlier report text saying no broader test suite was run is inaccurate; `npm test` was run and passed in this session.
-
-## Risk
-- Low. The change is behavior-preserving and only broadens duplicate detection to include the named attendance uniqueness boundary.
-- The helper remains limited to attendance duplicate handling, so future contract changes should stay aligned with the attendance table index/constraint name.
+## Red verification
+- Command: `npm --prefix "E:/test/Infinit_Track_BE" test -- tests/analysisFuzzyAhpDashboardRecapRoute.test.js`
+- Result: FAIL
+- Failure shape: all three route expectations received HTTP 404 instead of the expected mounted route responses, which matches the Task 1 target state before Task 2 wiring.
 
 ## Files changed
-- `src/utils/attendanceDuplicateContract.js`
-- `src/utils/attendanceDuplicateError.js`
-- `tests/attendanceDuplicateSafety.test.js`
-- `.superpowers/sdd/task-1-report.md`
+- `E:/test/Infinit_Track_BE/tests/analysisFuzzyAhpDashboardRecapRoute.test.js`
+- `E:/test/Infinit_Track_BE/.superpowers/sdd/task-1-report.md`
 
-## Verification plan and result
-- Command: `npm test -- --runTestsByPath tests/attendanceDuplicateSafety.test.js --runInBand`
-- Result: PASS (18 tests passed in `tests/attendanceDuplicateSafety.test.js`)
-- Command: `npm run lint`
-- Result: PASS
-- Command: `npm test`
-- Result: PASS (70 test suites passed, 465 tests passed)
-
-## Commit SHA(s)
-- Pending final commit
-
-## Self-review notes
-- The duplicate helper now recognizes both field-based duplicate errors and the named attendance uniqueness boundary.
-- The regression test now covers the realistic `uq_attendance_user_date` shape that was missing before.
+## Commit
+- Created commit for Task 1 test-only work.
 
 ## Concerns
-- `npm test` emits the expected Node experimental VM Modules warning in this environment.
-- There is console noise from existing tests, but no failures.
+- None. The red state is the intended end state for this TDD task and is caused by missing route wiring rather than test setup failure.
