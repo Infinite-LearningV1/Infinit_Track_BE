@@ -32,6 +32,7 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
   - `GET /api/analysis/fuzzy-ahp/discipline`
   - `GET /api/analysis/fuzzy-ahp/wfa`
   - `GET /api/analysis/fuzzy-ahp/smart-ac`
+  - `GET /api/analysis/fuzzy-ahp/dashboard` owns the lightweight monthly dashboard recap contract only; it is not the canonical detail-analysis surface.
 - The Postman collection `Infinite Track`, folder `FuzzyAhp`, is the primary manual smoke surface for the dedicated FAHP endpoints and contains curated Discipline, WFA, and Smart AC requests.
 - Dedicated FAHP endpoint smoke requests require a Bearer token authorized for `Admin` or `Management` access.
 - This repo document records only route ownership and source-of-truth boundary. Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here.

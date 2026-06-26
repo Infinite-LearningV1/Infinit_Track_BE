@@ -1204,6 +1204,129 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/analysis/fuzzy-ahp/dashboard:
+    get:
+      tags:
+        - Analysis
+      summary: Get dashboard recap for Fuzzy AHP analysis
+      description: Retrieve a dashboard-specific monthly recap for a single FAHP type. This additive route reuses the legacy `type` query values `discipline`, `wfa`, and `smart_ac`, applies the monthly window internally, and does not expose the full dedicated detail payloads.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: true
+          description: Required dashboard recap type selector using the legacy combined-contract values.
+          schema:
+            type: string
+            enum: [discipline, wfa, smart_ac]
+      responses:
+        '200':
+          description: Fuzzy AHP dashboard recap retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [discipline, wfa, smart_ac]
+                      generated_at:
+                        type: string
+                        format: date-time
+                      timezone:
+                        type: string
+                        example: Asia/Jakarta
+                      requested_window:
+                        type: object
+                        properties:
+                          period:
+                            type: string
+                            example: monthly
+                      executed_window:
+                        type: object
+                        properties:
+                          start_at:
+                            type: string
+                            format: date-time
+                          end_at:
+                            type: string
+                            format: date-time
+                      status:
+                        type: string
+                        example: ready
+                      needs_data:
+                        type: boolean
+                        example: false
+                      consistency:
+                        type: object
+                        properties:
+                          CR:
+                            type: number
+                            format: float
+                          threshold:
+                            type: number
+                            format: float
+                          is_consistent:
+                            type: boolean
+                      criteria_weights:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            label:
+                              type: string
+                            value:
+                              type: number
+                              format: float
+                      ranking_preview:
+                        type: object
+                        properties:
+                          top_n:
+                            type: integer
+                            example: 5
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                rank:
+                                  type: integer
+                                id:
+                                  type: integer
+                                  nullable: true
+                                name:
+                                  type: string
+                                  nullable: true
+                                score:
+                                  type: number
+                                  format: float
+                                  nullable: true
+                                label:
+                                  type: string
+                                  nullable: true
+                      distribution:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                  message:
+                    type: string
+                    example: Fuzzy AHP dashboard recap retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   # Attendance Endpoints
   /api/attendance/today-locations:
     get:

@@ -1,45 +1,26 @@
-# Task 1 Report — Layer 1 duplicate-safe utility
+# Task 1 Report — FAHP dashboard recap route red test
 
 Status: DONE
 
 ## Fact
-- Added a shared duplicate-safe contract utility at `src/utils/attendanceDuplicateContract.js`.
-- Updated `src/utils/attendanceDuplicateError.js` to use the shared contract helper.
-- Added a regression test in `tests/attendanceDuplicateSafety.test.js` that covers the real duplicate-key shape using `uq_attendance_user_date`.
-- Verified the targeted duplicate-safety suite, the full test suite, and lint after the fix.
+- Updated `E:/test/Infinit_Track_BE/tests/analysisFuzzyAhpDashboardRecapRoute.test.js` so Task 1 now covers route-level validation behavior for `GET /api/analysis/fuzzy-ahp/dashboard?type=...` instead of only happy path and role rejection.
+- Replaced the permissive validator stub with a focused test harness that models the intended contract for `fuzzyAhpDashboardRecapValidation` + `validate` without touching production validator or route code.
+- Added explicit route-scaffold coverage for `400 E_VALIDATION` when `type` is missing, when `type` is outside `discipline|wfa|smart_ac`, and when any extra query parameter is present.
+- Added assertions that invalid requests never reach `getFuzzyAhpDashboardRecap`, and that non-admin callers are rejected before validation/handler execution.
+- Kept one wiring-state test against the real `analysisRoutes` router to show the current production state is still `404` because `/fuzzy-ahp/dashboard` is not yet mounted in `src/routes/analysis.routes.js`.
 
-## Assumption
-- The request-path attendance duplicate boundary should continue to resolve to HTTP 409 when the database surfaces the `uq_attendance_user_date` unique key in a duplicate error shape.
-
-## Mismatch / Needs Verification
-- The earlier report text saying the targeted contract test failed before implementation is not directly evidenced in the current run history here. Mark that pre-implementation failure state as Needs Verification rather than asserted fact.
-- The earlier report text saying no broader test suite was run is inaccurate; `npm test` was run and passed in this session.
-
-## Risk
-- Low. The change is behavior-preserving and only broadens duplicate detection to include the named attendance uniqueness boundary.
-- The helper remains limited to attendance duplicate handling, so future contract changes should stay aligned with the attendance table index/constraint name.
+## Verification
+- Command: `npm --prefix "E:/test/Infinit_Track_BE" test -- tests/analysisFuzzyAhpDashboardRecapRoute.test.js`
+- Result: PASS
+- Output summary: `Test Suites: 1 passed, 1 total` and `Tests: 6 passed, 6 total`.
+- Interpretation: the validation-focused scaffold tests now pin the intended route-level contract in isolation, while the real-router wiring check still documents that production routing has not been added yet.
 
 ## Files changed
-- `src/utils/attendanceDuplicateContract.js`
-- `src/utils/attendanceDuplicateError.js`
-- `tests/attendanceDuplicateSafety.test.js`
-- `.superpowers/sdd/task-1-report.md`
+- `E:/test/Infinit_Track_BE/tests/analysisFuzzyAhpDashboardRecapRoute.test.js`
+- `E:/test/Infinit_Track_BE/.superpowers/sdd/task-1-report.md`
 
-## Verification plan and result
-- Command: `npm test -- --runTestsByPath tests/attendanceDuplicateSafety.test.js --runInBand`
-- Result: PASS (18 tests passed in `tests/attendanceDuplicateSafety.test.js`)
-- Command: `npm run lint`
-- Result: PASS
-- Command: `npm test`
-- Result: PASS (70 test suites passed, 465 tests passed)
-
-## Commit SHA(s)
-- Pending final commit
-
-## Self-review notes
-- The duplicate helper now recognizes both field-based duplicate errors and the named attendance uniqueness boundary.
-- The regression test now covers the realistic `uq_attendance_user_date` shape that was missing before.
+## Commit
+- Task 1 fix commit created after focused verification.
 
 ## Concerns
-- `npm test` emits the expected Node experimental VM Modules warning in this environment.
-- There is console noise from existing tests, but no failures.
+- The validation expectations are currently enforced by the test harness route, not by `src/routes/analysis.routes.js`, because the dashboard recap endpoint is still not wired in production. This is intentional for Task 1 red/scaffolding scope and gives Task 2 a precise contract to satisfy when the route is mounted.

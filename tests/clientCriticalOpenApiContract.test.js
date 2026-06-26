@@ -621,22 +621,26 @@ describe('client-critical OpenAPI contract', () => {
     expect(divisionProperties).not.toHaveProperty('name');
   });
 
-  test('documents dedicated Fuzzy AHP endpoint paths and temporary legacy compatibility', () => {
+  test('documents dedicated Fuzzy AHP endpoint paths, dashboard recap adapter route, and temporary legacy compatibility', () => {
     expect(openapi.paths['/api/analysis/fuzzy-ahp']?.get).toBeDefined();
     expect(openapi.paths['/api/analysis/fuzzy-ahp']?.get.description).toContain('Fuzzy AHP analysis');
 
     for (const pathName of [
       '/api/analysis/fuzzy-ahp/discipline',
       '/api/analysis/fuzzy-ahp/wfa',
-      '/api/analysis/fuzzy-ahp/smart-ac'
+      '/api/analysis/fuzzy-ahp/smart-ac',
+      '/api/analysis/fuzzy-ahp/dashboard'
     ]) {
       const operation = openapi.paths[pathName]?.get;
       expect(operation).toBeDefined();
       expect(operation.security).toEqual([{ bearerAuth: [] }]);
       expect(operation.responses['401']).toBeDefined();
       expect(operation.responses['403']).toBeDefined();
-      expect(operation.description).toContain('legacy');
     }
+
+    expect(openapi.paths['/api/analysis/fuzzy-ahp/discipline'].get.description).toContain('legacy');
+    expect(openapi.paths['/api/analysis/fuzzy-ahp/wfa'].get.description).toContain('legacy');
+    expect(openapi.paths['/api/analysis/fuzzy-ahp/smart-ac'].get.description).toContain('legacy');
   });
 
   test('documents legacy combined FAHP as deprecated transition-only route compatibility', () => {
@@ -675,6 +679,42 @@ describe('client-critical OpenAPI contract', () => {
     expect(rankingProperties).toHaveProperty('predicted_time_out');
     expect(rankingProperties).toHaveProperty('evidence_summary');
     expect(rankingProperties).toHaveProperty('needs_data');
+  });
+
+  test('documents dashboard recap query contract and lightweight response envelope', () => {
+    const operation = openapi.paths['/api/analysis/fuzzy-ahp/dashboard'].get;
+    const responseSchema = schemaAt(operation);
+    const dataSchema = responseSchema.properties.data;
+    const typeParameter = operation.parameters.find((parameter) => parameter.name === 'type');
+
+    expect(typeParameter.required).toBe(true);
+    expect(typeParameter.schema.enum).toEqual(['discipline', 'wfa', 'smart_ac']);
+    expect(operation.parameters).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'period' }),
+        expect.objectContaining({ name: 'from' }),
+        expect.objectContaining({ name: 'to' })
+      ])
+    );
+    expect(operation.description.toLowerCase()).toContain('dashboard-specific');
+    expect(operation.description.toLowerCase()).toContain('monthly');
+    expect(operation.description.toLowerCase()).toContain('not expose the full dedicated detail payloads');
+    expect(dataSchema.properties).toMatchObject({
+      type: { type: 'string' },
+      generated_at: { type: 'string', format: 'date-time' },
+      timezone: { type: 'string', example: 'Asia/Jakarta' },
+      requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
+      status: { type: 'string', example: 'ready' },
+      needs_data: { type: 'boolean', example: false },
+      consistency: { type: 'object' },
+      criteria_weights: { type: 'array' },
+      ranking_preview: { type: 'object' },
+      distribution: { type: 'object' }
+    });
+    expect(dataSchema.properties).not.toHaveProperty('ranking');
+    expect(dataSchema.properties).not.toHaveProperty('weights');
+    expect(dataSchema.properties).not.toHaveProperty('entity_kind');
   });
 
 });

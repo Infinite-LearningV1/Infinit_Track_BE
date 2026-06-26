@@ -1,6 +1,7 @@
 import {
   buildDisciplineAnalysis,
   buildDisciplineFahpPayload,
+  buildFuzzyAhpDashboardRecapPayload,
   buildSmartAcAnalysis,
   buildSmartAcFahpPayload,
   buildWfaAnalysis,
@@ -8,6 +9,7 @@ import {
   formatWibDateTime,
   getAnalysisWindow
 } from '../services/fuzzyAhpAnalysis.service.js';
+import logger from '../utils/logger.js';
 
 export const getDisciplineFahp = async (req, res, next) => {
   try {
@@ -58,6 +60,25 @@ export const getSmartAcFahp = async (_req, res, next) => {
       message: 'Smart AC Fuzzy AHP analysis retrieved successfully'
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+export const getFuzzyAhpDashboardRecap = async (req, res, next) => {
+  try {
+    const { type } = req.query;
+    const data = await buildFuzzyAhpDashboardRecapPayload({ type });
+
+    return res.status(200).json({
+      success: true,
+      data,
+      message: 'Fuzzy AHP dashboard recap retrieved successfully'
+    });
+  } catch (error) {
+    logger.error('Failed to build FAHP dashboard recap', {
+      error: error.message,
+      query: req.query
+    });
     next(error);
   }
 };

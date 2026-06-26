@@ -1288,6 +1288,10 @@ export const getGeofenceEvidence = async (req, res, next) => {
       message: 'Geofence evidence retrieved successfully'
     });
   } catch (error) {
+    logger.error('Failed to build geofence evidence snapshot', {
+      error: error.message,
+      query: req.query
+    });
     next(error);
   }
 };
