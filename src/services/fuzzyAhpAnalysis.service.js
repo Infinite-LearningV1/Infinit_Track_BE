@@ -872,3 +872,71 @@ export const buildSmartAcFahpPayload = async () => {
     ranking
   };
 };
+
+const buildDashboardRecapRankingItem = (rankedItem) => {
+  const entityId = rankedItem.id ?? rankedItem.user_id ?? rankedItem.place_id ?? null;
+
+  return {
+    rank: rankedItem.rank ?? 1,
+    ...(entityId != null ? { id: entityId } : {}),
+    name: rankedItem.name ?? null,
+    score: rankedItem.score ?? null,
+    label: rankedItem.label ?? null
+  };
+};
+
+const buildDashboardCriteriaWeights = (weights) => {
+  const criteria = Array.isArray(weights?.criteria) ? weights.criteria : [];
+  const values = Array.isArray(weights?.values) ? weights.values : [];
+
+  return criteria.map((key, index) => ({
+    key,
+    label: key,
+    value: Number(values[index] ?? 0)
+  }));
+};
+
+const buildDashboardRankingPreview = (ranking) => ({
+  top_n: 5,
+  items: Array.isArray(ranking) ? ranking.slice(0, 5).map(buildDashboardRecapRankingItem) : []
+});
+
+export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
+  const { startAt, endAt } = getAnalysisWindow('monthly');
+
+  let result;
+  switch (type) {
+    case 'discipline':
+      result = await buildDisciplineAnalysis({ startAt, endAt, includeLegacyId: false });
+      break;
+    case 'wfa':
+      result = await buildWfaAnalysis();
+      break;
+    default:
+      result = await buildSmartAcAnalysis({ startAt, endAt });
+      break;
+  }
+
+  const ranking = Array.isArray(result?.ranking) ? result.ranking : [];
+  const rankingPreview = buildDashboardRankingPreview(ranking);
+  const hasData = rankingPreview.items.length > 0;
+
+  return {
+    type,
+    generated_at: formatWibDateTime(endAt),
+    timezone: 'Asia/Jakarta',
+    requested_window: {
+      period: 'monthly'
+    },
+    executed_window: {
+      start_at: formatWibDateTime(startAt),
+      end_at: formatWibDateTime(endAt)
+    },
+    status: hasData ? 'ready' : 'empty',
+    needs_data: !hasData,
+    consistency: result?.consistency ?? null,
+    criteria_weights: buildDashboardCriteriaWeights(result?.weights),
+    ranking_preview: rankingPreview,
+    distribution: result?.distribution ?? { ...EMPTY_DISTRIBUTION }
+  };
+};

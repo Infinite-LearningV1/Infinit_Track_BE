@@ -22,33 +22,44 @@ const mockGetFuzzyAhpDashboardRecap = jest.fn((req, res) => {
     success: true,
     data: {
       type: req.query.type,
-      generated_at: '2026-06-26T10:15:00+07:00',
+      generated_at: '2026-06-26T00:00:00+07:00',
       timezone: 'Asia/Jakarta',
-      requested_window: { period: 'monthly' },
+      requested_window: {
+        period: 'monthly'
+      },
       executed_window: {
         start_at: '2026-06-01T00:00:00+07:00',
-        end_at: '2026-06-26T10:15:00+07:00'
+        end_at: '2026-06-26T00:00:00+07:00'
       },
       status: 'ready',
       needs_data: false,
       consistency: {
-        cr_value: 0.058,
+        CR: 0.01,
         threshold: 0.1,
-        is_consistent: true,
-        label: 'Konsisten'
+        is_consistent: true
       },
       criteria_weights: [
-        {
-          key: 'attendance',
-          label: 'Kehadiran',
-          value: 0.352
-        }
+        { key: 'attendance', label: 'attendance', value: 0.4 }
       ],
       ranking_preview: {
         top_n: 5,
-        items: []
+        items: [
+          {
+            rank: 1,
+            id: 7,
+            name: 'Andi',
+            score: 87.5,
+            label: 'Sangat Tinggi'
+          }
+        ]
       },
-      distribution: []
+      distribution: {
+        'Sangat Tinggi': 1,
+        Tinggi: 0,
+        Sedang: 0,
+        Rendah: 0,
+        'Sangat Rendah': 0
+      }
     },
     message: 'Fuzzy AHP dashboard recap retrieved successfully'
   });
@@ -177,17 +188,17 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
     );
   });
 
-  it('returns 400 E_VALIDATION when extra query params are present', async () => {
+  it.each([
+    '/api/analysis/fuzzy-ahp/dashboard?type=discipline&period=monthly',
+    '/api/analysis/fuzzy-ahp/dashboard?type=discipline&from=2026-06-01',
+    '/api/analysis/fuzzy-ahp/dashboard?type=discipline&to=2026-06-30'
+  ])('returns 400 E_VALIDATION when extra query params are present: %s', async (path) => {
     const app = createDashboardRecapHarnessApp();
 
-    await expectValidationFailure(
-      app,
-      '/api/analysis/fuzzy-ahp/dashboard?type=discipline&period=monthly',
-      'only type query parameter is allowed'
-    );
+    await expectValidationFailure(app, path, 'only type query parameter is allowed');
   });
 
-  it('returns 200 and the dashboard recap envelope for a valid type query', async () => {
+  it('returns 200 success response for a valid type query', async () => {
     const app = createDashboardRecapHarnessApp();
 
     const res = await request(app).get('/api/analysis/fuzzy-ahp/dashboard?type=discipline');
@@ -195,29 +206,47 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       success: true,
-      data: expect.objectContaining({
+      data: {
         type: 'discipline',
+        generated_at: '2026-06-26T00:00:00+07:00',
         timezone: 'Asia/Jakarta',
-        requested_window: { period: 'monthly' },
+        requested_window: {
+          period: 'monthly'
+        },
         executed_window: {
-          start_at: expect.stringMatching(/\+07:00$/),
-          end_at: expect.stringMatching(/\+07:00$/)
+          start_at: '2026-06-01T00:00:00+07:00',
+          end_at: '2026-06-26T00:00:00+07:00'
         },
         status: 'ready',
         needs_data: false,
-        consistency: expect.objectContaining({
-          cr_value: expect.any(Number),
+        consistency: {
+          CR: 0.01,
           threshold: 0.1,
-          is_consistent: expect.any(Boolean),
-          label: expect.any(String)
-        }),
-        criteria_weights: expect.any(Array),
+          is_consistent: true
+        },
+        criteria_weights: [
+          { key: 'attendance', label: 'attendance', value: 0.4 }
+        ],
         ranking_preview: {
           top_n: 5,
-          items: expect.any(Array)
+          items: [
+            {
+              rank: 1,
+              id: 7,
+              name: 'Andi',
+              score: 87.5,
+              label: 'Sangat Tinggi'
+            }
+          ]
         },
-        distribution: expect.any(Array)
-      }),
+        distribution: {
+          'Sangat Tinggi': 1,
+          Tinggi: 0,
+          Sedang: 0,
+          Rendah: 0,
+          'Sangat Rendah': 0
+        }
+      },
       message: 'Fuzzy AHP dashboard recap retrieved successfully'
     });
     expect(mockGetFuzzyAhpDashboardRecap).toHaveBeenCalledTimes(1);
@@ -237,20 +266,20 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
   });
 });
 
-describe('analysis fuzzy ahp dashboard recap route wiring red state', () => {
+describe('analysis fuzzy ahp dashboard recap real router wiring', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('is not yet mounted on the real analysis router, so requests still return 404 until wiring is added', async () => {
+  it('mounts the dashboard recap route on the real analysis router', async () => {
     const app = createAnalysisRoutesApp();
 
     const res = await request(app).get('/api/analysis/fuzzy-ahp/dashboard?type=discipline');
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
     expect(mockVerifyToken).toHaveBeenCalled();
-    expect(mockFuzzyAhpDashboardRecapValidation).not.toHaveBeenCalled();
-    expect(mockValidate).not.toHaveBeenCalled();
-    expect(mockGetFuzzyAhpDashboardRecap).not.toHaveBeenCalled();
+    expect(mockFuzzyAhpDashboardRecapValidation).toHaveBeenCalled();
+    expect(mockValidate).toHaveBeenCalled();
+    expect(mockGetFuzzyAhpDashboardRecap).toHaveBeenCalledTimes(1);
   });
 });
