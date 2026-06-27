@@ -30,3 +30,32 @@ Self-review notes:
 Concerns:
 - None beyond the normal backend truth-boundary risk profile; this task only updated closure documentation and evidence.
 - `npm test` still emits the expected Node experimental VM Modules warning in this environment, but the suite passed cleanly.
+
+## Fix wave — reviewer-confirmed apply executor findings
+
+Status: DONE
+
+Files changed:
+- `scripts/research/generate-attendance-dataset.js`
+- `tests/researchAttendanceDatasetGenerator.test.js`
+- `.superpowers/sdd/task-4-report.md`
+
+Fixes:
+- Apply inserts now add required `created_at` timestamps for planned `Booking` rows.
+- Apply inserts now add required `created_at` and `updated_at` timestamps for planned `Attendance` rows.
+- Inserted fallback WFA booking IDs are linked back to matching planned WFA attendance rows before `Attendance.bulkCreate`.
+
+Verification commands run:
+- `npm test -- --runTestsByPath tests/researchAttendanceDatasetGenerator.test.js --runInBand`
+  - PASS: 1 suite, 14 tests
+- `npm run lint`
+  - PASS: `eslint . --ext .js` completed without errors
+- `git diff --check`
+  - PASS: completed without output
+
+Dependency note:
+- `PUPPETEER_SKIP_DOWNLOAD=1 npm ci` was required first because `node_modules/jest/bin/jest.js` was missing in this isolated worktree.
+- `npm ci` reported existing audit vulnerabilities; not changed by this fix wave.
+
+Concerns:
+- None for the reviewer-confirmed Task 4 findings after focused verification.

@@ -296,16 +296,61 @@ export function buildResearchAttendancePlan({
   };
 }
 
+function getCreatedBookingId(row) {
+  if (row?.booking_id !== undefined) {
+    return row.booking_id;
+  }
+  if (typeof row?.get === 'function') {
+    return row.get('booking_id');
+  }
+  return undefined;
+}
+
+function buildBookingLookupKey(row) {
+  return `${row.user_id}:${row.schedule_date}:${row.location_id}`;
+}
+
 export async function applyResearchAttendancePlan({
   plan,
   transaction,
   models = { Booking, Attendance, LocationEvent }
 }) {
+  const appliedAt = new Date();
+  let insertedBookingRows = [];
+
   if (plan.plannedBookingRows.length > 0) {
-    await models.Booking.bulkCreate(plan.plannedBookingRows, { transaction });
+    insertedBookingRows = await models.Booking.bulkCreate(
+      plan.plannedBookingRows.map((row) => ({
+        ...row,
+        created_at: row.created_at ?? appliedAt
+      })),
+      { transaction }
+    );
   }
+
+  const insertedBookingIdsByKey = new Map(
+    insertedBookingRows.map((row, index) => [
+      buildBookingLookupKey(plan.plannedBookingRows[index]),
+      getCreatedBookingId(row)
+    ])
+  );
+
   if (plan.plannedAttendanceRows.length > 0) {
-    await models.Attendance.bulkCreate(plan.plannedAttendanceRows, { transaction });
+    await models.Attendance.bulkCreate(
+      plan.plannedAttendanceRows.map((row) => ({
+        ...row,
+        booking_id: row.booking_id ?? insertedBookingIdsByKey.get(
+          buildBookingLookupKey({
+            user_id: row.user_id,
+            schedule_date: row.attendance_date,
+            location_id: row.location_id
+          })
+        ) ?? null,
+        created_at: row.created_at ?? appliedAt,
+        updated_at: row.updated_at ?? appliedAt
+      })),
+      { transaction }
+    );
   }
   if (plan.plannedLocationEventRows.length > 0) {
     await models.LocationEvent.bulkCreate(

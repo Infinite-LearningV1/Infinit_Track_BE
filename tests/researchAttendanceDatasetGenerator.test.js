@@ -211,6 +211,65 @@ describe('apply safeguards', () => {
 
     expect(result).toEqual({ attendance: 2, bookings: 1, locationEvents: 3 });
   });
+
+  it('adds required timestamps and links inserted WFA booking ids before attendance writes', async () => {
+    const captured = {};
+    const fakeModels = {
+      Booking: {
+        bulkCreate: async (rows) => {
+          captured.bookings = rows;
+          return [{ booking_id: 901 }];
+        }
+      },
+      Attendance: {
+        bulkCreate: async (rows) => {
+          captured.attendance = rows;
+          return rows;
+        }
+      },
+      LocationEvent: { bulkCreate: async (rows) => rows }
+    };
+
+    await applyResearchAttendancePlan({
+      plan: {
+        plannedBookingRows: [
+          {
+            user_id: 77,
+            schedule_date: '2026-01-02',
+            location_id: 707,
+            status: 1,
+            notes: 'Kehadiran WFA tercatat sesuai lokasi yang disetujui.'
+          }
+        ],
+        plannedAttendanceRows: [
+          {
+            user_id: 77,
+            attendance_date: '2026-01-02',
+            category_id: 3,
+            status_id: 1,
+            booking_id: null,
+            location_id: 707,
+            time_in: '2026-01-02 08:00:00',
+            time_out: '2026-01-02 17:00:00',
+            work_hour: 8,
+            notes: 'planned WFA'
+          }
+        ],
+        plannedLocationEventRows: []
+      },
+      models: fakeModels,
+      transaction: null
+    });
+
+    expect(captured.bookings[0]).toEqual(expect.objectContaining({ created_at: expect.any(Date) }));
+    expect(captured.attendance[0]).toEqual(
+      expect.objectContaining({
+        booking_id: 901,
+        created_at: expect.any(Date),
+        updated_at: expect.any(Date)
+      })
+    );
+  });
 });
 
 describe('dry-run summary output', () => {
