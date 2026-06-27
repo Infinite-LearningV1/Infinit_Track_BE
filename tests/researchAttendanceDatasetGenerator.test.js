@@ -31,13 +31,8 @@ describe('research attendance generator scaffold contract', () => {
     });
   });
 
-  it('detects apply mode only when the acknowledge flag is present', () => {
-    expect(parseArgs(['--apply'])).toEqual({
-      apply: true,
-      acknowledged: false,
-      dryRun: false,
-      outputPath: FIXED_OUTPUT_PATH
-    });
+  it('rejects apply mode unless the acknowledge flag is present', () => {
+    expect(() => parseArgs(['--apply'])).toThrow(`--apply requires ${APPLY_ACK_FLAG}`);
 
     expect(parseArgs(['--apply', APPLY_ACK_FLAG])).toEqual({
       apply: true,
@@ -157,6 +152,32 @@ describe('research attendance planner', () => {
     expect(plan.plannedBookingRows).toEqual([
       expect.objectContaining({ user_id: 77, schedule_date: '2026-01-02', status: 1, location_id: 707 })
     ]);
+  });
+
+  it('selects existing approved WFA bookings deterministically', () => {
+    const plan = buildResearchAttendancePlan({
+      config: {
+        ...RESEARCH_ATTENDANCE_CONFIG,
+        dateRange: { start: '2026-01-02', end: '2026-01-02' },
+        monthlyStatusTargets: { '2026-01': { ontime: 100, late: 0, alpha: 0, early: 0 } },
+        monthlyModeTargets: { '2026-01': { wfo: 0, wfh: 0, wfa: 100 } },
+        monthlyGeofenceTargets: { '2026-01': { full: 100, partial: 0, missing: 0 } }
+      },
+      baselineUsers: [{ userId: 77 }],
+      existingAttendanceRows: [],
+      existingBookingRows: [
+        { booking_id: 20, user_id: 77, schedule_date: '2026-01-02', status: 1, location_id: 720 },
+        { booking_id: 10, user_id: 77, schedule_date: '2026-01-02', status: 1, location_id: 710 }
+      ],
+      existingLocationEvents: [],
+      expectedLocationsByUser: { 77: { fallbackWfaLocationId: 707 } },
+      holidays: { isHoliday: () => false }
+    });
+
+    expect(plan.plannedAttendanceRows[0]).toEqual(
+      expect.objectContaining({ booking_id: 10, location_id: 710 })
+    );
+    expect(plan.plannedBookingRows).toHaveLength(0);
   });
 });
 

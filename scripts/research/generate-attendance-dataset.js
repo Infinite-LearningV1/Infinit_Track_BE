@@ -25,6 +25,10 @@ export function parseArgs(argv = []) {
   const apply = argv.includes('--apply');
   const acknowledged = argv.includes(APPLY_ACK_FLAG);
 
+  if (apply && !acknowledged) {
+    throw new Error(`--apply requires ${APPLY_ACK_FLAG}`);
+  }
+
   return {
     apply,
     acknowledged,
@@ -95,6 +99,13 @@ function buildStableSlots(baselineUsers, workingDates) {
       .sort((a, b) => a.userId - b.userId)
       .map((user) => ({ userId: user.userId, attendanceDate }))
   );
+}
+
+function compareExistingBookingRows(left, right) {
+  return left.user_id - right.user_id ||
+    String(left.schedule_date).localeCompare(String(right.schedule_date)) ||
+    left.status - right.status ||
+    left.booking_id - right.booking_id;
 }
 
 function chooseStatusForSlot(statusTarget, nextRandom) {
@@ -172,6 +183,9 @@ export function buildResearchAttendancePlan({
   const needsVerification = [];
   const potentialConflicts = [];
   const stableSlots = buildStableSlots(baselineUsers, workingDates);
+  const stableExistingBookingRows = existingBookingRows
+    .slice()
+    .sort(compareExistingBookingRows);
 
   for (const slot of stableSlots) {
     const slotKey = `${slot.userId}:${slot.attendanceDate}`;
@@ -202,7 +216,7 @@ export function buildResearchAttendancePlan({
       attendanceRow.location_id = expectedLocations.wfhLocationId || null;
     }
     if (categoryId === ATTENDANCE_CATEGORY_IDS.WFA) {
-      const existingBooking = existingBookingRows.find(
+      const existingBooking = stableExistingBookingRows.find(
         (booking) =>
           booking.user_id === slot.userId &&
           booking.schedule_date === slot.attendanceDate &&
@@ -326,6 +340,12 @@ export async function collectDatabaseSnapshot(models = {
         [sequelize.Sequelize.Op.lte]: '2026-06-26'
       }
     },
+    order: [
+      ['user_id', 'ASC'],
+      ['schedule_date', 'ASC'],
+      ['status', 'ASC'],
+      ['booking_id', 'ASC']
+    ],
     raw: true
   });
 
