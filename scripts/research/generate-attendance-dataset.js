@@ -436,6 +436,41 @@ export async function collectDatabaseSnapshot(models = {
     raw: true
   });
 
+  const locationRows = await models.Location.findAll({
+    attributes: ['location_id', 'user_id', 'id_attendance_categories'],
+    order: [
+      ['id_attendance_categories', 'ASC'],
+      ['user_id', 'ASC'],
+      ['location_id', 'ASC']
+    ],
+    raw: true
+  });
+
+  const globalWfoLocation =
+    locationRows.find(
+      (row) => row.id_attendance_categories === ATTENDANCE_CATEGORY_IDS.WFO && row.user_id == null
+    ) || null;
+
+  const expectedLocationsByUser = {};
+
+  for (const user of baselineUsers) {
+    const userLocations = locationRows.filter((row) => row.user_id === user.id_users);
+    const userBookings = existingBookingRows.filter(
+      (row) => row.user_id === user.id_users && row.status === BOOKING_STATUS_IDS.APPROVED
+    );
+    const latestApprovedBooking = userBookings.length ? userBookings[userBookings.length - 1] : null;
+    const explicitWfaLocation =
+      userLocations.find((row) => row.id_attendance_categories === ATTENDANCE_CATEGORY_IDS.WFA) || null;
+    const wfhLocation =
+      userLocations.find((row) => row.id_attendance_categories === ATTENDANCE_CATEGORY_IDS.WFH) || null;
+
+    expectedLocationsByUser[user.id_users] = {
+      wfoLocationId: globalWfoLocation?.location_id ?? null,
+      wfhLocationId: wfhLocation?.location_id ?? null,
+      fallbackWfaLocationId: latestApprovedBooking?.location_id ?? explicitWfaLocation?.location_id ?? null
+    };
+  }
+
   return {
     dbIdentity: {
       host: config.db.host,
@@ -446,7 +481,7 @@ export async function collectDatabaseSnapshot(models = {
     existingAttendanceRows,
     existingBookingRows,
     existingLocationEvents,
-    expectedLocationsByUser: {},
+    expectedLocationsByUser,
     lookupValidation: { ok: true },
     missingDeletedBaselineUsers: baselineUserIds
       .filter((userId) => !baselineUsers.some((user) => user.id_users === userId))

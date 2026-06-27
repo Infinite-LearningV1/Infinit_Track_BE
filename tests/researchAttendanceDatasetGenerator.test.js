@@ -17,6 +17,7 @@ import {
   buildDryRunSummary,
   buildResearchAttendancePlan,
   buildWorkingDates,
+  collectDatabaseSnapshot,
   createSeededNumberStream,
   formatDryRunReport,
   parseArgs,
@@ -52,6 +53,25 @@ describe('research attendance generator scaffold contract', () => {
     expect(RESEARCH_ATTENDANCE_CONFIG.dateRange).toEqual({
       start: '2025-07-01',
       end: '2026-06-26'
+    });
+  });
+
+  it('ships the host monthly targets needed to plan WFA and geofence evidence', () => {
+    expect(RESEARCH_ATTENDANCE_CONFIG.monthlyStatusTargets['2026-06']).toEqual({
+      ontime: 89,
+      late: 1,
+      alpha: 5,
+      early: 5
+    });
+    expect(RESEARCH_ATTENDANCE_CONFIG.monthlyModeTargets['2026-01']).toEqual({
+      wfo: 88,
+      wfh: 2,
+      wfa: 10
+    });
+    expect(RESEARCH_ATTENDANCE_CONFIG.monthlyGeofenceTargets['2025-08']).toEqual({
+      full: 82,
+      partial: 13,
+      missing: 5
     });
   });
 
@@ -269,6 +289,53 @@ describe('apply safeguards', () => {
         updated_at: expect.any(Date)
       })
     );
+  });
+});
+
+describe('database snapshot mapping', () => {
+  it('resolves expected WFO, WFH, and fallback WFA locations from snapshot models', async () => {
+    const fakeModels = {
+      Attendance: {
+        findAll: async () => [{ user_id: 10 }, { user_id: 11 }]
+      },
+      User: {
+        findAll: async () => [
+          { id_users: 10, full_name: 'User 10' },
+          { id_users: 11, full_name: 'User 11' }
+        ]
+      },
+      Booking: {
+        findAll: async () => [
+          { booking_id: 200, user_id: 10, schedule_date: '2025-07-01', status: 1, location_id: 300 },
+          { booking_id: 201, user_id: 11, schedule_date: '2025-07-02', status: 1, location_id: 301 }
+        ]
+      },
+      LocationEvent: {
+        findAll: async () => []
+      },
+      Location: {
+        findAll: async () => [
+          { location_id: 1, user_id: null, id_attendance_categories: 1 },
+          { location_id: 20, user_id: 10, id_attendance_categories: 2 },
+          { location_id: 21, user_id: 11, id_attendance_categories: 2 },
+          { location_id: 30, user_id: 10, id_attendance_categories: 3 },
+          { location_id: 31, user_id: 11, id_attendance_categories: 3 }
+        ]
+      }
+    };
+
+    const snapshot = await collectDatabaseSnapshot(fakeModels);
+
+    expect(snapshot.expectedLocationsByUser[10]).toEqual({
+      wfoLocationId: 1,
+      wfhLocationId: 20,
+      fallbackWfaLocationId: 300
+    });
+    expect(snapshot.expectedLocationsByUser[11]).toEqual({
+      wfoLocationId: 1,
+      wfhLocationId: 21,
+      fallbackWfaLocationId: 301
+    });
   });
 });
 
