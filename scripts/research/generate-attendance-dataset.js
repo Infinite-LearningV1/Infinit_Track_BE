@@ -21,20 +21,24 @@ import {
   RESEARCH_ATTENDANCE_CONFIG
 } from './research-attendance-config.js';
 
+export function assertApplyGuard(args) {
+  if (args.apply && !args.acknowledged) {
+    throw new Error('Apply mode requires --apply and --i-understand-this-writes-attendance-data.');
+  }
+}
+
 export function parseArgs(argv = []) {
   const apply = argv.includes('--apply');
   const acknowledged = argv.includes(APPLY_ACK_FLAG);
-
-  if (apply && !acknowledged) {
-    throw new Error(`--apply requires ${APPLY_ACK_FLAG}`);
-  }
-
-  return {
+  const args = {
     apply,
     acknowledged,
     dryRun: !apply,
     outputPath: FIXED_OUTPUT_PATH
   };
+
+  assertApplyGuard(args);
+  return args;
 }
 
 export function createSeededNumberStream(seed) {
@@ -292,6 +296,34 @@ export function buildResearchAttendancePlan({
   };
 }
 
+export async function applyResearchAttendancePlan({
+  plan,
+  transaction,
+  models = { Booking, Attendance, LocationEvent }
+}) {
+  if (plan.plannedBookingRows.length > 0) {
+    await models.Booking.bulkCreate(plan.plannedBookingRows, { transaction });
+  }
+  if (plan.plannedAttendanceRows.length > 0) {
+    await models.Attendance.bulkCreate(plan.plannedAttendanceRows, { transaction });
+  }
+  if (plan.plannedLocationEventRows.length > 0) {
+    await models.LocationEvent.bulkCreate(
+      plan.plannedLocationEventRows.map((row) => ({
+        ...row,
+        event_timestamp: `${row.event_date} ${row.event_type === 'ENTER' ? '08:00:00' : '17:00:00'}`
+      })),
+      { transaction }
+    );
+  }
+
+  return {
+    attendance: plan.plannedAttendanceRows.length,
+    bookings: plan.plannedBookingRows.length,
+    locationEvents: plan.plannedLocationEventRows.length
+  };
+}
+
 export async function collectDatabaseSnapshot(models = {
   Attendance,
   Booking,
@@ -435,7 +467,28 @@ export async function runCli(argv = process.argv.slice(2), io = console) {
   const summary = buildDryRunSummary({ args, snapshot, plan });
   const outputPath = await writeSummaryArtifact(summary, args.outputPath);
   io.log(formatDryRunReport(summary));
-  return { summary, outputPath, plan, args, snapshot };
+
+  if (!args.apply) {
+    return { summary, outputPath, plan, args, snapshot };
+  }
+
+  io.log('APPLY MODE WRITE TARGET');
+  io.log(`DB host: ${summary.dbIdentity.host}`);
+  io.log(`DB port: ${summary.dbIdentity.port}`);
+  io.log(`DB name: ${summary.dbIdentity.database}`);
+  io.log(`planned attendance writes: ${summary.plannedWrites.attendance}`);
+  io.log(`planned booking writes: ${summary.plannedWrites.bookings}`);
+  io.log(`planned location_event writes: ${summary.plannedWrites.locationEvents}`);
+
+  const transaction = await sequelize.transaction();
+  try {
+    const writtenCounts = await applyResearchAttendancePlan({ plan, transaction });
+    await transaction.commit();
+    return { summary: { ...summary, applyAttempted: true, writtenCounts }, outputPath, plan, args, snapshot };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
 }
 
 export function isDirectRun(metaUrl) {

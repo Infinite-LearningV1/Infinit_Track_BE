@@ -12,6 +12,8 @@ import {
   RESEARCH_ATTENDANCE_CONFIG
 } from '../scripts/research/research-attendance-config.js';
 import {
+  applyResearchAttendancePlan,
+  assertApplyGuard,
   buildDryRunSummary,
   buildResearchAttendancePlan,
   buildWorkingDates,
@@ -32,7 +34,9 @@ describe('research attendance generator scaffold contract', () => {
   });
 
   it('rejects apply mode unless the acknowledge flag is present', () => {
-    expect(() => parseArgs(['--apply'])).toThrow(`--apply requires ${APPLY_ACK_FLAG}`);
+    expect(() => parseArgs(['--apply'])).toThrow(
+      'Apply mode requires --apply and --i-understand-this-writes-attendance-data.'
+    );
 
     expect(parseArgs(['--apply', APPLY_ACK_FLAG])).toEqual({
       apply: true,
@@ -178,6 +182,34 @@ describe('research attendance planner', () => {
       expect.objectContaining({ booking_id: 10, location_id: 710 })
     );
     expect(plan.plannedBookingRows).toHaveLength(0);
+  });
+});
+
+describe('apply safeguards', () => {
+  it('rejects apply mode when the acknowledge flag is missing', () => {
+    expect(() => assertApplyGuard({ apply: true, acknowledged: false })).toThrow(
+      'Apply mode requires --apply and --i-understand-this-writes-attendance-data.'
+    );
+  });
+
+  it('returns deterministic write counts from the planned rows', async () => {
+    const fakeModels = {
+      Booking: { bulkCreate: async (rows) => rows },
+      Attendance: { bulkCreate: async (rows) => rows },
+      LocationEvent: { bulkCreate: async (rows) => rows }
+    };
+
+    const result = await applyResearchAttendancePlan({
+      plan: {
+        plannedBookingRows: [{ booking_id: 1 }],
+        plannedAttendanceRows: [{ id_attendance: 1 }, { id_attendance: 2 }],
+        plannedLocationEventRows: [{ id: 1 }, { id: 2 }, { id: 3 }]
+      },
+      models: fakeModels,
+      transaction: null
+    });
+
+    expect(result).toEqual({ attendance: 2, bookings: 1, locationEvents: 3 });
   });
 });
 
