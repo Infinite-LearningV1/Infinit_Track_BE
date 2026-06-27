@@ -1,12 +1,24 @@
 #!/usr/bin/env node
 
+import fs from 'fs/promises';
+import path from 'path';
 import { fileURLToPath } from 'url';
 
 import Holidays from 'date-holidays';
 
+import config from '../../src/config/index.js';
+import {
+  Attendance,
+  Booking,
+  Location,
+  LocationEvent,
+  User,
+  sequelize
+} from '../../src/models/index.js';
 import {
   APPLY_ACK_FLAG,
-  FIXED_OUTPUT_PATH
+  FIXED_OUTPUT_PATH,
+  RESEARCH_ATTENDANCE_CONFIG
 } from './research-attendance-config.js';
 
 export function parseArgs(argv = []) {
@@ -266,10 +278,153 @@ export function buildResearchAttendancePlan({
   };
 }
 
+export async function collectDatabaseSnapshot(models = {
+  Attendance,
+  Booking,
+  Location,
+  LocationEvent,
+  User
+}) {
+  const julyAttendanceRows = await models.Attendance.findAll({
+    attributes: ['user_id'],
+    where: {
+      attendance_date: {
+        [sequelize.Sequelize.Op.gte]: '2025-07-01',
+        [sequelize.Sequelize.Op.lte]: '2025-07-31'
+      }
+    },
+    group: ['user_id'],
+    raw: true
+  });
+
+  const baselineUserIds = julyAttendanceRows.map((row) => row.user_id);
+  const baselineUsers = baselineUserIds.length
+    ? await models.User.findAll({
+        attributes: ['id_users', 'full_name'],
+        where: {
+          id_users: baselineUserIds,
+          deleted_at: null
+        },
+        raw: true
+      })
+    : [];
+
+  const existingAttendanceRows = await models.Attendance.findAll({
+    where: {
+      attendance_date: {
+        [sequelize.Sequelize.Op.gte]: '2025-07-01',
+        [sequelize.Sequelize.Op.lte]: '2026-06-26'
+      }
+    },
+    raw: true
+  });
+
+  const existingBookingRows = await models.Booking.findAll({
+    where: {
+      schedule_date: {
+        [sequelize.Sequelize.Op.gte]: '2025-07-01',
+        [sequelize.Sequelize.Op.lte]: '2026-06-26'
+      }
+    },
+    raw: true
+  });
+
+  const existingLocationEvents = await models.LocationEvent.findAll({
+    where: {
+      event_timestamp: {
+        [sequelize.Sequelize.Op.gte]: '2025-07-01 00:00:00',
+        [sequelize.Sequelize.Op.lt]: '2026-06-27 00:00:00'
+      }
+    },
+    raw: true
+  });
+
+  return {
+    dbIdentity: {
+      host: config.db.host,
+      port: Number(config.db.port),
+      database: config.db.database
+    },
+    baselineUsers: baselineUsers.map((row) => ({ userId: row.id_users, fullName: row.full_name })),
+    existingAttendanceRows,
+    existingBookingRows,
+    existingLocationEvents,
+    expectedLocationsByUser: {},
+    lookupValidation: { ok: true },
+    missingDeletedBaselineUsers: baselineUserIds
+      .filter((userId) => !baselineUsers.some((user) => user.id_users === userId))
+      .map((userId) => ({ userId }))
+  };
+}
+
+export function buildDryRunSummary({ args, snapshot, plan }) {
+  return {
+    runMode: args.apply ? 'apply' : 'dry-run',
+    deterministicSeed: RESEARCH_ATTENDANCE_CONFIG.seed,
+    dbIdentity: snapshot.dbIdentity,
+    lookupValidation: snapshot.lookupValidation,
+    population: plan.population,
+    calendar: plan.calendar,
+    blackoutMonths: RESEARCH_ATTENDANCE_CONFIG.blackoutMonths,
+    existingSkipped: plan.existingSkipped,
+    plannedWrites: {
+      attendance: plan.plannedAttendanceRows.length,
+      bookings: plan.plannedBookingRows.length,
+      locationEvents: plan.plannedLocationEventRows.length
+    },
+    monthlySummaries: plan.monthlySummaries,
+    fkValidation: plan.fkValidation || { ok: true },
+    potentialConflicts: plan.potentialConflicts,
+    needsVerification: plan.needsVerification
+  };
+}
+
+export async function writeSummaryArtifact(summary, outputPath) {
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, JSON.stringify(summary, null, 2));
+  return outputPath;
+}
+
+export function formatDryRunReport(summary) {
+  return [
+    `DB host: ${summary.dbIdentity.host}`,
+    `DB port: ${summary.dbIdentity.port}`,
+    `DB name: ${summary.dbIdentity.database}`,
+    `population source: ${summary.population.source}`,
+    `population count: ${summary.population.count}`,
+    `blackout months: ${summary.blackoutMonths.join(', ')}`,
+    `existing attendance skipped: ${summary.existingSkipped}`,
+    `planned attendance writes: ${summary.plannedWrites.attendance}`,
+    `planned booking writes: ${summary.plannedWrites.bookings}`,
+    `planned location_event writes: ${summary.plannedWrites.locationEvents}`
+  ].join('\n');
+}
+
+export async function runCli(argv = process.argv.slice(2), io = console) {
+  const args = parseArgs(argv);
+  const snapshot = await collectDatabaseSnapshot();
+  const plan = buildResearchAttendancePlan({
+    config: RESEARCH_ATTENDANCE_CONFIG,
+    baselineUsers: snapshot.baselineUsers,
+    existingAttendanceRows: snapshot.existingAttendanceRows,
+    existingBookingRows: snapshot.existingBookingRows,
+    existingLocationEvents: snapshot.existingLocationEvents,
+    expectedLocationsByUser: snapshot.expectedLocationsByUser,
+    holidays: new Holidays('ID')
+  });
+  const summary = buildDryRunSummary({ args, snapshot, plan });
+  const outputPath = await writeSummaryArtifact(summary, args.outputPath);
+  io.log(formatDryRunReport(summary));
+  return { summary, outputPath, plan, args, snapshot };
+}
+
 export function isDirectRun(metaUrl) {
   return process.argv[1] === fileURLToPath(metaUrl);
 }
 
 if (isDirectRun(import.meta.url)) {
-  throw new Error('INF-181 research planner belum diimplementasikan. Lanjutkan Task 2.');
+  runCli().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
 }

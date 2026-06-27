@@ -1,4 +1,8 @@
 
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+
 import Holidays from 'date-holidays';
 
 import {
@@ -8,10 +12,13 @@ import {
   RESEARCH_ATTENDANCE_CONFIG
 } from '../scripts/research/research-attendance-config.js';
 import {
+  buildDryRunSummary,
   buildResearchAttendancePlan,
   buildWorkingDates,
   createSeededNumberStream,
-  parseArgs
+  formatDryRunReport,
+  parseArgs,
+  writeSummaryArtifact
 } from '../scripts/research/generate-attendance-dataset.js';
 
 describe('research attendance generator scaffold contract', () => {
@@ -150,5 +157,52 @@ describe('research attendance planner', () => {
     expect(plan.plannedBookingRows).toEqual([
       expect.objectContaining({ user_id: 77, schedule_date: '2026-01-02', status: 1, location_id: 707 })
     ]);
+  });
+});
+
+describe('dry-run summary output', () => {
+  it('writes a machine-readable JSON summary to the fixed path shape', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'inf-181-'));
+    const outputPath = path.join(tmpDir, 'attendance-dataset-dry-run.json');
+    const summary = buildDryRunSummary({
+      args: { apply: false, dryRun: true },
+      snapshot: { dbIdentity: { host: '127.0.0.1', port: 3306, database: 'v1_infinite_track' }, lookupValidation: { ok: true } },
+      plan: {
+        population: { source: 'existing July 2025 attendance baseline', count: 2 },
+        calendar: { workingDates: ['2026-01-02'] },
+        existingSkipped: 1,
+        plannedAttendanceRows: [{ user_id: 1, attendance_date: '2026-01-02' }],
+        plannedBookingRows: [],
+        plannedLocationEventRows: [],
+        monthlySummaries: { '2026-01': { immutableMonth: false } },
+        potentialConflicts: [],
+        needsVerification: []
+      }
+    });
+
+    const writtenPath = await writeSummaryArtifact(summary, outputPath);
+    const raw = await fs.readFile(writtenPath, 'utf8');
+    const parsed = JSON.parse(raw);
+
+    expect(writtenPath).toBe(outputPath);
+    expect(parsed.dbIdentity).toEqual({ host: '127.0.0.1', port: 3306, database: 'v1_infinite_track' });
+    expect(parsed.plannedWrites.attendance).toBe(1);
+  });
+
+  it('formats the dry-run report with db identity and write counts', () => {
+    const report = formatDryRunReport({
+      dbIdentity: { host: '127.0.0.1', port: 3306, database: 'v1_infinite_track' },
+      population: { source: 'existing July 2025 attendance baseline', count: 2 },
+      blackoutMonths: ['2025-12', '2026-05'],
+      existingSkipped: 3,
+      plannedWrites: { attendance: 4, bookings: 1, locationEvents: 6 },
+      potentialConflicts: [],
+      needsVerification: []
+    });
+
+    expect(report).toContain('DB host: 127.0.0.1');
+    expect(report).toContain('planned attendance writes: 4');
+    expect(report).toContain('planned booking writes: 1');
+    expect(report).toContain('planned location_event writes: 6');
   });
 });
