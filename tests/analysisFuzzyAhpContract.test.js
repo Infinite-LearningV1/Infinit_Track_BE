@@ -174,6 +174,50 @@ describe('analysis fuzzy ahp contract', () => {
     });
   });
 
+  it('returns a lightweight dashboard recap consistency object without leaking detail-analysis fields', async () => {
+    mockUser.findAll.mockResolvedValue([
+      { id_users: 7, full_name: 'Andi' },
+      { id_users: 8, full_name: 'Budi' }
+    ]);
+    mockAttendance.findAll.mockResolvedValue([
+      {
+        user_id: 7,
+        status_id: 1,
+        time_in: '2026-04-01T01:03:00.000Z',
+        time_out: '2026-04-01T09:00:00.000Z',
+        work_hour: 7.6,
+        attendance_date: '2026-04-01',
+        notes: ''
+      },
+      {
+        user_id: 7,
+        status_id: 2,
+        time_in: '2026-04-02T02:15:00.000Z',
+        time_out: '2026-04-02T10:00:00.000Z',
+        work_hour: 7.75,
+        attendance_date: '2026-04-02',
+        notes: ''
+      }
+    ]);
+
+    const response = await request(scopedApp).get('/api/analysis/fuzzy-ahp/dashboard?type=discipline');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.type).toBe('discipline');
+    expect(response.body.data.type_label).toBe('Discipline');
+    expect(response.body.data.requested_window).toEqual({ period: 'monthly' });
+    expect(response.body.data.consistency).toEqual({
+      CR: 0.037,
+      threshold: 0.1,
+      is_consistent: true,
+      summary_label: 'Konsistensi dapat diterima'
+    });
+    expect(response.body.data.consistency).not.toHaveProperty('CI');
+    expect(response.body.data.consistency).not.toHaveProperty('lambda_max');
+    expect(response.body.data.consistency).not.toHaveProperty('verdict');
+  });
+
   it('returns user-ranked analysis for discipline mode', async () => {
     mockUser.findAll.mockResolvedValue([
       { id_users: 7, full_name: 'Andi' },
@@ -495,6 +539,7 @@ describe('analysis fuzzy ahp contract', () => {
       success: true,
       data: {
         type: 'discipline',
+        type_label: 'Discipline',
         generated_at: expect.any(String),
         timezone: 'Asia/Jakarta',
         requested_window: {
@@ -512,10 +557,10 @@ describe('analysis fuzzy ahp contract', () => {
           is_consistent: expect.any(Boolean)
         }),
         criteria_weights: [
-          { key: 'alpha_rate', label: 'alpha_rate', value: expect.any(Number) },
-          { key: 'lateness_severity', label: 'lateness_severity', value: expect.any(Number) },
-          { key: 'lateness_frequency', label: 'lateness_frequency', value: expect.any(Number) },
-          { key: 'work_focus', label: 'work_focus', value: expect.any(Number) }
+          { key: 'alpha_rate', label: 'alpha_rate', display_label: 'Disiplin Kehadiran', value: expect.any(Number) },
+          { key: 'lateness_severity', label: 'lateness_severity', display_label: 'Tingkat Keterlambatan', value: expect.any(Number) },
+          { key: 'lateness_frequency', label: 'lateness_frequency', display_label: 'Frekuensi Keterlambatan', value: expect.any(Number) },
+          { key: 'work_focus', label: 'work_focus', display_label: 'Fokus Kerja', value: expect.any(Number) }
         ],
         ranking_preview: {
           top_n: 5,
@@ -570,6 +615,7 @@ describe('analysis fuzzy ahp contract', () => {
       success: true,
       data: {
         type: 'smart_ac',
+        type_label: 'Smart AC',
         generated_at: expect.any(String),
         timezone: 'Asia/Jakarta',
         requested_window: {
@@ -587,10 +633,10 @@ describe('analysis fuzzy ahp contract', () => {
           is_consistent: true
         }),
         criteria_weights: [
-          { key: 'history', label: 'history', value: expect.any(Number) },
-          { key: 'checkin_pattern', label: 'checkin_pattern', value: expect.any(Number) },
-          { key: 'context', label: 'context', value: expect.any(Number) },
-          { key: 'transition', label: 'transition', value: expect.any(Number) }
+          { key: 'history', label: 'history', display_label: 'history', value: expect.any(Number) },
+          { key: 'checkin_pattern', label: 'checkin_pattern', display_label: 'checkin_pattern', value: expect.any(Number) },
+          { key: 'context', label: 'context', display_label: 'context', value: expect.any(Number) },
+          { key: 'transition', label: 'transition', display_label: 'transition', value: expect.any(Number) }
         ],
         ranking_preview: {
           top_n: 5,
@@ -627,6 +673,7 @@ describe('analysis fuzzy ahp contract', () => {
       success: true,
       data: {
         type: 'wfa',
+        type_label: 'WFA',
         generated_at: expect.any(String),
         timezone: 'Asia/Jakarta',
         requested_window: {
@@ -644,9 +691,9 @@ describe('analysis fuzzy ahp contract', () => {
           is_consistent: expect.any(Boolean)
         }),
         criteria_weights: [
-          { key: 'location_type', label: 'location_type', value: expect.any(Number) },
-          { key: 'distance_factor', label: 'distance_factor', value: expect.any(Number) },
-          { key: 'amenity_score', label: 'amenity_score', value: expect.any(Number) }
+          { key: 'location_type', label: 'location_type', display_label: 'Tipe Lokasi', value: expect.any(Number) },
+          { key: 'distance_factor', label: 'distance_factor', display_label: 'Faktor Jarak', value: expect.any(Number) },
+          { key: 'amenity_score', label: 'amenity_score', display_label: 'Skor Fasilitas', value: expect.any(Number) }
         ],
         ranking_preview: {
           top_n: 5,

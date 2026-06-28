@@ -58,6 +58,11 @@ describe('dashboard analytics helper contract', () => {
         attendance_category: { category_name: 'Work From Anywhere' }
       }
     ]);
+    mockLocationEventFindAll.mockResolvedValueOnce([
+      { user_id: 7, event_type: 'ENTER' },
+      { user_id: 8, event_type: 'EXIT' },
+      { user_id: 8, event_type: 'EXIT' }
+    ]);
 
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
       consistency: { CR: 0.021, threshold: 0.1, is_consistent: true },
@@ -190,7 +195,28 @@ describe('dashboard analytics helper contract', () => {
 
     expect(result).not.toHaveProperty('today_locations');
 
-    expect(result).not.toHaveProperty('geofence_evidence_context');
+    expect(result.geofence_evidence_context).toEqual({
+      status: 'available',
+      needs_data: false,
+      reason: null,
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: { from: '2026-04-01', to: '2026-04-03' },
+      raw_counts: {
+        total_events: 3,
+        enter_events: 1,
+        exit_events: 2,
+        unique_users: 2
+      },
+      operational_context: {
+        activity_label: 'Active',
+        activity_note: '2 users generated 3 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
+      }
+    });
+
     expect(result).not.toHaveProperty('map_context');
 
     expect(result.fuzzy_ahp_snapshot).toEqual({
@@ -390,7 +416,27 @@ describe('dashboard analytics helper contract', () => {
         distribution: {}
       }
     });
-    expect(result).not.toHaveProperty('geofence_evidence_context');
+    expect(result.geofence_evidence_context).toEqual({
+      status: 'needs_data',
+      needs_data: true,
+      reason: 'NO_GEOFENCE_EVENTS',
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: { from: '2026-04-04', to: '2026-05-03' },
+      raw_counts: {
+        total_events: 0,
+        enter_events: 0,
+        exit_events: 0,
+        unique_users: 0
+      },
+      operational_context: {
+        activity_label: 'Needs Data',
+        activity_note: '0 users generated 0 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
+      }
+    });
   });
 
   it('keeps early attendance present without inflating on-time metrics', async () => {
@@ -479,7 +525,28 @@ describe('dashboard analytics helper contract', () => {
 
     expect(result).not.toHaveProperty('today_locations');
 
-    expect(result).not.toHaveProperty('geofence_evidence_context');
+    expect(result.geofence_evidence_context).toEqual({
+      status: 'needs_data',
+      needs_data: true,
+      reason: 'NO_GEOFENCE_EVENTS',
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: { from: '2026-04-01', to: '2026-04-03' },
+      raw_counts: {
+        total_events: 0,
+        enter_events: 0,
+        exit_events: 0,
+        unique_users: 0
+      },
+      operational_context: {
+        activity_label: 'Needs Data',
+        activity_note: '0 users generated 0 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
+      }
+    });
+
     expect(result).not.toHaveProperty('map_context');
 
     expect(result.fuzzy_ahp_snapshot).toEqual({

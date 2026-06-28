@@ -27,8 +27,8 @@ import {
   ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
 } from '../utils/attendanceDuplicateContract.js';
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
-import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
 import { buildGeofenceEvidenceSnapshot } from '../utils/geofenceEvidenceSnapshot.js';
+import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,

@@ -35,8 +35,8 @@ const meaningfulFahpLines = fahpSection
 const sectionSubheadingPattern = /^\s*#{3,6}\s+/m;
 const markdownTableRowPattern = /^\s*\|.*\|\s*$/m;
 
-const endpointBulletPattern = /^\s+-\s+`(GET \/api\/analysis\/fuzzy-ahp(?:\/[a-z-]+)?)`/gm;
-const endpointBullets = [...fahpSection.matchAll(endpointBulletPattern)].map((match) => match[1]);
+const endpointPathPattern = /`(GET \/api\/analysis\/fuzzy-ahp(?:\/[a-z_-]+)?)`/g;
+const endpointBullets = [...new Set([...fahpSection.matchAll(endpointPathPattern)].map((match) => match[1]))];
 
 describe('Postman Fuzzy AHP documentation contract', () => {
   test('keeps the FAHP documentation section short', () => {

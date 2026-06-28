@@ -22,6 +22,7 @@ const mockGetFuzzyAhpDashboardRecap = jest.fn((req, res) => {
     success: true,
     data: {
       type: req.query.type,
+      type_label: 'Discipline',
       generated_at: '2026-06-26T00:00:00+07:00',
       timezone: 'Asia/Jakarta',
       requested_window: {
@@ -36,10 +37,11 @@ const mockGetFuzzyAhpDashboardRecap = jest.fn((req, res) => {
       consistency: {
         CR: 0.01,
         threshold: 0.1,
-        is_consistent: true
+        is_consistent: true,
+        summary_label: 'Konsistensi dapat diterima'
       },
       criteria_weights: [
-        { key: 'attendance', label: 'attendance', value: 0.4 }
+        { key: 'attendance', label: 'attendance', display_label: 'Attendance', value: 0.4 }
       ],
       ranking_preview: {
         top_n: 5,
@@ -208,6 +210,7 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
       success: true,
       data: {
         type: 'discipline',
+        type_label: 'Discipline',
         generated_at: '2026-06-26T00:00:00+07:00',
         timezone: 'Asia/Jakarta',
         requested_window: {
@@ -222,10 +225,16 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
         consistency: {
           CR: 0.01,
           threshold: 0.1,
-          is_consistent: true
+          is_consistent: true,
+          summary_label: 'Konsistensi dapat diterima'
         },
         criteria_weights: [
-          { key: 'attendance', label: 'attendance', value: 0.4 }
+          {
+            key: 'attendance',
+            label: 'attendance',
+            display_label: 'Attendance',
+            value: 0.4
+          }
         ],
         ranking_preview: {
           top_n: 5,

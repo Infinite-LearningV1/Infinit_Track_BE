@@ -131,6 +131,11 @@ describe('summary dashboard analytics seam', () => {
         attendance_category: { category_name: 'Work From Anywhere' }
       }
     ]);
+    mockLocationEventFindAll.mockResolvedValueOnce([
+      { user_id: 7, event_type: 'ENTER' },
+      { user_id: 8, event_type: 'EXIT' },
+      { user_id: 8, event_type: 'EXIT' }
+    ]);
 
     mockBuildDisciplineAnalysis.mockResolvedValueOnce({
       consistency: { CR: 0.021, threshold: 0.1, is_consistent: true },
@@ -245,6 +250,27 @@ describe('summary dashboard analytics seam', () => {
             wfa: 33.33
           }
         },
+        geofence_evidence_context: {
+          status: 'available',
+          needs_data: false,
+          reason: null,
+          authority: 'context_only',
+          final_attendance_authority: 'attendance_records',
+          window: { from: '2026-04-01', to: '2026-04-03' },
+          raw_counts: {
+            total_events: 3,
+            enter_events: 1,
+            exit_events: 2,
+            unique_users: 2
+          },
+          operational_context: {
+            activity_label: 'Active',
+            activity_note: '2 users generated 3 geofence events in this range.',
+            enter_context: 'ENTER events support check-in reminder monitoring.',
+            exit_context: 'EXIT events support active-session exit warning monitoring.',
+            dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
+          }
+        },
         fuzzy_ahp_snapshot: {
           discipline: {
             status: 'ready',
@@ -282,7 +308,6 @@ describe('summary dashboard analytics seam', () => {
       }
     });
     expect(res.body.data).not.toHaveProperty('today_locations');
-    expect(res.body.data).not.toHaveProperty('geofence_evidence_context');
     expect(res.body.data).not.toHaveProperty('map_context');
     expect(res.body.data.historical_trend.points).toEqual([
       {

@@ -1,12 +1,20 @@
 import { Op } from 'sequelize';
 
-import { Attendance, AttendanceCategory, AttendanceStatus } from '../models/index.js';
+import { Attendance, AttendanceCategory, AttendanceStatus, LocationEvent } from '../models/index.js';
 import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
   buildWfaAnalysis
 } from '../services/fuzzyAhpAnalysis.service.js';
-import { buildEffectiveWindow, buildRequestedWindow, enumerateDateRange } from './historicalDateWindow.js';
+import {
+  addUtcDays,
+  buildEffectiveWindow,
+  buildJakartaDayStartUtc,
+  buildRequestedWindow,
+  enumerateDateRange,
+  formatDateOnly
+} from './historicalDateWindow.js';
+import { buildGeofenceEvidenceData } from './geofenceEvidenceSnapshot.js';
 
 const STATUS_ALPHA = new Set(['alpa', 'alpha']);
 const STATUS_LATE = new Set(['terlambat', 'late']);
@@ -127,6 +135,12 @@ const buildSnapshotCard = ({ analysis, effectiveWindow, generatedAt, allowedIds 
   };
 };
 
+const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) =>
+  buildGeofenceEvidenceData({
+    effectiveWindow,
+    locationEvents
+  });
+
 const buildInsights = ({ executiveKpis, modeMix }) => {
   const items = [];
   const rawCounts = executiveKpis.raw_counts;
@@ -170,42 +184,54 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
   const effectiveWindow = buildEffectiveWindow({ period, from, to });
   const historicalDates = enumerateDateRange(effectiveWindow.startDate, effectiveWindow.endDate);
   const generatedAt = new Date().toISOString();
+  const geofenceStartInclusive = buildJakartaDayStartUtc(effectiveWindow.startDateStr);
+  const geofenceEndExclusive = buildJakartaDayStartUtc(formatDateOnly(addUtcDays(effectiveWindow.endDate, 1)));
 
-  const [attendanceRows, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] = await Promise.all([
-      Attendance.findAll({
-        where: {
-          attendance_date: {
-            [Op.between]: [effectiveWindow.startDateStr, effectiveWindow.endDateStr]
-          }
+  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] = await Promise.all([
+    Attendance.findAll({
+      where: {
+        attendance_date: {
+          [Op.between]: [effectiveWindow.startDateStr, effectiveWindow.endDateStr]
+        }
+      },
+      attributes: ['attendance_date', 'user_id'],
+      include: [
+        {
+          model: AttendanceStatus,
+          as: 'status',
+          attributes: ['attendance_status_name']
         },
-        attributes: ['attendance_date', 'user_id'],
-        include: [
-          {
-            model: AttendanceStatus,
-            as: 'status',
-            attributes: ['attendance_status_name']
-          },
-          {
-            model: AttendanceCategory,
-            as: 'attendance_category',
-            attributes: ['category_name']
-          }
-        ],
-        order: [['attendance_date', 'ASC']]
-      }),
-      buildDisciplineAnalysis({
-        startAt: effectiveWindow.startDate,
-        endAt: effectiveWindow.endDate
-      }),
-      buildWfaAnalysis({
-        startAt: effectiveWindow.startDate,
-        endAt: effectiveWindow.endDate
-      }),
-      buildSmartAcAnalysis({
-        startAt: effectiveWindow.startDate,
-        endAt: effectiveWindow.endDate
-      })
-    ]);
+        {
+          model: AttendanceCategory,
+          as: 'attendance_category',
+          attributes: ['category_name']
+        }
+      ],
+      order: [['attendance_date', 'ASC']]
+    }),
+    LocationEvent.findAll({
+      where: {
+        event_timestamp: {
+          [Op.gte]: geofenceStartInclusive,
+          [Op.lt]: geofenceEndExclusive
+        }
+      },
+      attributes: ['user_id', 'event_type'],
+      order: [['event_timestamp', 'ASC']]
+    }),
+    buildDisciplineAnalysis({
+      startAt: effectiveWindow.startDate,
+      endAt: effectiveWindow.endDate
+    }),
+    buildWfaAnalysis({
+      startAt: effectiveWindow.startDate,
+      endAt: effectiveWindow.endDate
+    }),
+    buildSmartAcAnalysis({
+      startAt: effectiveWindow.startDate,
+      endAt: effectiveWindow.endDate
+    })
+  ]);
 
   const historicalMap = historicalDates.reduce((acc, date) => {
     acc.set(date, {
@@ -317,6 +343,10 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
     })
   };
   const executedWindow = buildExecutedWindow(effectiveWindow);
+  const geofenceEvidenceContext = buildGeofenceEvidenceContext({
+    effectiveWindow,
+    locationEvents
+  });
 
   return {
     meta: {
@@ -335,6 +365,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       totals: modeTotals,
       percentages
     },
+    geofence_evidence_context: geofenceEvidenceContext,
     fuzzy_ahp_snapshot: fuzzySnapshot,
     insights: buildInsights({
       executiveKpis,
