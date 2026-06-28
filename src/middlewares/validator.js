@@ -522,6 +522,27 @@ export const wfaFahpValidation = [
     .withMessage('radius_meters must be an integer between 100 and 50000')
 ];
 
+export const fuzzyAhpDashboardRecapValidation = [
+  query().custom((_, { req }) => {
+    const queryKeys = Object.keys(req.query ?? {});
+
+    if (!queryKeys.includes('type')) {
+      throw new Error('type is required');
+    }
+
+    const unsupportedQueryKey = queryKeys.find((key) => key !== 'type');
+    if (unsupportedQueryKey) {
+      throw new Error('only type query parameter is allowed');
+    }
+
+    if (!['discipline', 'wfa', 'smart_ac'].includes(req.query.type)) {
+      throw new Error('type must be one of discipline, wfa, smart_ac');
+    }
+
+    return true;
+  })
+];
+
 // Check-out validation rules
 export const checkOutValidation = [
   body('latitude')

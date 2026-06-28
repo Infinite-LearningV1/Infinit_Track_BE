@@ -216,6 +216,13 @@ describe('dashboard analytics helper contract', () => {
         enter_events: 1,
         exit_events: 2,
         unique_users: 2
+      },
+      operational_context: {
+        activity_label: 'Active',
+        activity_note: '2 users generated 3 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
       }
     });
 
@@ -431,6 +438,13 @@ describe('dashboard analytics helper contract', () => {
         enter_events: 0,
         exit_events: 0,
         unique_users: 0
+      },
+      operational_context: {
+        activity_label: 'Needs Data',
+        activity_note: '0 users generated 0 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
       }
     });
   });
@@ -557,6 +571,13 @@ describe('dashboard analytics helper contract', () => {
         enter_events: 0,
         exit_events: 0,
         unique_users: 0
+      },
+      operational_context: {
+        activity_label: 'Needs Data',
+        activity_note: '0 users generated 0 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
       }
     });
 

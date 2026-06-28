@@ -174,6 +174,50 @@ describe('analysis fuzzy ahp contract', () => {
     });
   });
 
+  it('returns a lightweight dashboard recap consistency object without leaking detail-analysis fields', async () => {
+    mockUser.findAll.mockResolvedValue([
+      { id_users: 7, full_name: 'Andi' },
+      { id_users: 8, full_name: 'Budi' }
+    ]);
+    mockAttendance.findAll.mockResolvedValue([
+      {
+        user_id: 7,
+        status_id: 1,
+        time_in: '2026-04-01T01:03:00.000Z',
+        time_out: '2026-04-01T09:00:00.000Z',
+        work_hour: 7.6,
+        attendance_date: '2026-04-01',
+        notes: ''
+      },
+      {
+        user_id: 7,
+        status_id: 2,
+        time_in: '2026-04-02T02:15:00.000Z',
+        time_out: '2026-04-02T10:00:00.000Z',
+        work_hour: 7.75,
+        attendance_date: '2026-04-02',
+        notes: ''
+      }
+    ]);
+
+    const response = await request(scopedApp).get('/api/analysis/fuzzy-ahp/dashboard?type=discipline');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.type).toBe('discipline');
+    expect(response.body.data.type_label).toBe('Discipline');
+    expect(response.body.data.requested_window).toEqual({ period: 'monthly' });
+    expect(response.body.data.consistency).toEqual({
+      CR: 0.037,
+      threshold: 0.1,
+      is_consistent: true,
+      summary_label: 'Konsistensi dapat diterima'
+    });
+    expect(response.body.data.consistency).not.toHaveProperty('CI');
+    expect(response.body.data.consistency).not.toHaveProperty('lambda_max');
+    expect(response.body.data.consistency).not.toHaveProperty('verdict');
+  });
+
   it('returns user-ranked analysis for discipline mode', async () => {
     mockUser.findAll.mockResolvedValue([
       { id_users: 7, full_name: 'Andi' },

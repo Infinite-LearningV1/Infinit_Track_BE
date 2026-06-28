@@ -19,6 +19,7 @@ import {
   enumerateDateRange,
   formatDateOnly
 } from './historicalDateWindow.js';
+import { buildGeofenceEvidenceData } from './geofenceEvidenceSnapshot.js';
 
 const STATUS_ALPHA = new Set(['alpa', 'alpha']);
 const STATUS_LATE = new Set(['terlambat', 'late']);
@@ -140,42 +141,11 @@ const buildSnapshotCard = ({ analysis, effectiveWindow, generatedAt, allowedIds 
   };
 };
 
-const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) => {
-  const uniqueUsers = new Set();
-  let enterEvents = 0;
-  let exitEvents = 0;
-
-  for (const event of locationEvents) {
-    if (event.user_id != null) {
-      uniqueUsers.add(String(event.user_id));
-    }
-
-    if (event.event_type === 'ENTER') {
-      enterEvents += 1;
-    }
-
-    if (event.event_type === 'EXIT') {
-      exitEvents += 1;
-    }
-  }
-
-  const hasEvents = locationEvents.length > 0;
-
-  return {
-    status: hasEvents ? 'available' : 'needs_data',
-    needs_data: !hasEvents,
-    reason: hasEvents ? null : 'NO_GEOFENCE_EVENTS',
-    authority: 'context_only',
-    final_attendance_authority: 'attendance_records',
-    window: buildExecutedWindow(effectiveWindow),
-    raw_counts: {
-      total_events: locationEvents.length,
-      enter_events: enterEvents,
-      exit_events: exitEvents,
-      unique_users: uniqueUsers.size
-    }
-  };
-};
+const buildGeofenceEvidenceContext = ({ effectiveWindow, locationEvents }) =>
+  buildGeofenceEvidenceData({
+    effectiveWindow,
+    locationEvents
+  });
 
 const buildInsights = ({ executiveKpis, modeMix }) => {
   const items = [];
