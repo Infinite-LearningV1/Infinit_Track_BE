@@ -134,7 +134,7 @@ describe('getSummaryReport performance contract', () => {
       rows: [userTenPageRow, userElevenPageRow]
     });
     mockSettingsFindAll.mockResolvedValue([{ setting_key: 'checkin.start_time', setting_value: '08:00:00' }]);
-    mockBuildUserAttendanceSummary.mockResolvedValue([{ user_id: 10, total_attendance: 1 }]);
+    mockBuildUserAttendanceSummary.mockResolvedValue([{ user_id: 10, valid_attendance_days: 1, wfo_days: 1, latest_attendance_date: '2026-05-01' }]);
     mockCalculateDisciplineIndex.mockImplementation(async (metrics) => ({
       score: metrics.avg_lateness_minutes > 0 ? 70 : 95,
       label: metrics.avg_lateness_minutes > 0 ? 'Good' : 'Excellent',
@@ -178,7 +178,9 @@ describe('getSummaryReport performance contract', () => {
     expect(mockCalculateDisciplineIndex).toHaveBeenCalledTimes(2);
 
     const payload = res.json.mock.calls[0][0];
-    expect(payload.report.user_attendance_summary).toEqual([{ user_id: 10, total_attendance: 1 }]);
+    expect(payload.report.user_attendance_summary).toEqual([
+      { user_id: 10, valid_attendance_days: 1, wfo_days: 1, latest_attendance_date: '2026-05-01' }
+    ]);
     expect(payload.report.data).toHaveLength(2);
     expect(payload.report.data[0]).toEqual(
       expect.objectContaining({
@@ -306,5 +308,72 @@ describe('getSummaryReport performance contract', () => {
         discipline_label: 'Needs Attention'
       })
     );
+  });
+
+  test('limits report user attendance summary to users visible in the scoped report rows', async () => {
+    const visibleRow = makeAttendanceRow({
+      id: 1,
+      userId: 10,
+      fullName: 'Visible User',
+      date: '2026-05-02',
+      timeIn: '08:00'
+    });
+    mockAttendanceFindAll
+      .mockResolvedValueOnce([{ status: { attendance_status_name: 'tepat waktu' }, dataValues: { total: '1' } }])
+      .mockResolvedValueOnce([{ attendance_category: { category_name: 'WFO' }, dataValues: { total: '1' } }])
+      .mockResolvedValueOnce([visibleRow])
+      .mockResolvedValueOnce([
+        {
+          id_attendance: 1,
+          user_id: 10,
+          attendance_date: '2026-05-02',
+          time_in: new Date('2026-05-02T08:00:00'),
+          time_out: new Date('2026-05-02T17:00:00'),
+          work_hour: 8,
+          status: { attendance_status_name: 'tepat waktu' }
+        },
+        {
+          id_attendance: 2,
+          user_id: 11,
+          attendance_date: '2026-05-01',
+          time_in: new Date('2026-05-01T09:00:00'),
+          time_out: new Date('2026-05-01T17:00:00'),
+          work_hour: 7,
+          status: { attendance_status_name: 'terlambat' }
+        }
+      ]);
+    mockAttendanceFindAndCountAll.mockResolvedValue({ count: 1, rows: [visibleRow] });
+    mockSettingsFindAll.mockResolvedValue([{ setting_key: 'checkin.start_time', setting_value: '08:00:00' }]);
+    mockBuildUserAttendanceSummary.mockResolvedValue([
+      { user_id: 10, valid_attendance_days: 1, wfo_days: 1, latest_attendance_date: '2026-05-02' },
+      { user_id: 11, valid_attendance_days: 5, wfo_days: 5, latest_attendance_date: '2026-05-01' }
+    ]);
+    mockCalculateDisciplineIndex.mockResolvedValue({
+      score: 95,
+      label: 'Excellent',
+      breakdown: { metrics: { total_days: 1 } }
+    });
+    mockGetDisciplineLabel.mockReturnValue('Fallback');
+
+    const { getSummaryReport } = await import('../src/controllers/summary.controller.js');
+    const res = makeRes();
+
+    await getSummaryReport(
+      { query: { period: '30d', q: 'Visible', page: '1', limit: '10' } },
+      res,
+      jest.fn()
+    );
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.report.data).toHaveLength(1);
+    expect(payload.report.data[0]).toEqual(
+      expect.objectContaining({
+        user_id: 10,
+        full_name: 'Visible User'
+      })
+    );
+    expect(payload.report.user_attendance_summary).toEqual([
+      { user_id: 10, valid_attendance_days: 1, wfo_days: 1, latest_attendance_date: '2026-05-02' }
+    ]);
   });
 });

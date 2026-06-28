@@ -3602,7 +3602,7 @@ paths:
           schema:
             type: string
             example: nico
-          description: Canonical free-text search for report rows. Applies before pagination to `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
+          description: Canonical free-text search for report rows. Applies before pagination to `report.data`, `report.pagination`, and `report.user_attendance_summary`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users for the current page.
         - in: query
           name: search
           deprecated: true
@@ -5358,6 +5358,7 @@ components:
           type: object
           properties:
             user_attendance_summary:
+              description: Per-user attendance summaries limited to users visible in the filtered report scope for the requested query window.
               type: array
               items:
                 $ref: '#/components/schemas/SummaryReportUserAttendanceSummaryRow'

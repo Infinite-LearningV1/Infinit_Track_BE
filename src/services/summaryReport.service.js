@@ -811,7 +811,7 @@ export const buildSummaryReportSource = async (query = {}, options = {}) => {
     report: {
       data: transformedPaginatedRows,
       pagination: includePaginatedReport ? buildPagination({ count: paginatedResult.count, page, limit }) : null,
-      user_attendance_summary: userAttendanceSummary
+      user_attendance_summary: scopedUserSummaries
     },
     analytics: {
       discipline_analysis: buildAnalyticsDisciplineAnalysis({
