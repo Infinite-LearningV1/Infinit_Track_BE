@@ -104,7 +104,7 @@ describe('resolveWfaBookings job idempotency and batching', () => {
       expect.stringContaining('Alpha records created')
     );
     expect(mockLogger.info).toHaveBeenCalledWith(
-      'Task A completed. Alpha insert rows requested: 1, Pre-insert skipped: 0. Actual created count unavailable with ignoreDuplicates.'
+      'Duplicate-safe unused WFA alpha insert completed. Requested: 1, skipped: 0, created count unavailable because ignoreDuplicates was used.'
     );
   });
 

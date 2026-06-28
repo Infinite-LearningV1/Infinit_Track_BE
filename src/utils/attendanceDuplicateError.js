@@ -1,17 +1,46 @@
+import {
+  matchesAttendanceDailyTruthFields,
+  matchesAttendanceDailyTruthConstraintName
+} from './attendanceDuplicateContract.js';
+
+const extractConstraintName = (error) => {
+  const parentSqlMessage = error?.parent?.sqlMessage;
+  if (typeof parentSqlMessage === 'string') {
+    const match = parentSqlMessage.match(/for key '([^']+)'/i);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return error?.parent?.constraint || error?.parent?.index || error?.parent?.key || '';
+};
+
+const getDuplicateFieldNames = (error) => {
+  const fieldNames = [
+    ...Object.keys(error?.fields || {}),
+    ...(error?.errors || []).map((item) => item?.path).filter(Boolean)
+  ];
+
+  return fieldNames;
+};
+
 export const isAttendanceDuplicateConstraintError = (error) => {
   if (!error || error.name !== 'SequelizeUniqueConstraintError') {
     return false;
   }
 
-  const fields = Object.keys(error.fields || {});
-  const errorPaths = (error.errors || []).map((item) => item.path);
-  const combined = new Set([...fields, ...errorPaths]);
+  const fieldNames = getDuplicateFieldNames(error);
+  if (matchesAttendanceDailyTruthFields(fieldNames)) {
+    return true;
+  }
 
-  return combined.has('user_id') && combined.has('attendance_date');
+  return matchesAttendanceDailyTruthConstraintName(extractConstraintName(error));
 };
 
+const DEFAULT_ATTENDANCE_CONFLICT_MESSAGE = 'Terjadi konflik data kehadiran.';
+
 export const createAttendanceConflictError = (
-  message = 'Attendance untuk user dan tanggal tersebut sudah ada.'
+  message = DEFAULT_ATTENDANCE_CONFLICT_MESSAGE
 ) => {
   const error = new Error(message);
   error.status = 409;

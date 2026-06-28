@@ -131,7 +131,6 @@ describe('summary dashboard analytics seam', () => {
         attendance_category: { category_name: 'Work From Anywhere' }
       }
     ]);
-
     mockLocationEventFindAll.mockResolvedValueOnce([
       { user_id: 7, event_type: 'ENTER' },
       { user_id: 8, event_type: 'EXIT' },
@@ -191,16 +190,6 @@ describe('summary dashboard analytics seam', () => {
         }
       })
     );
-    expect(mockLocationEventFindAll).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          event_timestamp: {
-            [Op.gte]: new Date('2026-03-31T17:00:00.000Z'),
-            [Op.lt]: new Date('2026-04-03T17:00:00.000Z')
-          }
-        }
-      })
-    );
     expect(res.body).toMatchObject({
       success: true,
       requested_window: {
@@ -229,8 +218,7 @@ describe('summary dashboard analytics seam', () => {
             executive_kpis: { from: '2026-04-01', to: '2026-04-03' },
             historical_trend: { from: '2026-04-01', to: '2026-04-03' },
             mode_mix: { from: '2026-04-01', to: '2026-04-03' },
-            fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' },
-            geofence_evidence_context: { from: '2026-04-01', to: '2026-04-03' }
+            fuzzy_ahp_snapshot: { from: '2026-04-01', to: '2026-04-03' }
           }
         },
         executive_kpis: {

@@ -47,6 +47,39 @@ const mockGetTodayLocations = jest.fn((req, res) => {
   });
 });
 
+const mockGetGeofenceEvidence = jest.fn((req, res) => {
+  res.status(200).json({
+    success: true,
+    requested_window: {
+      period: req.query.period ?? '30d',
+      from: req.query.from ?? null,
+      to: req.query.to ?? null
+    },
+    executed_window: {
+      from: '2026-04-01',
+      to: '2026-04-03'
+    },
+    data: {
+      status: 'available',
+      needs_data: false,
+      reason: null,
+      authority: 'context_only',
+      final_attendance_authority: 'attendance_records',
+      window: {
+        from: '2026-04-01',
+        to: '2026-04-03'
+      },
+      raw_counts: {
+        total_events: 4,
+        enter_events: 2,
+        exit_events: 2,
+        unique_users: 2
+      }
+    },
+    message: 'Geofence evidence retrieved successfully'
+  });
+});
+
 const mockDebugCheckInTime = jest.fn((req, res) => {
   res.status(200).json({
     success: true,
@@ -72,6 +105,7 @@ jest.unstable_mockModule('../src/controllers/attendance.controller.js', () => ({
   getSmartEngineConfig: jest.fn(),
   getEnhancedAutoCheckoutSettings: jest.fn(),
   getTodayLocations: mockGetTodayLocations,
+  getGeofenceEvidence: mockGetGeofenceEvidence,
   testWeightedPrediction: jest.fn()
 }));
 
@@ -83,6 +117,20 @@ jest.unstable_mockModule('../src/middlewares/roleGuard.js', () => ({
   __esModule: true,
   default: mockRoleGuard
 }));
+
+const mockDashboardAnalyticsValidation = (req, res, next) => {
+  const { period = '30d', from = null, to = null } = req.query ?? {};
+
+  if ((period === 'custom' || period === 'range') && (!from || !to)) {
+    return res.status(400).json({
+      success: false,
+      code: 'E_VALIDATION',
+      message: `from and to are required when period is ${period}`
+    });
+  }
+
+  return next();
+};
 
 jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
   upload: { single: jest.fn(() => (req, _res, next) => next()) },
@@ -100,7 +148,8 @@ jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
   updateStatusValidation: [],
   checkOutValidation: [],
   locationEventValidation: [],
-  todayLocationsValidation: [mockTodayLocationsValidation]
+  todayLocationsValidation: [mockTodayLocationsValidation],
+  dashboardAnalyticsValidation: [mockDashboardAnalyticsValidation]
 }));
 
 const { default: attendanceRoutes } = await import('../src/routes/attendance.routes.js');

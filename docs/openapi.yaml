@@ -1462,7 +1462,7 @@ paths:
       tags:
         - Attendance
       summary: Get historical geofence evidence snapshot
-      description: Retrieve context-only geofence enter/exit evidence for a selected historical attendance window. This endpoint supports historical window queries and is not the final attendance authority.
+      description: Retrieve context-only geofence evidence for a historical attendance window. This endpoint supports historical window queries, does not own live map snapshots, and is not the final attendance authority; attendance records remain canonical.
       security:
         - bearerAuth: []
       parameters:
@@ -1472,7 +1472,7 @@ paths:
             type: string
             enum: [daily, weekly, monthly, range, 30d, current_month, custom]
             default: 30d
-          description: Historical evidence window. Canonical values are `daily`, `weekly`, `monthly`, and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
+          description: Historical evidence window. Canonical values are `daily` (today), `weekly` (rolling 7 days), `monthly` (rolling 30 days), and `range` with `from`/`to`. Legacy values `30d`, `current_month`, and `custom` remain temporarily supported. `all` is not supported.
         - in: query
           name: from
           schema:
@@ -1485,7 +1485,7 @@ paths:
           schema:
             type: string
             format: date
-            example: '2026-04-03'
+            example: '2026-04-30'
           description: Custom range end date in `YYYY-MM-DD` format. Required when period=range or deprecated period=custom.
       responses:
         '200':
@@ -1513,7 +1513,7 @@ paths:
                         type: string
                         format: date
                         nullable: true
-                        example: '2026-04-03'
+                        example: '2026-04-30'
                   executed_window:
                     type: object
                     properties:
@@ -1526,7 +1526,7 @@ paths:
                         type: string
                         format: date
                         nullable: true
-                        example: '2026-04-03'
+                        example: '2026-04-30'
                   data:
                     type: object
                     properties:
@@ -1559,7 +1559,7 @@ paths:
                             type: string
                             format: date
                             nullable: true
-                            example: '2026-04-03'
+                            example: '2026-04-30'
                       raw_counts:
                         type: object
                         properties:
@@ -1595,7 +1595,7 @@ paths:
                             example: Location context only. Final attendance validity remains determined by backend attendance records.
                   message:
                     type: string
-                    example: Geofence evidence retrieved successfully
+                    example: 'Geofence evidence retrieved successfully'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1930,6 +1930,204 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/attendance/research-trigger/daily:
+    post:
+      tags:
+        - Attendance
+      summary: Trigger partial research attendance for a target date (Admin/Management only)
+      description: >-
+        Operator-only endpoint that builds or applies a deterministic partial attendance plan for
+        a single target date. Protected by feature flag and intended for demo, exam, or research
+        preparation flows only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - target_date
+              properties:
+                target_date:
+                  type: string
+                  format: date
+                  example: '2026-07-01'
+                dry_run:
+                  type: boolean
+                  default: true
+                  example: true
+                allow_non_working_day:
+                  type: boolean
+                  default: false
+                  example: false
+                confirm:
+                  type: string
+                  example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+      responses:
+        '200':
+          description: Research attendance daily trigger processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  endpoint_type:
+                    type: string
+                    example: daily
+                  mode:
+                    type: string
+                    example: dry-run
+                  target_date:
+                    type: string
+                    format: date
+                    example: '2026-07-01'
+                  seed:
+                    type: string
+                    example: '2026-07-01:daily'
+                  policy:
+                    type: object
+                  population:
+                    type: object
+                    nullable: true
+                  selection_summary:
+                    type: object
+                    nullable: true
+                  mode_summary:
+                    type: object
+                    nullable: true
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  conflicts:
+                    type: array
+                    items:
+                      type: object
+                  planned_writes:
+                    type: object
+                    nullable: true
+                  applied_writes:
+                    type: object
+                    nullable: true
+                  skipped_existing:
+                    type: integer
+                    example: 0
+                  skipped_conflict:
+                    type: integer
+                    example: 0
+        '400':
+          description: Invalid trigger request payload or confirmation guard failure
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Feature disabled, non-working day blocked, or no eligible users
+        '500':
+          description: Invalid reference state or trigger execution failure
+
+  /api/attendance/research-trigger/full-day:
+    post:
+      tags:
+        - Attendance
+      summary: Trigger full-day research attendance for a target date (Admin/Management only)
+      description: >-
+        Operator-only endpoint that builds or applies a deterministic full-population attendance
+        plan for a single target date. Protected by feature flag and intended for demo, exam, or
+        research preparation flows only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - target_date
+              properties:
+                target_date:
+                  type: string
+                  format: date
+                  example: '2026-07-01'
+                dry_run:
+                  type: boolean
+                  default: true
+                  example: true
+                allow_non_working_day:
+                  type: boolean
+                  default: false
+                  example: false
+                confirm:
+                  type: string
+                  example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+      responses:
+        '200':
+          description: Research attendance full-day trigger processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  endpoint_type:
+                    type: string
+                    example: full-day
+                  mode:
+                    type: string
+                    example: dry-run
+                  target_date:
+                    type: string
+                    format: date
+                    example: '2026-07-01'
+                  seed:
+                    type: string
+                    example: '2026-07-01:full-day'
+                  policy:
+                    type: object
+                  population:
+                    type: object
+                    nullable: true
+                  selection_summary:
+                    type: object
+                    nullable: true
+                  mode_summary:
+                    type: object
+                    nullable: true
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  conflicts:
+                    type: array
+                    items:
+                      type: object
+                  planned_writes:
+                    type: object
+                    nullable: true
+                  applied_writes:
+                    type: object
+                    nullable: true
+                  skipped_existing:
+                    type: integer
+                    example: 0
+                  skipped_conflict:
+                    type: integer
+                    example: 0
+        '400':
+          description: Invalid trigger request payload or confirmation guard failure
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Feature disabled, non-working day blocked, or no eligible users
+        '500':
+          description: Invalid reference state or trigger execution failure
 
   /api/attendance/{id}:
     delete:
@@ -2743,7 +2941,7 @@ paths:
       tags:
         - Reports & Analytics
       summary: Get dashboard analytics aggregation
-      description: Retrieve dashboard-ready cockpit aggregates for attendance KPIs, historical trend, mode mix, geofence evidence context, and lightweight Fuzzy AHP snapshots for Admin or Management users. This endpoint does not own today/live map snapshots; use `/api/attendance/today-locations` for today locations.
+      description: Retrieve dashboard-ready cockpit historical aggregates for attendance KPIs, historical trend, mode mix, and lightweight Fuzzy AHP snapshots for Admin or Management users. This endpoint does not own geofence evidence or today/live map snapshots; use `/api/attendance/geofence-evidence` for geofence context and `/api/attendance/today-locations` for today locations.
       security:
         - bearerAuth: []
       parameters:
@@ -2856,7 +3054,7 @@ paths:
                                 example: '2026-04-30'
                           section_windows:
                             type: object
-                            description: Window efektif yang benar-benar dipakai untuk agregasi historis, geofence context, dan snapshot fuzzy AHP.
+                            description: Window efektif yang benar-benar dipakai untuk agregasi historis dan snapshot fuzzy AHP.
                             properties:
                               executive_kpis:
                                 type: object
@@ -2910,24 +3108,11 @@ paths:
                                     format: date
                                     nullable: true
                                     example: '2026-04-30'
-                              geofence_evidence_context:
-                                type: object
-                                properties:
-                                  from:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-01'
-                                  to:
-                                    type: string
-                                    format: date
-                                    nullable: true
-                                    example: '2026-04-30'
                           sources:
                             type: array
                             items:
                               type: string
-                            example: [Attendance, AttendanceCategory, AttendanceStatus, LocationEvent]
+                            example: [Attendance, AttendanceCategory, AttendanceStatus]
                       executive_kpis:
                         type: object
                         properties:

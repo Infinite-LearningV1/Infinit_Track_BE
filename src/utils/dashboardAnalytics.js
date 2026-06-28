@@ -1,11 +1,6 @@
 import { Op } from 'sequelize';
 
-import {
-  Attendance,
-  AttendanceCategory,
-  AttendanceStatus,
-  LocationEvent
-} from '../models/index.js';
+import { Attendance, AttendanceCategory, AttendanceStatus, LocationEvent } from '../models/index.js';
 import {
   buildDisciplineAnalysis,
   buildSmartAcAnalysis,
@@ -42,8 +37,7 @@ const buildSectionWindows = (effectiveWindow) => ({
   executive_kpis: buildExecutedWindow(effectiveWindow),
   historical_trend: buildExecutedWindow(effectiveWindow),
   mode_mix: buildExecutedWindow(effectiveWindow),
-  fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow),
-  geofence_evidence_context: buildExecutedWindow(effectiveWindow)
+  fuzzy_ahp_snapshot: buildExecutedWindow(effectiveWindow)
 });
 
 const buildEmptySnapshotCard = (effectiveWindow, generatedAt) => ({
@@ -193,52 +187,51 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
   const geofenceStartInclusive = buildJakartaDayStartUtc(effectiveWindow.startDateStr);
   const geofenceEndExclusive = buildJakartaDayStartUtc(formatDateOnly(addUtcDays(effectiveWindow.endDate, 1)));
 
-  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] =
-    await Promise.all([
-      Attendance.findAll({
-        where: {
-          attendance_date: {
-            [Op.between]: [effectiveWindow.startDateStr, effectiveWindow.endDateStr]
-          }
+  const [attendanceRows, locationEvents, disciplineAnalysis, wfaAnalysis, smartAcAnalysis] = await Promise.all([
+    Attendance.findAll({
+      where: {
+        attendance_date: {
+          [Op.between]: [effectiveWindow.startDateStr, effectiveWindow.endDateStr]
+        }
+      },
+      attributes: ['attendance_date', 'user_id'],
+      include: [
+        {
+          model: AttendanceStatus,
+          as: 'status',
+          attributes: ['attendance_status_name']
         },
-        attributes: ['attendance_date', 'user_id'],
-        include: [
-          {
-            model: AttendanceStatus,
-            as: 'status',
-            attributes: ['attendance_status_name']
-          },
-          {
-            model: AttendanceCategory,
-            as: 'attendance_category',
-            attributes: ['category_name']
-          }
-        ],
-        order: [['attendance_date', 'ASC']]
-      }),
-      LocationEvent.findAll({
-        where: {
-          event_timestamp: {
-            [Op.gte]: geofenceStartInclusive,
-            [Op.lt]: geofenceEndExclusive
-          }
-        },
-        attributes: ['user_id', 'event_type'],
-        order: [['event_timestamp', 'ASC']]
-      }),
-      buildDisciplineAnalysis({
-        startAt: effectiveWindow.startDate,
-        endAt: effectiveWindow.endDate
-      }),
-      buildWfaAnalysis({
-        startAt: effectiveWindow.startDate,
-        endAt: effectiveWindow.endDate
-      }),
-      buildSmartAcAnalysis({
-        startAt: effectiveWindow.startDate,
-        endAt: effectiveWindow.endDate
-      })
-    ]);
+        {
+          model: AttendanceCategory,
+          as: 'attendance_category',
+          attributes: ['category_name']
+        }
+      ],
+      order: [['attendance_date', 'ASC']]
+    }),
+    LocationEvent.findAll({
+      where: {
+        event_timestamp: {
+          [Op.gte]: geofenceStartInclusive,
+          [Op.lt]: geofenceEndExclusive
+        }
+      },
+      attributes: ['user_id', 'event_type'],
+      order: [['event_timestamp', 'ASC']]
+    }),
+    buildDisciplineAnalysis({
+      startAt: effectiveWindow.startDate,
+      endAt: effectiveWindow.endDate
+    }),
+    buildWfaAnalysis({
+      startAt: effectiveWindow.startDate,
+      endAt: effectiveWindow.endDate
+    }),
+    buildSmartAcAnalysis({
+      startAt: effectiveWindow.startDate,
+      endAt: effectiveWindow.endDate
+    })
+  ]);
 
   const historicalMap = historicalDates.reduce((acc, date) => {
     acc.set(date, {
@@ -362,7 +355,7 @@ export const buildDashboardAnalytics = async ({ period = '30d', from = null, to 
       requested_window: requestedWindow,
       executed_window: executedWindow,
       section_windows: buildSectionWindows(effectiveWindow),
-      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus', 'LocationEvent']
+      sources: ['Attendance', 'AttendanceCategory', 'AttendanceStatus']
     },
     executive_kpis: executiveKpis,
     historical_trend: {

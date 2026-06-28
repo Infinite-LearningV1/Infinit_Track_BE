@@ -5,6 +5,7 @@ import sequelize from '../config/database.js';
 import { Booking, Attendance } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { executeJobWithTimeout } from '../utils/jobHelper.js';
+import { buildDuplicateSafeJobSummary } from '../utils/attendanceDuplicateContract.js';
 
 /**
  * Resolve unused WFA bookings and expired pending bookings
@@ -158,7 +159,12 @@ const handleUnusedApprovedBookings = async (todayDate, jakartaTime) => {
       : { created: null, skipped: 0, insertRowsRequested: 0 };
 
     logger.info(
-      `Task A completed. Alpha insert rows requested: ${result.insertRowsRequested}, Pre-insert skipped: ${result.skipped}. Actual created count unavailable with ignoreDuplicates.`
+      buildDuplicateSafeJobSummary({
+        label: 'unused WFA alpha',
+        requested: result.insertRowsRequested,
+        created: result.created,
+        skipped: result.skipped
+      })
     );
   } catch (error) {
     logger.error('Error in Task A (unused approved bookings):', error);

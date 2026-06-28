@@ -42,5 +42,7 @@ export default {
     ssl: String(process.env.DB_SSL || 'false').toLowerCase() === 'true',
     sslRejectUnauthorized:
       String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() === 'true'
-  }
+  },
+  researchAttendanceTriggerEnabled:
+    String(process.env.RESEARCH_ATTENDANCE_TRIGGER_ENABLED || 'false').toLowerCase() === 'true'
 };

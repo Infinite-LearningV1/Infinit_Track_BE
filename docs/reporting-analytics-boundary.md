@@ -14,7 +14,7 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
 | --- | --- | --- |
 | Historical attendance report, paginated rows, export payloads, legacy summary totals, and per-user attendance summary for the selected report window | `GET /api/summary/reports` | Canonical reporting/export surface. Uses dashboard-native report window semantics: period=daily, period=weekly, period=monthly, or period=range with from/to. Legacy 30d, current_month, and custom remain temporarily supported for backend compatibility. |
 | Transitional access to the same reporting contract during consumer migration | `GET /api/summary` | Deprecated compatibility alias. Must stay behaviorally equivalent to `/api/summary/reports` for the same query. |
-| Dashboard cards, historical trend, mode mix, insights, and lightweight FAHP snapshots | `GET /api/summary/dashboard-analytics` | Cockpit/dashboard aggregate surface. Returns top-level `requested_window` and `executed_window`, then section-based analytics under `data.*`; it does not own geofence evidence, `map_context`, or `today_locations`. |
+| Dashboard cards, historical trend, mode mix, insights, and lightweight FAHP snapshots | `GET /api/summary/dashboard-analytics` | Cockpit/dashboard aggregate surface for historical overview. Returns top-level `requested_window` and `executed_window`, then section-based analytics under `data.*`; it does not own today/live map snapshots, but it still embeds `data.geofence_evidence_context` as context-only evidence. |
 | Geofence evidence snapshot for a selected historical attendance window | `GET /api/attendance/geofence-evidence` | Dedicated attendance-owned context surface for geofence enter/exit evidence. This is supporting evidence only; final attendance authority remains attendance records. |
 | Today-only/live snapshot map for users who already checked in on the current Jakarta date | `GET /api/attendance/today-locations` | Dedicated operational snapshot surface for the current day. This is context-only map evidence, not a historical aggregation endpoint, final attendance authority, or fraud authority. |
 | Dedicated FAHP analysis contracts | `GET /api/analysis/fuzzy-ahp/discipline`, `GET /api/analysis/fuzzy-ahp/wfa`, `GET /api/analysis/fuzzy-ahp/smart-ac` | Dedicated FAHP surfaces separate discipline evidence, live WFA provider validation, and Smart AC evidence sufficiency. The legacy combined endpoint remains transition-only. |
@@ -35,11 +35,11 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
   - `GET /api/analysis/fuzzy-ahp/discipline`
   - `GET /api/analysis/fuzzy-ahp/wfa`
   - `GET /api/analysis/fuzzy-ahp/smart-ac`
-`GET /api/analysis/fuzzy-ahp/dashboard` owns the lightweight monthly dashboard recap contract only; it is not the canonical detail-analysis surface. The recap may add display-friendly fields such as `type_label`, `consistency.summary_label`, and `criteria_weights[].display_label` without changing the underlying detail-analysis contract.
+- `GET /api/analysis/fuzzy-ahp/dashboard` owns the lightweight monthly dashboard recap contract only; it is not the canonical detail-analysis surface.
+- The recap may add display-friendly fields such as `type_label`, `consistency.summary_label`, and `criteria_weights[].display_label` without changing the underlying detail-analysis contract.
 - The Postman collection `Infinite Track`, folder `FuzzyAhp`, is the primary manual smoke surface for the dedicated FAHP endpoints and contains curated Discipline, WFA, and Smart AC requests.
 - Dedicated FAHP endpoint smoke requests require a Bearer token authorized for `Admin` or `Management` access.
-- This repo document records only route ownership and source-of-truth boundary. Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here.
-- Use the legacy combined endpoint only for explicit migration compatibility checks.
+- This repo document records only route ownership and source-of-truth boundary. Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here; use the legacy combined endpoint only for explicit migration compatibility checks.
 
 ## Consumer rules
 - Use `/api/summary/reports` for reporting tables, exports, and `report.user_attendance_summary`.
