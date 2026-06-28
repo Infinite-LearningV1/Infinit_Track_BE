@@ -1904,6 +1904,204 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/attendance/research-trigger/daily:
+    post:
+      tags:
+        - Attendance
+      summary: Trigger partial research attendance for a target date (Admin/Management only)
+      description: >-
+        Operator-only endpoint that builds or applies a deterministic partial attendance plan for
+        a single target date. Protected by feature flag and intended for demo, exam, or research
+        preparation flows only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - target_date
+              properties:
+                target_date:
+                  type: string
+                  format: date
+                  example: '2026-07-01'
+                dry_run:
+                  type: boolean
+                  default: true
+                  example: true
+                allow_non_working_day:
+                  type: boolean
+                  default: false
+                  example: false
+                confirm:
+                  type: string
+                  example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+      responses:
+        '200':
+          description: Research attendance daily trigger processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  endpoint_type:
+                    type: string
+                    example: daily
+                  mode:
+                    type: string
+                    example: dry-run
+                  target_date:
+                    type: string
+                    format: date
+                    example: '2026-07-01'
+                  seed:
+                    type: string
+                    example: '2026-07-01:daily'
+                  policy:
+                    type: object
+                  population:
+                    type: object
+                    nullable: true
+                  selection_summary:
+                    type: object
+                    nullable: true
+                  mode_summary:
+                    type: object
+                    nullable: true
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  conflicts:
+                    type: array
+                    items:
+                      type: object
+                  planned_writes:
+                    type: object
+                    nullable: true
+                  applied_writes:
+                    type: object
+                    nullable: true
+                  skipped_existing:
+                    type: integer
+                    example: 0
+                  skipped_conflict:
+                    type: integer
+                    example: 0
+        '400':
+          description: Invalid trigger request payload or confirmation guard failure
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Feature disabled, non-working day blocked, or no eligible users
+        '500':
+          description: Invalid reference state or trigger execution failure
+
+  /api/attendance/research-trigger/full-day:
+    post:
+      tags:
+        - Attendance
+      summary: Trigger full-day research attendance for a target date (Admin/Management only)
+      description: >-
+        Operator-only endpoint that builds or applies a deterministic full-population attendance
+        plan for a single target date. Protected by feature flag and intended for demo, exam, or
+        research preparation flows only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - target_date
+              properties:
+                target_date:
+                  type: string
+                  format: date
+                  example: '2026-07-01'
+                dry_run:
+                  type: boolean
+                  default: true
+                  example: true
+                allow_non_working_day:
+                  type: boolean
+                  default: false
+                  example: false
+                confirm:
+                  type: string
+                  example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+      responses:
+        '200':
+          description: Research attendance full-day trigger processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  endpoint_type:
+                    type: string
+                    example: full-day
+                  mode:
+                    type: string
+                    example: dry-run
+                  target_date:
+                    type: string
+                    format: date
+                    example: '2026-07-01'
+                  seed:
+                    type: string
+                    example: '2026-07-01:full-day'
+                  policy:
+                    type: object
+                  population:
+                    type: object
+                    nullable: true
+                  selection_summary:
+                    type: object
+                    nullable: true
+                  mode_summary:
+                    type: object
+                    nullable: true
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  conflicts:
+                    type: array
+                    items:
+                      type: object
+                  planned_writes:
+                    type: object
+                    nullable: true
+                  applied_writes:
+                    type: object
+                    nullable: true
+                  skipped_existing:
+                    type: integer
+                    example: 0
+                  skipped_conflict:
+                    type: integer
+                    example: 0
+        '400':
+          description: Invalid trigger request payload or confirmation guard failure
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Feature disabled, non-working day blocked, or no eligible users
+        '500':
+          description: Invalid reference state or trigger execution failure
+
   /api/attendance/{id}:
     delete:
       tags:
