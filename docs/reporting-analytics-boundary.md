@@ -12,9 +12,12 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
 
 | Use case | Endpoint | Why |
 | --- | --- | --- |
-| Historical attendance report, paginated rows, export payloads, legacy summary totals, and per-user attendance summary for the selected report window | `GET /api/summary/reports` | Canonical reporting/export surface. Uses dashboard-native report window semantics: period=daily, period=weekly, period=monthly, or period=range with from/to. Legacy 30d, current_month, and custom remain temporarily supported for backend compatibility. |
-| Transitional access to the same reporting contract during consumer migration | `GET /api/summary` | Deprecated compatibility alias. Must stay behaviorally equivalent to `/api/summary/reports` for the same query. |
-| Dashboard cards, historical trend, mode mix, insights, and lightweight FAHP snapshots | `GET /api/summary/dashboard-analytics` | Cockpit/dashboard aggregate surface for historical overview. Returns top-level `requested_window` and `executed_window`, then section-based analytics under `data.*`; it does not own today/live map snapshots, but it still embeds `data.geofence_evidence_context` as context-only evidence. |
+
+| Historical attendance report browsing, paginated rows, legacy summary totals, and per-user attendance summary for the selected report window | `GET /api/summary/reports` | Canonical reporting surface. Uses dashboard-native report window semantics: period=daily, period=weekly, period=monthly, or period=range with from/to. Legacy 30d, current_month, and custom remain temporarily supported for backend compatibility. |
+| PDF-oriented export payload projection from the shared reporting source | `GET /api/summary/reports/pdf` | Canonical PDF export contract. Shares the same backend report source logic as `/api/summary/reports`, but projects PDF-specific metadata, `period_summary`, `export_scope_summary`, and a flattened attendance table without report insight content. |
+| Excel/workbook-oriented export payload projection from the shared reporting source | `GET /api/summary/reports/excel` | Canonical Excel export contract. Shares the same backend report source logic as `/api/summary/reports`, but projects workbook metadata, summary sheet data, attendance rows, and discipline insight rows with neutral `recommended_action_code` values. |
+| Dashboard cards, historical trend, mode mix, insights, and lightweight FAHP snapshots | `GET /api/summary/dashboard-analytics` | Cockpit/dashboard aggregate surface for historical overview only. Returns top-level `requested_window` and `executed_window`, then section-based analytics under `data.*`; it does not own geofence evidence, `map_context`, or `today_locations`. |
+
 | Geofence evidence snapshot for a selected historical attendance window | `GET /api/attendance/geofence-evidence` | Dedicated attendance-owned context surface for geofence enter/exit evidence. This is supporting evidence only; final attendance authority remains attendance records. |
 | Today-only/live snapshot map for users who already checked in on the current Jakarta date | `GET /api/attendance/today-locations` | Dedicated operational snapshot surface for the current day. This is context-only map evidence, not a historical aggregation endpoint, final attendance authority, or fraud authority. |
 | Dedicated FAHP analysis contracts | `GET /api/analysis/fuzzy-ahp/discipline`, `GET /api/analysis/fuzzy-ahp/wfa`, `GET /api/analysis/fuzzy-ahp/smart-ac` | Dedicated FAHP surfaces separate discipline evidence, live WFA provider validation, and Smart AC evidence sufficiency. The legacy combined endpoint remains transition-only. |
@@ -42,12 +45,14 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
 - This repo document records only route ownership and source-of-truth boundary. Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here; use the legacy combined endpoint only for explicit migration compatibility checks.
 
 ## Consumer rules
-- Use `/api/summary/reports` for reporting tables, exports, and `report.user_attendance_summary`.
-- Use `q` as the canonical free-text search parameter for `/api/summary/reports` rows.
+- Use `/api/summary/reports` for reporting tables, paginated report rows, `report.user_attendance_summary`, and the additive `period_summary` plus `export_scope_summary` fields.
+- Use `/api/summary/reports/pdf` for PDF export payload preparation.
+- Use `/api/summary/reports/excel` for workbook/Excel export payload preparation.
+- Use `q` as the canonical free-text search parameter for `/api/summary/reports`, `/api/summary/reports/pdf`, and `/api/summary/reports/excel`.
 - Treat `search`, `query`, and `keyword` as deprecated compatibility aliases for `q`.
-- Do not use `period=all` for `/api/summary/reports`; use `daily`, `weekly`, `monthly`, or `range`.
-- Search filters `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users on the current page.
-- Treat `/api/summary` as a temporary deprecated alias during migration; it must return the same contract as `/api/summary/reports`.
+- Do not use `period=all` for the summary reporting/export surface; use `daily`, `weekly`, `monthly`, or `range`.
+- Search filters the export/report scope dataset; top-level legacy `summary` remains period-wide, while `analytics.discipline_analysis` on `/api/summary/reports` reflects the visible report users on the current page.
+- `/api/summary` is no longer an active compatibility surface and must not be consumed or documented as an available GET route.
 - Use `/api/summary/dashboard-analytics` for dashboard analytics cards, charts, mode mix, insights, and FAHP snapshot panels.
 - Use `/api/attendance/geofence-evidence` for geofence evidence context panels bound to a historical attendance window.
 - Use `/api/attendance/today-locations` for today-focused map widgets or hero maps.

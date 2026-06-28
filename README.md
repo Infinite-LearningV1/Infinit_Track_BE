@@ -205,7 +205,9 @@ bersifat internal-only dan memerlukan sesi `Admin` atau `Management` yang teraut
 | `GET`                        | `/api/wfa/recommendations`        | Rekomendasi lokasi WFA dengan Fuzzy AHP               | Pengguna         |
 | `GET`                        | `/api/wfa/ahp-config`             | Konfigurasi algoritma AHP                             | Admin            |
 | **📊 Analytics & Reports**   |
-| `GET`                        | `/api/summary`                    | **[ENHANCED]** Laporan komprehensif + Indeks Disiplin | Admin/Management |
+| `GET`                        | `/api/summary/reports`            | **[ENHANCED]** Laporan komprehensif + Indeks Disiplin | Admin/Management |
+| `GET`                        | `/api/summary/reports/pdf`        | Payload kontrak export PDF                             | Admin/Management |
+| `GET`                        | `/api/summary/reports/excel`      | Payload kontrak export Excel/workbook                  | Admin/Management |
 | `GET`                        | `/api/discipline/user/:id`        | Indeks kedisiplinan individual                        | Admin/Management |
 | `GET`                        | `/api/discipline/all`             | Overview disiplin semua karyawan                      | Admin            |
 | `GET`                        | `/api/analysis/fuzzy-ahp`         | Analisis bobot fuzzy AHP                              | Admin/Management |
@@ -262,7 +264,7 @@ GET /api/bookings/history?status=approved&sort_by=schedule_date&sort_order=DESC&
 
 ```bash
 # Comprehensive analytics dengan real-time discipline calculation
-GET /api/summary?period=monthly&start_date=2025-07-01&end_date=2025-07-31
+GET /api/summary/reports?period=monthly&from=2025-07-01&to=2025-07-31
 
 # Response includes discipline analytics
 {

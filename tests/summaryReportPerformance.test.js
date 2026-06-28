@@ -108,7 +108,27 @@ describe('getSummaryReport performance contract', () => {
     mockAttendanceFindAll
       .mockResolvedValueOnce([{ status: { attendance_status_name: 'tepat waktu' }, dataValues: { total: '2' } }])
       .mockResolvedValueOnce([{ attendance_category: { category_name: 'WFO' }, dataValues: { total: '2' } }])
-      .mockResolvedValueOnce([userTenPageRow, userElevenPageRow]);
+      .mockResolvedValueOnce([userTenPageRow, userElevenPageRow])
+      .mockResolvedValueOnce([
+        {
+          id_attendance: 1,
+          user_id: 10,
+          attendance_date: '2026-05-01',
+          time_in: new Date('2026-05-01T08:00:00'),
+          time_out: new Date('2026-05-01T17:00:00'),
+          work_hour: 8,
+          status: { attendance_status_name: 'tepat waktu' }
+        },
+        {
+          id_attendance: 2,
+          user_id: 11,
+          attendance_date: '2026-05-01',
+          time_in: new Date('2026-05-01T09:30:00'),
+          time_out: new Date('2026-05-01T17:00:00'),
+          work_hour: 7,
+          status: { attendance_status_name: 'terlambat' }
+        }
+      ]);
     mockAttendanceFindAndCountAll.mockResolvedValue({
       count: 2,
       rows: [userTenPageRow, userElevenPageRow]
@@ -133,19 +153,28 @@ describe('getSummaryReport performance contract', () => {
 
     expect(mockSettingsFindAll).toHaveBeenCalledTimes(1);
     expect(mockAttendanceFindAndCountAll).toHaveBeenCalledTimes(1);
-    expect(mockAttendanceFindAll).toHaveBeenCalledTimes(3);
-    const scopedAttendanceWhere = mockAttendanceFindAll.mock.calls[2][0].where;
-    const userIdOperator = Object.getOwnPropertySymbols(scopedAttendanceWhere.user_id).find(
-      (symbol) => symbol.description === 'in'
-    );
-    const attendanceDateOperator = Object.getOwnPropertySymbols(scopedAttendanceWhere.attendance_date).find(
+    expect(mockAttendanceFindAll).toHaveBeenCalledTimes(4);
+
+    const scopedRowsWhere = mockAttendanceFindAll.mock.calls[2][0].where;
+    const fullPeriodRowsWhere = mockAttendanceFindAll.mock.calls[3][0].where;
+    const scopedAttendanceDateOperator = Object.getOwnPropertySymbols(scopedRowsWhere.attendance_date).find(
       (symbol) => symbol.description === 'between'
     );
-    expect(scopedAttendanceWhere.user_id[userIdOperator]).toEqual(['10', '11']);
-    expect(scopedAttendanceWhere.attendance_date[attendanceDateOperator]).toEqual([
+    const fullPeriodAttendanceDateOperator = Object.getOwnPropertySymbols(fullPeriodRowsWhere.attendance_date).find(
+      (symbol) => symbol.description === 'between'
+    );
+
+    expect(scopedRowsWhere.attendance_date[scopedAttendanceDateOperator]).toEqual([
       expect.any(String),
       expect.any(String)
     ]);
+    expect(fullPeriodRowsWhere.attendance_date[fullPeriodAttendanceDateOperator]).toEqual([
+      expect.any(String),
+      expect.any(String)
+    ]);
+    expect(mockAttendanceFindAll.mock.calls[3][0].attributes).toEqual(
+      expect.arrayContaining(['id_attendance', 'attendance_date', 'time_in', 'time_out', 'work_hour', 'user_id'])
+    );
     expect(mockCalculateDisciplineIndex).toHaveBeenCalledTimes(2);
 
     const payload = res.json.mock.calls[0][0];
@@ -197,7 +226,36 @@ describe('getSummaryReport performance contract', () => {
     mockAttendanceFindAll
       .mockResolvedValueOnce([{ status: { attendance_status_name: 'tepat waktu' }, dataValues: { total: '1' } }])
       .mockResolvedValueOnce([{ attendance_category: { category_name: 'WFO' }, dataValues: { total: '1' } }])
-      .mockResolvedValueOnce([pageRow, lateOffPageRow, alphaOffPageRow]);
+      .mockResolvedValueOnce([pageRow, lateOffPageRow, alphaOffPageRow])
+      .mockResolvedValueOnce([
+        {
+          id_attendance: 1,
+          user_id: 10,
+          attendance_date: '2026-05-02',
+          time_in: new Date('2026-05-02T08:00:00'),
+          time_out: new Date('2026-05-02T17:00:00'),
+          work_hour: 8,
+          status: { attendance_status_name: 'tepat waktu' }
+        },
+        {
+          id_attendance: 2,
+          user_id: 10,
+          attendance_date: '2026-05-01',
+          time_in: new Date('2026-05-01T09:00:00'),
+          time_out: new Date('2026-05-01T17:00:00'),
+          work_hour: 7,
+          status: { attendance_status_name: 'terlambat' }
+        },
+        {
+          id_attendance: 3,
+          user_id: 10,
+          attendance_date: '2026-04-30',
+          time_in: new Date('2026-04-30T08:00:00'),
+          time_out: new Date('2026-04-30T08:00:00'),
+          work_hour: 0,
+          status: { attendance_status_name: 'alpha' }
+        }
+      ]);
     mockAttendanceFindAndCountAll.mockResolvedValue({ count: 3, rows: [pageRow] });
     mockSettingsFindAll.mockResolvedValue([{ setting_key: 'checkin.start_time', setting_value: '08:00:00' }]);
     mockBuildUserAttendanceSummary.mockResolvedValue([]);
@@ -217,7 +275,15 @@ describe('getSummaryReport performance contract', () => {
       jest.fn()
     );
 
-    expect(mockAttendanceFindAll).toHaveBeenCalledTimes(3);
+    expect(mockAttendanceFindAll).toHaveBeenCalledTimes(4);
+    const fullPeriodRowsWhere = mockAttendanceFindAll.mock.calls[3][0].where;
+    const attendanceDateOperator = Object.getOwnPropertySymbols(fullPeriodRowsWhere.attendance_date).find(
+      (symbol) => symbol.description === 'between'
+    );
+    expect(fullPeriodRowsWhere.attendance_date[attendanceDateOperator]).toEqual([
+      expect.any(String),
+      expect.any(String)
+    ]);
     expect(mockCalculateDisciplineIndex).toHaveBeenCalledTimes(1);
     expect(mockCalculateDisciplineIndex).toHaveBeenCalledWith(
       expect.objectContaining({
