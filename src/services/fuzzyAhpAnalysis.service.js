@@ -885,6 +885,33 @@ const buildDashboardRecapRankingItem = (rankedItem) => {
   };
 };
 
+const DASHBOARD_TYPE_LABELS = {
+  discipline: 'Discipline',
+  wfa: 'WFA',
+  smart_ac: 'Smart AC'
+};
+
+const DASHBOARD_CRITERIA_DISPLAY_LABELS = {
+  alpha_rate: 'Disiplin Kehadiran',
+  lateness_severity: 'Tingkat Keterlambatan',
+  lateness_frequency: 'Frekuensi Keterlambatan',
+  work_focus: 'Fokus Kerja',
+  location_type: 'Tipe Lokasi',
+  distance_factor: 'Faktor Jarak',
+  amenity_score: 'Skor Fasilitas',
+  attendance: 'Attendance'
+};
+
+const buildConsistencySummaryLabel = (consistency) => {
+  if (!consistency || typeof consistency.is_consistent !== 'boolean') {
+    return null;
+  }
+
+  return consistency.is_consistent
+    ? 'Konsistensi dapat diterima'
+    : 'Konsistensi perlu ditinjau';
+};
+
 const buildDashboardCriteriaWeights = (weights) => {
   const criteria = Array.isArray(weights?.criteria) ? weights.criteria : [];
   const values = Array.isArray(weights?.values) ? weights.values : [];
@@ -892,8 +919,22 @@ const buildDashboardCriteriaWeights = (weights) => {
   return criteria.map((key, index) => ({
     key,
     label: key,
+    display_label: DASHBOARD_CRITERIA_DISPLAY_LABELS[key] || key,
     value: Number(values[index] ?? 0)
   }));
+};
+
+const buildDashboardConsistency = (consistency) => {
+  if (!consistency) {
+    return null;
+  }
+
+  return {
+    CR: consistency.CR,
+    threshold: consistency.threshold,
+    is_consistent: consistency.is_consistent,
+    summary_label: buildConsistencySummaryLabel(consistency)
+  };
 };
 
 const buildDashboardRankingPreview = (ranking) => ({
@@ -920,9 +961,11 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
   const ranking = Array.isArray(result?.ranking) ? result.ranking : [];
   const rankingPreview = buildDashboardRankingPreview(ranking);
   const hasData = rankingPreview.items.length > 0;
+  const consistency = buildDashboardConsistency(result?.consistency ?? null);
 
   return {
     type,
+    type_label: DASHBOARD_TYPE_LABELS[type] || type,
     generated_at: formatWibDateTime(endAt),
     timezone: 'Asia/Jakarta',
     requested_window: {
@@ -934,7 +977,7 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
     },
     status: hasData ? 'ready' : 'empty',
     needs_data: !hasData,
-    consistency: result?.consistency ?? null,
+    consistency,
     criteria_weights: buildDashboardCriteriaWeights(result?.weights),
     ranking_preview: rankingPreview,
     distribution: result?.distribution ?? { ...EMPTY_DISTRIBUTION }

@@ -61,6 +61,13 @@ const mockGetGeofenceEvidence = jest.fn((req, res) => {
         enter_events: 2,
         exit_events: 2,
         unique_users: 2
+      },
+      operational_context: {
+        activity_label: 'Active',
+        activity_note: '2 users generated 4 geofence events in this range.',
+        enter_context: 'ENTER events support check-in reminder monitoring.',
+        exit_context: 'EXIT events support active-session exit warning monitoring.',
+        dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
       }
     },
     message: 'Geofence evidence retrieved successfully'
@@ -180,6 +187,13 @@ describe('attendance geofence evidence route', () => {
           enter_events: 2,
           exit_events: 2,
           unique_users: 2
+        },
+        operational_context: {
+          activity_label: 'Active',
+          activity_note: '2 users generated 4 geofence events in this range.',
+          enter_context: 'ENTER events support check-in reminder monitoring.',
+          exit_context: 'EXIT events support active-session exit warning monitoring.',
+          dashboard_note: 'Location context only. Final attendance validity remains determined by backend attendance records.'
         }
       },
       message: 'Geofence evidence retrieved successfully'

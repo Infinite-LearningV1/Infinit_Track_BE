@@ -153,6 +153,64 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
+  test('documents attendance geofence-evidence owner endpoint in the public OpenAPI contract', () => {
+    const geofenceOperation = openapi.paths['/api/attendance/geofence-evidence'].get;
+    const geofenceSchema = schemaAt(geofenceOperation);
+    const dataSchema = geofenceSchema.properties.data;
+    const parameterNames = geofenceOperation.parameters.map((parameter) => parameter.name);
+
+    expect(parameterNames).toEqual(expect.arrayContaining(['period', 'from', 'to']));
+    expect(parameterNames).not.toContain('limit');
+    expect(geofenceOperation.responses).toHaveProperty('400');
+    expect(geofenceSchema.properties).toMatchObject({
+      success: { type: 'boolean', example: true },
+      requested_window: { type: 'object' },
+      executed_window: { type: 'object' },
+      data: { type: 'object' },
+      message: {
+        type: 'string',
+        example: 'Geofence evidence retrieved successfully'
+      }
+    });
+    expect(dataSchema.properties).toMatchObject({
+      status: {
+        type: 'string',
+        enum: ['available', 'needs_data'],
+        example: 'available'
+      },
+      needs_data: {
+        type: 'boolean',
+        example: false
+      },
+      reason: {
+        type: 'string',
+        nullable: true,
+        example: null
+      },
+      authority: {
+        type: 'string',
+        example: 'context_only'
+      },
+      final_attendance_authority: {
+        type: 'string',
+        example: 'attendance_records'
+      },
+      window: { type: 'object' },
+      raw_counts: { type: 'object' },
+      operational_context: { type: 'object' }
+    });
+    expect(dataSchema.properties.operational_context.properties).toMatchObject({
+      activity_label: { type: 'string', example: 'Active' },
+      activity_note: { type: 'string', example: '2 users generated 3 geofence events in this range.' },
+      enter_context: { type: 'string', example: 'ENTER events support check-in reminder monitoring.' },
+      exit_context: { type: 'string', example: 'EXIT events support active-session exit warning monitoring.' },
+      dashboard_note: {
+        type: 'string',
+        example: 'Location context only. Final attendance validity remains determined by backend attendance records.'
+      }
+    });
+  });
+
   test('does not document canceled summary dashboard-map endpoint', () => {
     expect(openapi.paths).not.toHaveProperty('/api/summary/dashboard-map');
   });
@@ -315,7 +373,43 @@ describe('client-critical OpenAPI contract', () => {
       message: { type: 'string' },
       severity: { type: 'string' }
     });
-    expect(dataSchema.properties).not.toHaveProperty('geofence_evidence_context');
+    expect(dataSchema.properties.geofence_evidence_context.properties).toMatchObject({
+      status: {
+        type: 'string',
+        enum: ['available', 'needs_data'],
+        example: 'available'
+      },
+      needs_data: {
+        type: 'boolean',
+        example: false
+      },
+      reason: {
+        type: 'string',
+        nullable: true,
+        example: null
+      },
+      authority: {
+        type: 'string',
+        example: 'context_only'
+      },
+      final_attendance_authority: {
+        type: 'string',
+        example: 'attendance_records'
+      },
+      operational_context: {
+        type: 'object'
+      }
+    });
+    expect(dataSchema.properties.geofence_evidence_context.properties.operational_context.properties).toMatchObject({
+      activity_label: { type: 'string', example: 'Active' },
+      activity_note: { type: 'string', example: '2 users generated 3 geofence events in this range.' },
+      enter_context: { type: 'string', example: 'ENTER events support check-in reminder monitoring.' },
+      exit_context: { type: 'string', example: 'EXIT events support active-session exit warning monitoring.' },
+      dashboard_note: {
+        type: 'string',
+        example: 'Location context only. Final attendance validity remains determined by backend attendance records.'
+      }
+    });
     expect(dataSchema.properties).not.toHaveProperty('today_locations');
     expect(dataSchema.properties).not.toHaveProperty('map_context');
     expect(dataSchema.properties.fuzzy_ahp_snapshot.properties.discipline.properties.status).toMatchObject({
@@ -681,7 +775,7 @@ describe('client-critical OpenAPI contract', () => {
     expect(rankingProperties).toHaveProperty('needs_data');
   });
 
-  test('documents dashboard recap query contract and lightweight response envelope', () => {
+  test('documents dashboard recap query contract and additive display fields', () => {
     const operation = openapi.paths['/api/analysis/fuzzy-ahp/dashboard'].get;
     const responseSchema = schemaAt(operation);
     const dataSchema = responseSchema.properties.data;
@@ -701,6 +795,7 @@ describe('client-critical OpenAPI contract', () => {
     expect(operation.description.toLowerCase()).toContain('not expose the full dedicated detail payloads');
     expect(dataSchema.properties).toMatchObject({
       type: { type: 'string' },
+      type_label: { type: 'string', example: 'Discipline' },
       generated_at: { type: 'string', format: 'date-time' },
       timezone: { type: 'string', example: 'Asia/Jakarta' },
       requested_window: { type: 'object' },
@@ -711,6 +806,21 @@ describe('client-critical OpenAPI contract', () => {
       criteria_weights: { type: 'array' },
       ranking_preview: { type: 'object' },
       distribution: { type: 'object' }
+    });
+    expect(dataSchema.properties.consistency.properties).toMatchObject({
+      CR: { type: 'number', format: 'float' },
+      threshold: { type: 'number', format: 'float' },
+      is_consistent: { type: 'boolean' },
+      summary_label: { type: 'string', example: 'Konsistensi dapat diterima' }
+    });
+    expect(dataSchema.properties.consistency.properties).not.toHaveProperty('CI');
+    expect(dataSchema.properties.consistency.properties).not.toHaveProperty('lambda_max');
+    expect(dataSchema.properties.consistency.properties).not.toHaveProperty('verdict');
+    expect(dataSchema.properties.criteria_weights.items.properties).toMatchObject({
+      key: { type: 'string' },
+      label: { type: 'string' },
+      display_label: { type: 'string', example: 'Disiplin Kehadiran' },
+      value: { type: 'number', format: 'float' }
     });
     expect(dataSchema.properties).not.toHaveProperty('ranking');
     expect(dataSchema.properties).not.toHaveProperty('weights');

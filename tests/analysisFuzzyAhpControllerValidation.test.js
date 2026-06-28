@@ -22,7 +22,6 @@ jest.unstable_mockModule('../src/services/fuzzyAhpAnalysis.service.js', () => ({
   formatWibDateTime: mockFormatWibDateTime,
   getAnalysisWindow: mockGetAnalysisWindow
 }));
-
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   __esModule: true,
   default: {
@@ -82,7 +81,7 @@ describe('analysis fuzzy ahp controller validation', () => {
     });
   });
 
-  it('delegates dashboard recap to the recap payload builder and returns success envelope', async () => {
+  it('delegates dashboard recap payload and returns additive display fields in the success envelope', async () => {
     const req = {
       query: { type: 'discipline' },
       user: { id: 12, role_name: 'Admin' }
@@ -94,6 +93,7 @@ describe('analysis fuzzy ahp controller validation', () => {
     const next = jest.fn();
     const payload = {
       type: 'discipline',
+      type_label: 'Discipline',
       generated_at: '2026-06-26T00:00:00+07:00',
       timezone: 'Asia/Jakarta',
       requested_window: { period: 'monthly' },
@@ -103,10 +103,28 @@ describe('analysis fuzzy ahp controller validation', () => {
       },
       status: 'ready',
       needs_data: false,
-      consistency: { CR: 0.01, threshold: 0.1, is_consistent: true },
-      criteria_weights: [{ key: 'attendance', label: 'attendance', value: 0.4 }],
+      consistency: {
+        CR: 0.01,
+        threshold: 0.1,
+        is_consistent: true,
+        summary_label: 'Konsistensi dapat diterima'
+      },
+      criteria_weights: [
+        {
+          key: 'alpha_rate',
+          label: 'alpha_rate',
+          display_label: 'Disiplin Kehadiran',
+          value: 0.317
+        }
+      ],
       ranking_preview: { top_n: 5, items: [] },
-      distribution: { 'Sangat Tinggi': 0, Tinggi: 0, Sedang: 0, Rendah: 0, 'Sangat Rendah': 0 }
+      distribution: {
+        'Sangat Tinggi': 0,
+        Tinggi: 0,
+        Sedang: 0,
+        Rendah: 0,
+        'Sangat Rendah': 0
+      }
     };
 
     mockBuildFuzzyAhpDashboardRecapPayload.mockResolvedValue(payload);
@@ -121,6 +139,76 @@ describe('analysis fuzzy ahp controller validation', () => {
       data: payload,
       message: 'Fuzzy AHP dashboard recap retrieved successfully'
     });
+  });
+
+  it('keeps additive display fields present for empty dashboard recap payloads', async () => {
+    const req = { query: { type: 'wfa' } };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis()
+    };
+    const next = jest.fn();
+
+    mockBuildFuzzyAhpDashboardRecapPayload.mockResolvedValueOnce({
+      type: 'wfa',
+      type_label: 'WFA',
+      generated_at: '2026-06-26T00:00:00+07:00',
+      timezone: 'Asia/Jakarta',
+      requested_window: { period: 'monthly' },
+      executed_window: {
+        start_at: '2026-06-01T00:00:00+07:00',
+        end_at: '2026-06-26T00:00:00+07:00'
+      },
+      status: 'empty',
+      needs_data: true,
+      consistency: {
+        CR: 0.21,
+        threshold: 0.1,
+        is_consistent: false,
+        summary_label: 'Konsistensi perlu ditinjau'
+      },
+      criteria_weights: [
+        {
+          key: 'location_type',
+          label: 'location_type',
+          display_label: 'Tipe Lokasi',
+          value: 0.5
+        }
+      ],
+      ranking_preview: { top_n: 5, items: [] },
+      distribution: {
+        'Sangat Tinggi': 0,
+        Tinggi: 0,
+        Sedang: 0,
+        Rendah: 0,
+        'Sangat Rendah': 0
+      }
+    });
+
+    await getFuzzyAhpDashboardRecap(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          type: 'wfa',
+          type_label: 'WFA',
+          status: 'empty',
+          needs_data: true,
+          consistency: expect.objectContaining({
+            summary_label: 'Konsistensi perlu ditinjau'
+          }),
+          criteria_weights: [
+            expect.objectContaining({
+              key: 'location_type',
+              display_label: 'Tipe Lokasi'
+            })
+          ]
+        })
+      })
+    );
   });
 
   it('logs and forwards dashboard recap builder errors', async () => {

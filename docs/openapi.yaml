@@ -1237,6 +1237,9 @@ paths:
                       type:
                         type: string
                         enum: [discipline, wfa, smart_ac]
+                      type_label:
+                        type: string
+                        example: Discipline
                       generated_at:
                         type: string
                         format: date-time
@@ -1275,6 +1278,9 @@ paths:
                             format: float
                           is_consistent:
                             type: boolean
+                          summary_label:
+                            type: string
+                            example: Konsistensi dapat diterima
                       criteria_weights:
                         type: array
                         items:
@@ -1284,6 +1290,9 @@ paths:
                               type: string
                             label:
                               type: string
+                            display_label:
+                              type: string
+                              example: Disiplin Kehadiran
                             value:
                               type: number
                               format: float
@@ -1452,8 +1461,8 @@ paths:
     get:
       tags:
         - Attendance
-      summary: Get geofence evidence snapshot
-      description: Retrieve context-only geofence evidence for a historical attendance window. This endpoint does not own live map snapshots and is not the final attendance authority; attendance records remain canonical.
+      summary: Get historical geofence evidence snapshot
+      description: Retrieve context-only geofence evidence for a historical attendance window. This endpoint supports historical window queries, does not own live map snapshots, and is not the final attendance authority; attendance records remain canonical.
       security:
         - bearerAuth: []
       parameters:
@@ -1566,6 +1575,24 @@ paths:
                           unique_users:
                             type: integer
                             example: 2
+                      operational_context:
+                        type: object
+                        properties:
+                          activity_label:
+                            type: string
+                            example: Active
+                          activity_note:
+                            type: string
+                            example: 2 users generated 3 geofence events in this range.
+                          enter_context:
+                            type: string
+                            example: ENTER events support check-in reminder monitoring.
+                          exit_context:
+                            type: string
+                            example: EXIT events support active-session exit warning monitoring.
+                          dashboard_note:
+                            type: string
+                            example: Location context only. Final attendance validity remains determined by backend attendance records.
                   message:
                     type: string
                     example: 'Geofence evidence retrieved successfully'
@@ -3198,6 +3225,73 @@ paths:
                                 type: number
                                 format: float
                                 example: 33.33
+                      geofence_evidence_context:
+                        type: object
+                        description: Context-only geofence evidence for the selected window. Final attendance authority remains attendance records.
+                        properties:
+                          status:
+                            type: string
+                            enum: [available, needs_data]
+                            example: available
+                          needs_data:
+                            type: boolean
+                            example: false
+                          reason:
+                            type: string
+                            nullable: true
+                            example: null
+                          authority:
+                            type: string
+                            example: context_only
+                          final_attendance_authority:
+                            type: string
+                            example: attendance_records
+                          window:
+                            type: object
+                            properties:
+                              from:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-01'
+                              to:
+                                type: string
+                                format: date
+                                nullable: true
+                                example: '2026-04-30'
+                          raw_counts:
+                            type: object
+                            properties:
+                              total_events:
+                                type: integer
+                                example: 3
+                              enter_events:
+                                type: integer
+                                example: 1
+                              exit_events:
+                                type: integer
+                                example: 2
+                              unique_users:
+                                type: integer
+                                example: 2
+                          operational_context:
+                            type: object
+                            properties:
+                              activity_label:
+                                type: string
+                                example: Active
+                              activity_note:
+                                type: string
+                                example: 2 users generated 3 geofence events in this range.
+                              enter_context:
+                                type: string
+                                example: ENTER events support check-in reminder monitoring.
+                              exit_context:
+                                type: string
+                                example: EXIT events support active-session exit warning monitoring.
+                              dashboard_note:
+                                type: string
+                                example: Location context only. Final attendance validity remains determined by backend attendance records.
                       fuzzy_ahp_snapshot:
                         type: object
                         properties:
