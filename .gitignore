@@ -45,6 +45,10 @@ docs/*
 !docs/PRODUCTION_DEPLOYMENT.md
 .blackboxrules
 
+# Research attendance generator outputs
+scripts/research/output/*.json
+!scripts/research/output/.gitkeep
+
 /memory-bank
 
 # Docker
