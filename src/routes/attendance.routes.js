@@ -21,6 +21,10 @@ import {
   getTodayLocations,
   getGeofenceEvidence
 } from '../controllers/attendance.controller.js';
+import {
+  triggerResearchAttendanceDaily,
+  triggerResearchAttendanceFullDay
+} from '../controllers/researchAttendance.controller.js';
 import { verifyToken } from '../middlewares/authJwt.js';
 import roleGuard from '../middlewares/roleGuard.js';
 import {
@@ -90,6 +94,17 @@ router.post(
   '/manual-smart-auto-checkout',
   roleGuard(['Admin', 'Management']),
   manualSmartAutoCheckoutForDate
+);
+
+router.post(
+  '/research-trigger/daily',
+  roleGuard(['Admin', 'Management']),
+  triggerResearchAttendanceDaily
+);
+router.post(
+  '/research-trigger/full-day',
+  roleGuard(['Admin', 'Management']),
+  triggerResearchAttendanceFullDay
 );
 
 // Test-only endpoint: weighted prediction (Admin only)
