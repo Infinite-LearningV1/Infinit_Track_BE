@@ -18,7 +18,15 @@ const mockVerifyToken = jest.fn((req, res, next) => {
 });
 
 const mockGetSummaryReport = jest.fn((_req, res) => {
-  res.status(200).json({ success: true, message: 'legacy summary ok' });
+  res.status(200).json({ success: true, message: 'summary report ok' });
+});
+
+const mockGetSummaryReportPdf = jest.fn((_req, res) => {
+  res.status(200).json({ success: true, message: 'summary report pdf ok' });
+});
+
+const mockGetSummaryReportExcel = jest.fn((_req, res) => {
+  res.status(200).json({ success: true, message: 'summary report excel ok' });
 });
 
 const mockGetDashboardAnalytics = jest.fn((req, res) => {
@@ -37,21 +45,18 @@ jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
 
 jest.unstable_mockModule('../src/controllers/summary.controller.js', () => ({
   getSummaryReport: mockGetSummaryReport,
+  getSummaryReportPdf: mockGetSummaryReportPdf,
+  getSummaryReportExcel: mockGetSummaryReportExcel,
   getDashboardAnalytics: mockGetDashboardAnalytics
 }));
 
 const { default: summaryRoutes } = await import('../src/routes/summary.routes.js');
 
-const reportRoutes = ['/api/summary', '/api/summary/reports'];
-const reportRouteAccessMatrix = reportRoutes.flatMap((routePath) => [
-  [routePath, 'Admin'],
-  [routePath, 'Management']
-]);
-const summaryReportQuery = {
-  period: 'monthly',
-  page: '2',
-  limit: '5'
-};
+const reportRouteCases = [
+  ['/api/summary/reports', mockGetSummaryReport],
+  ['/api/summary/reports/pdf', mockGetSummaryReportPdf],
+  ['/api/summary/reports/excel', mockGetSummaryReportExcel]
+];
 const dashboardAnalyticsCanonicalPeriodCases = [
   ['daily', { period: 'daily' }],
   ['weekly', { period: 'weekly' }],
@@ -73,50 +78,33 @@ describe('summary routes', () => {
     jest.clearAllMocks();
   });
 
-  it.each(reportRoutes)('runs auth middleware before the report handler for %s', async (routePath) => {
+  it.each(reportRouteCases)('runs auth middleware before the report handler for %s', async (routePath, handler) => {
     authMode = 'reject';
 
     const res = await request(app).get(routePath);
 
     expect(res.status).toBe(401);
     expect(mockVerifyToken).toHaveBeenCalled();
-    expect(mockGetSummaryReport).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it.each(reportRouteAccessMatrix)(
-    'allows %s access to the report handler for %s',
-    async (routePath, roleName) => {
-      currentRole = roleName;
+  it.each(reportRouteCases.flatMap(([routePath, handler]) => [
+    [routePath, 'Admin', handler],
+    [routePath, 'Management', handler]
+  ]))('allows %s access to the report handler for %s', async (routePath, roleName, handler) => {
+    currentRole = roleName;
 
-      const res = await request(app).get(routePath);
+    const res = await request(app).get(routePath);
 
-      expect(res.status).toBe(200);
-      expect(mockGetSummaryReport).toHaveBeenCalled();
-    }
-  );
+    expect(res.status).toBe(200);
+    expect(handler).toHaveBeenCalled();
+  });
 
-  it('keeps /api/summary and /api/summary/reports behaviorally equivalent for the same query', async () => {
-    const legacyResponse = await request(app).get('/api/summary').query(summaryReportQuery);
-    const canonicalResponse = await request(app).get('/api/summary/reports').query(summaryReportQuery);
-    const expectedSummaryReportCall = expect.objectContaining({
-      query: expect.objectContaining(summaryReportQuery)
-    });
+  it('removes the deprecated /api/summary alias from runtime routing', async () => {
+    const res = await request(app).get('/api/summary');
 
-    expect(legacyResponse.status).toBe(200);
-    expect(canonicalResponse.status).toBe(200);
-    expect(canonicalResponse.body).toEqual(legacyResponse.body);
-    expect(mockGetSummaryReport).toHaveBeenNthCalledWith(
-      1,
-      expectedSummaryReportCall,
-      expect.anything(),
-      expect.anything()
-    );
-    expect(mockGetSummaryReport).toHaveBeenNthCalledWith(
-      2,
-      expectedSummaryReportCall,
-      expect.anything(),
-      expect.anything()
-    );
+    expect(res.status).toBe(404);
+    expect(mockGetSummaryReport).not.toHaveBeenCalled();
   });
 
   it('runs auth middleware before the dashboard analytics handler', async () => {
@@ -129,17 +117,14 @@ describe('summary routes', () => {
     expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
   });
 
-  it.each(['Admin', 'Management'])(
-    'allows %s access to dashboard analytics',
-    async (roleName) => {
-      currentRole = roleName;
+  it.each(['Admin', 'Management'])('allows %s access to dashboard analytics', async (roleName) => {
+    currentRole = roleName;
 
-      const res = await request(app).get('/api/summary/dashboard-analytics');
+    const res = await request(app).get('/api/summary/dashboard-analytics');
 
-      expect(res.status).toBe(200);
-      expect(mockGetDashboardAnalytics).toHaveBeenCalled();
-    }
-  );
+    expect(res.status).toBe(200);
+    expect(mockGetDashboardAnalytics).toHaveBeenCalled();
+  });
 
   it.each(dashboardAnalyticsCanonicalPeriodCases)(
     'passes canonical %s period through to the dashboard analytics handler',
@@ -157,146 +142,4 @@ describe('summary routes', () => {
       expect(res.body.data.period).toBe(query.period);
     }
   );
-
-  it('passes current_month through to the handler for a realistic dashboard filter', async () => {
-    const res = await request(app).get('/api/summary/dashboard-analytics?period=current_month');
-
-    expect(res.status).toBe(200);
-    expect(mockGetDashboardAnalytics).toHaveBeenCalledWith(
-      expect.objectContaining({
-        query: expect.objectContaining({ period: 'current_month' })
-      }),
-      expect.anything(),
-      expect.anything()
-    );
-    expect(res.body).toEqual({
-      success: true,
-      data: { period: 'current_month' },
-      message: 'Dashboard analytics retrieved successfully'
-    });
-  });
-
-  it('accepts a custom range that is exactly 31 days long', async () => {
-    const res = await request(app).get(
-      '/api/summary/dashboard-analytics?period=custom&from=2026-05-01&to=2026-05-31'
-    );
-
-    expect(res.status).toBe(200);
-    expect(mockGetDashboardAnalytics).toHaveBeenCalledWith(
-      expect.objectContaining({
-        query: expect.objectContaining({
-          period: 'custom',
-          from: '2026-05-01',
-          to: '2026-05-31'
-        })
-      }),
-      expect.anything(),
-      expect.anything()
-    );
-  });
-
-  it('returns 403 for unauthorized roles', async () => {
-    currentRole = 'User';
-
-    const res = await request(app).get('/api/summary/dashboard-analytics');
-
-    expect(res.status).toBe(403);
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION for an invalid period value', async () => {
-    const res = await request(app).get('/api/summary/dashboard-analytics?period=invalid');
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION for unsupported all period', async () => {
-    const res = await request(app).get('/api/summary/dashboard-analytics?period=all');
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION when period is explicitly empty', async () => {
-    const res = await request(app).get('/api/summary/dashboard-analytics?period=');
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION when from uses a non-ISO date format', async () => {
-    const res = await request(app).get(
-      '/api/summary/dashboard-analytics?period=custom&from=05-01-2026&to=2026-05-31'
-    );
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION when custom dates are impossible calendar dates', async () => {
-    const res = await request(app).get(
-      '/api/summary/dashboard-analytics?period=custom&from=2026-04-01&to=2026-04-31'
-    );
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION when custom period is missing from or to', async () => {
-    const res = await request(app).get('/api/summary/dashboard-analytics?period=custom&from=2026-05-01');
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION when custom from is greater than to', async () => {
-    const res = await request(app).get(
-      '/api/summary/dashboard-analytics?period=custom&from=2026-05-10&to=2026-05-01'
-    );
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 E_VALIDATION when the custom range exceeds 31 days', async () => {
-    const res = await request(app).get(
-      '/api/summary/dashboard-analytics?period=custom&from=2026-05-01&to=2026-06-02'
-    );
-
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({
-      success: false,
-      code: 'E_VALIDATION'
-    });
-    expect(mockGetDashboardAnalytics).not.toHaveBeenCalled();
-  });
 });

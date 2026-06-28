@@ -371,18 +371,11 @@ describe('client-critical OpenAPI contract', () => {
     });
   });
 
-  test('documents canonical and deprecated summary report routes against the same shared schema', () => {
+  test('documents canonical summary report routes without the removed /api/summary alias', () => {
     const canonicalOperation = openapi.paths['/api/summary/reports'].get;
-    const legacyOperation = openapi.paths['/api/summary'].get;
-    const expectedPeriodValues = [
-      'daily',
-      'weekly',
-      'monthly',
-      'range',
-      '30d',
-      'current_month',
-      'custom'
-    ];
+    const pdfOperation = openapi.paths['/api/summary/reports/pdf'].get;
+    const excelOperation = openapi.paths['/api/summary/reports/excel'].get;
+    const expectedPeriodValues = ['daily', 'weekly', 'monthly', 'range', '30d', 'current_month', 'custom'];
     const expectedPeriodParameter = expect.objectContaining({
       name: 'period',
       schema: expect.objectContaining({
@@ -412,57 +405,46 @@ describe('client-critical OpenAPI contract', () => {
       })
     );
 
-    expect(canonicalOperation.deprecated).not.toBe(true);
-    expect(legacyOperation.deprecated).toBe(true);
+    expect(openapi.paths['/api/summary']).toBeUndefined();
     expect(schemaAt(canonicalOperation)).toEqual({
       $ref: '#/components/schemas/SummaryReportResponse'
     });
-    expect(schemaAt(legacyOperation)).toEqual({
-      $ref: '#/components/schemas/SummaryReportResponse'
+    expect(schemaAt(pdfOperation)).toEqual({
+      $ref: '#/components/schemas/SummaryReportPdfResponse'
     });
-    expect(canonicalOperation.parameters).toEqual(
-      expect.arrayContaining([
-        expectedPeriodParameter,
-        expectedFromParameter,
-        expectedToParameter,
-        expectedQParameter,
-        ...expectedDeprecatedSearchAliases
-      ])
-    );
-    expect(legacyOperation.parameters).toEqual(
-      expect.arrayContaining([
-        expectedPeriodParameter,
-        expectedFromParameter,
-        expectedToParameter,
-        expectedQParameter,
-        ...expectedDeprecatedSearchAliases
-      ])
-    );
-    const canonicalPeriodEnum = canonicalOperation.parameters.find((param) => param.name === 'period').schema.enum;
-    const legacyPeriodEnum = legacyOperation.parameters.find((param) => param.name === 'period').schema.enum;
+    expect(schemaAt(excelOperation)).toEqual({
+      $ref: '#/components/schemas/SummaryReportExcelResponse'
+    });
 
-    expect(canonicalPeriodEnum).toEqual(expect.arrayContaining(expectedPeriodValues));
-    expect(canonicalPeriodEnum).toHaveLength(expectedPeriodValues.length);
-    expect(legacyPeriodEnum).toEqual(expect.arrayContaining(expectedPeriodValues));
-    expect(legacyPeriodEnum).toHaveLength(expectedPeriodValues.length);
-    expect(canonicalPeriodEnum).not.toContain('all');
-    expect(canonicalOperation.parameters.find((param) => param.name === 'q').deprecated).not.toBe(true);
-    expect(legacyOperation.parameters.find((param) => param.name === 'q').deprecated).not.toBe(true);
-    expect(canonicalOperation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
-      'daily, weekly, monthly, range, 30d, current_month, atau custom'
-    );
-    expect(legacyOperation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
-      'daily, weekly, monthly, range, 30d, current_month, atau custom'
-    );
-    expect(legacyOperation.description).toContain('/api/summary/reports');
+    [canonicalOperation, pdfOperation, excelOperation].forEach((operation) => {
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([
+          expectedPeriodParameter,
+          expectedFromParameter,
+          expectedToParameter,
+          expectedQParameter,
+          ...expectedDeprecatedSearchAliases
+        ])
+      );
+      const periodEnum = operation.parameters.find((param) => param.name === 'period').schema.enum;
+      expect(periodEnum).toEqual(expect.arrayContaining(expectedPeriodValues));
+      expect(periodEnum).toHaveLength(expectedPeriodValues.length);
+      expect(periodEnum).not.toContain('all');
+      expect(operation.parameters.find((param) => param.name === 'q').deprecated).not.toBe(true);
+      expect(operation.responses['400'].content['application/json'].schema.properties.message.example).toContain(
+        'daily, weekly, monthly, range, 30d, current_month, atau custom'
+      );
+    });
   });
 
-  test('documents summary report response shape for both per-user summaries and raw detail rows', () => {
+  test('documents summary report response, PDF projection, and Excel projection schemas', () => {
     const summarySchema = componentSchema(openapi, 'SummaryReportResponse');
-    const summaryProperties = summarySchema.properties.summary.properties;
-    const reportProperties = summarySchema.properties.report.properties;
-    const userSummaryProperties = reportProperties.user_attendance_summary.items.properties;
-    const detailRowProperties = reportProperties.data.items.properties;
+    const periodSummarySchema = componentSchema(openapi, 'SummaryReportPeriodSummary');
+    const exportScopeSchema = componentSchema(openapi, 'SummaryReportExportScopeSummary');
+    const detailRowSchema = componentSchema(openapi, 'SummaryReportDataRow');
+    const insightRowSchema = componentSchema(openapi, 'SummaryReportDisciplineInsightRow');
+    const pdfSchema = componentSchema(openapi, 'SummaryReportPdfResponse');
+    const excelSchema = componentSchema(openapi, 'SummaryReportExcelResponse');
 
     expect(summarySchema.properties).toMatchObject({
       success: { type: 'boolean', example: true },
@@ -471,78 +453,59 @@ describe('client-critical OpenAPI contract', () => {
         format: 'date-time',
         example: '2026-05-07T09:15:00.000Z'
       },
-      summary: { type: 'object' },
+      summary: { $ref: '#/components/schemas/SummaryReportLegacySummary' },
+      period_summary: { $ref: '#/components/schemas/SummaryReportPeriodSummary' },
+      export_scope_summary: { $ref: '#/components/schemas/SummaryReportExportScopeSummary' },
       report: { type: 'object' },
       analytics: { type: 'object' },
-      period: { type: 'string', example: '30d' },
-      date_range: { type: 'object' },
+      period: { type: 'string', example: 'monthly' },
+      date_range: { $ref: '#/components/schemas/SummaryReportDateRange' },
       message: {
         type: 'string',
         example: 'Summary report with discipline analysis generated successfully'
       }
     });
-    expect(summaryProperties).toMatchObject({
-      total_ontime: { type: 'integer', example: 14 },
-      total_late: { type: 'integer', example: 3 },
-      total_early: { type: 'integer', example: 1 },
-      total_alpha: { type: 'integer', example: 1 },
-      total_wfo: { type: 'integer', example: 10 },
-      total_wfh: { type: 'integer', example: 5 },
-      total_wfa: { type: 'integer', example: 3 }
+
+    expect(periodSummarySchema.properties).toMatchObject({
+      total_records: { type: 'integer', example: 14 },
+      attendance_rate: { type: 'number', format: 'float', example: 87.5 },
+      average_discipline_score: { type: 'number', format: 'float', example: 79.25 },
+      late_alpha_risk_users: { type: 'integer', example: 2 },
+      needs_attention_users: { type: 'integer', example: 1 }
     });
-    expect(userSummaryProperties).toMatchObject({
-      user_id: { type: 'integer', example: 7 },
-      full_name: { type: 'string', example: 'Febri' },
-      role_name: { type: 'string', nullable: true, example: 'User' },
-      division: { type: 'string', nullable: true, example: 'Engineering' },
-      expected_working_days: { type: 'integer', nullable: true, example: 10 },
-      on_time_days: { type: 'integer', example: 8 },
-      late_days: { type: 'integer', example: 2 },
-      early_days: { type: 'integer', example: 1 },
-      alpha_days: { type: 'integer', example: 0 },
-      wfo_days: { type: 'integer', example: 6 },
-      wfh_days: { type: 'integer', example: 3 },
-      wfa_days: { type: 'integer', example: 1 },
-      valid_attendance_days: { type: 'integer', example: 10 },
-      attendance_coverage_label: { type: 'string', nullable: true, example: '10/10' },
-      latest_attendance_status: { type: 'string', nullable: true, example: 'Tepat Waktu' },
-      latest_attendance_date: {
-        type: 'string',
-        format: 'date',
-        nullable: true,
-        example: '2026-05-07'
-      },
-      summary_note: { type: 'string', example: 'Complete' }
+    expect(exportScopeSchema.properties).toMatchObject({
+      scope: { type: 'string', example: 'filtered_records_only' },
+      total_records: { type: 'integer', example: 2 },
+      attendance_rate: { type: 'number', format: 'float', example: 100 },
+      average_discipline_score: { type: 'number', format: 'float', example: 88 }
     });
-    expect(detailRowProperties).toMatchObject({
+    expect(detailRowSchema.properties).toMatchObject({
       attendance_id: { type: 'integer', example: 101 },
       user_id: { type: 'integer', nullable: true, example: 7 },
       full_name: { type: 'string', example: 'Febri' },
-      role: { type: 'string', nullable: true, example: 'User' },
-      nip_nim: { type: 'string', nullable: true, example: 'NIP-007' },
-      email: { type: 'string', nullable: true, example: 'febri@example.com' },
-      time_in: { type: 'string', nullable: true, example: '08:03' },
-      time_out: { type: 'string', nullable: true, example: '17:01' },
-      work_hour: { type: 'string', nullable: true, example: '08:58' },
-      attendance_date: { type: 'string', format: 'date', example: '2026-05-04' },
-      location_details: { type: 'object', nullable: true },
-      status: { type: 'string', example: 'Tepat Waktu' },
-      information: { type: 'string', example: 'Work Duration: 8h' },
-      notes: { type: 'string', example: '' },
+      work_category: { type: 'string', example: 'WFO' },
+      location_description: { type: 'string', nullable: true, example: 'Kantor Pusat' },
       discipline_score: { type: 'number', format: 'float', nullable: true, example: 88 },
-      discipline_label: { type: 'string', nullable: true, example: 'Sangat Baik' },
-      discipline_breakdown: { type: 'object', nullable: true, additionalProperties: true }
+      discipline_label: { type: 'string', nullable: true, example: 'Sangat Baik' }
     });
-    expect(detailRowProperties).not.toHaveProperty('user');
-    expect(detailRowProperties).not.toHaveProperty('attendance_category');
-    expect(reportProperties.pagination.properties).toMatchObject({
-      current_page: { type: 'integer', example: 1 },
-      total_pages: { type: 'integer', example: 2 },
-      total_items: { type: 'integer', example: 15 },
-      items_per_page: { type: 'integer', example: 10 },
-      has_next_page: { type: 'boolean', example: true },
-      has_prev_page: { type: 'boolean', example: false }
+    expect(insightRowSchema.properties).toMatchObject({
+      user_id: { type: 'integer', example: 7 },
+      employee_name: { type: 'string', example: 'Febri' },
+      attendance_rate: { type: 'number', format: 'float', example: 95 },
+      late_count: { type: 'integer', example: 1 },
+      alpha_count: { type: 'integer', example: 0 },
+      avg_discipline_score: { type: 'number', format: 'float', example: 88 },
+      recommended_action_code: { type: 'string', example: 'monitor' }
     });
+
+    expect(pdfSchema.properties).toHaveProperty('period_summary');
+    expect(pdfSchema.properties).toHaveProperty('export_scope_summary');
+    expect(pdfSchema.properties).toHaveProperty('detailed_attendance_table');
+    expect(pdfSchema.properties).not.toHaveProperty('report_insight');
+
+    expect(excelSchema.properties).toHaveProperty('summary_sheet');
+    expect(excelSchema.properties).toHaveProperty('attendance_report_sheet');
+    expect(excelSchema.properties).toHaveProperty('discipline_insight_sheet');
   });
 
   test('defines the Analysis tag used by published analysis endpoints', () => {
