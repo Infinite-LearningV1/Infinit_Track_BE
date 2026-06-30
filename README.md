@@ -317,6 +317,7 @@ Notes:
 - `discipline_label` is an official detail/export field on `report.data[]`.
 - `discipline_label` is not promoted into `report.user_attendance_summary[]`.
 - `needs_attention_users` is the official summary-report attention metric under `period_summary`.
+- Excel `discipline_insight_sheet[].recommended_action_code` is runtime-calculated from summary inputs with the backend precedence: `review` (alpha present), then `remind` (discipline score < 70), then `monitor` (late days > 0), otherwise `none`.
 - `needs_attention` remains a dashboard-only KPI under `/api/summary/dashboard-analytics`.
 
 ### **🔒 5.3 Authentication & Authorization**
