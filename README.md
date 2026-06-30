@@ -451,6 +451,9 @@ const disciplineFactors = {
 
 Infinit Track Backend menggunakan **GitOps-style deployment** berbasis **DigitalOcean Container Registry (DOCR) + droplet-hosted Docker Compose runtime + host Nginx**. Image backend dibangun di CI, dipush ke `registry.digitalocean.com/infinit-track/infinit-track-backend`, lalu runtime droplet menarik image immutable melalui `BACKEND_IMAGE_TAG`.
 
+Official backend release path: `develop -> review -> master -> deploy`.
+Staging and production both derive from `master`; `master` should only receive reviewed, verified release candidates.
+
 ```
 Development → Image Build → Staging Droplet → Production Droplet
      ↓             ↓              ↓                    ↓
@@ -505,13 +508,9 @@ git push origin master
 # → push ke master memicu workflow staging:
 #   lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate
 
-# Optional: run staging workflow manually from GitHub Actions
-# → workflow_dispatch pada "Deploy to Staging"
-
 # Production / approved release flow
-# Trigger workflow "Deploy to Production" secara manual,
-# isi konfirmasi deploy-to-production,
-# lalu workflow menjalankan lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate.
+# → merge/push reviewed, verified release candidate to master
+# → workflow menjalankan lint + test + DOCR publish + production droplet rollout + migrate + blocking smoke gate.
 ```
 
 ### **🎯 8.3 Deployment Workflows**
@@ -556,7 +555,7 @@ Canonical production release should do this in order:
 | **Database**       | Staging DB (test data) | Production DB (**separate**) |
 | **JWT_SECRET**     | Staging secret         | **Different** secret         |
 | **CORS_ORIGIN**    | Staging frontend       | Production frontend          |
-| **Deploy Trigger** | Automatic              | Manual + Approval            |
+| **Deploy Trigger** | Automatic from `master` | Automatic from `master` after reviewed, verified promotion |
 | **Instance Count** | 1                      | 2+ (HA)                      |
 | **Log Level**      | `info`                 | `warn`                       |
 
@@ -564,7 +563,7 @@ Canonical production release should do this in order:
 
 - Reuse production secrets in staging
 - Mix production & staging databases
-- Auto-deploy to production
+- Merge unreviewed or unverified changes to `master`
 
 ### **📊 8.5 Monitoring & Health Checks**
 
@@ -667,8 +666,8 @@ git push origin master
 git revert <commit-hash>
 git push origin master
 
-# Staging: Auto-deploys
-# Production: Manual trigger required
+# Staging: Auto-deploys from master
+# Production: Auto-deploys from master after reviewed, verified promotion
 ```
 
 #### **Database Rollback (Emergency)**
@@ -731,8 +730,8 @@ git push origin feature/new-feature
 # → Verify canonical staging host after rollout completes
 
 # 4. Production Deploy (when ready)
-# → Manual trigger via GitHub Actions: "Deploy to Production"
-# → Type deploy-to-production for confirmation
+# → Merge/push reviewed, verified release candidate to master
+# → Production deploy runs automatically from master after required evidence is green
 # → Monitor live host and logs after smoke gate passes
 ```
 
@@ -963,7 +962,7 @@ _Infinite Track Backend adalah solusi enterprise-grade untuk manajemen kehadiran
 **Deployment Status:**
 
 - ✅ Staging: Auto-deploy dari master branch
-- ✅ Production: Manual deploy dengan approval workflow
+- ✅ Production: Automatic deploy from `master` after a reviewed and verified promotion
 - ✅ Database: Managed MySQL dengan automated backups
 - ✅ Monitoring: Real-time logs dan health checks
 - ✅ Security: CORS, security headers, rate limiting, JWT auth

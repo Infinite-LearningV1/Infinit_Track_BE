@@ -8,7 +8,9 @@ Compose file adalah bagian dari image-based runtime procedure. Local host-run de
 ## Image contract
 - Repository: `registry.digitalocean.com/infinit-track/infinit-track-backend`
 - Runtime tag source: `BACKEND_IMAGE_TAG`
-- `latest` hanya convenience; deploy aktual harus pin SHA image yang immutable.
+- Default compose image should resolve to the DOCR repository above unless an operator intentionally overrides `BACKEND_IMAGE` for a local/manual scenario.
+- `BACKEND_IMAGE_TAG` wajib di-set ke SHA image immutable sebelum runtime pull/recreate dijalankan.
+- `latest` hanya convenience untuk publication/discovery, bukan fallback runtime deploy.
 
 ## Health contract
 - `/livez` = process liveness

@@ -279,12 +279,14 @@ describe('backend runtime config contract', () => {
     expect(config.autoCheckout).toBeUndefined();
   });
 
-  test('declares droplet runtime contract with host networking and env-file driven config', () => {
+  test('declares droplet runtime contract with immutable DOCR image selection and env-file driven config', () => {
     const compose = readDockerCompose();
 
-    expect(compose).toContain('image: ${BACKEND_IMAGE:-infinit-track-backend}:${BACKEND_IMAGE_TAG:-latest}');
-    expect(compose).toContain('build:');
-    expect(compose).toContain('network: host');
+    expect(compose).toContain(
+      'image: ${BACKEND_IMAGE:-registry.digitalocean.com/infinit-track/infinit-track-backend}:${BACKEND_IMAGE_TAG:?BACKEND_IMAGE_TAG is required}'
+    );
+    expect(compose).not.toContain('build:');
+    expect(compose).not.toContain('network: host');
     expect(compose).toContain('network_mode: host');
     expect(compose).toContain('env_file:');
     expect(compose).toContain('${BACKEND_ENV_FILE:-./deploy/env/backend.production.env}');
@@ -468,6 +470,33 @@ describe('backend runtime config contract', () => {
     expect(dropletRuntime).not.toContain('docker compose up -d app');
   });
 
+  test('treats master as the only deploy source branch for both staging and production workflows', () => {
+    const stagingWorkflow = readWorkflow('.github/workflows/deploy-staging.yml');
+    const productionWorkflow = readWorkflow('.github/workflows/deploy-production.yml');
+
+    expect(stagingWorkflow).toContain('push:');
+    expect(stagingWorkflow).toContain('branches:');
+    expect(stagingWorkflow).toContain('- master');
+    expect(stagingWorkflow).not.toContain('branches:\n      - develop');
+
+    expect(productionWorkflow).toContain('push:');
+    expect(productionWorkflow).toContain('branches:');
+    expect(productionWorkflow).toContain('- master');
+    expect(productionWorkflow).not.toContain('workflow_dispatch:');
+    expect(productionWorkflow).not.toContain('deploy-to-production');
+  });
+
+  test('documents the official backend release path as develop to master to deploy', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+
+    expect(readme).toContain('develop -> review -> master -> deploy');
+    expect(productionGuide).toContain('develop -> review -> master -> deploy');
+    expect(productionGuide).toContain('staging deploy is automatic from `master`');
+    expect(productionGuide).toContain('production deploy is automatic from `master`');
+    expect(productionGuide).toContain('all required evidence is green before merge into `master`');
+  });
+
   test('locks staging and production workflows to droplet rollout with blocking verification', () => {
     const stagingWorkflow = readWorkflow('.github/workflows/deploy-staging.yml');
     const productionWorkflow = readWorkflow('.github/workflows/deploy-production.yml');
@@ -485,6 +514,9 @@ describe('backend runtime config contract', () => {
     expect(stagingWorkflow).toContain('STAGING_EXPECTED_IP');
     expect(stagingWorkflow).toContain('Missing required staging runtime variable');
     expect(stagingWorkflow).toContain('authenticated Admin/Management only');
+    expect(stagingWorkflow).toContain('push:');
+    expect(stagingWorkflow).toContain('pull_request:');
+    expect(stagingWorkflow).not.toContain('workflow_dispatch:');
     expect(stagingWorkflow).not.toContain('https://api.infinite-track.tech');
     expect(stagingWorkflow).not.toContain('continue-on-error: true');
     expect(stagingWorkflow).not.toContain('doctl apps create-deployment');
@@ -497,7 +529,7 @@ describe('backend runtime config contract', () => {
     expect(productionWorkflow).toContain('docker compose exec -T app npm run migrate');
     expect(productionWorkflow).toContain('./deploy/scripts/verify-droplet-api.sh');
     expect(productionWorkflow).toContain('npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"');
-    expect(productionWorkflow).toContain('Type "deploy-to-production" to confirm');
+    expect(productionWorkflow).toContain("if: github.event_name != 'pull_request'");
     expect(productionWorkflow).toContain('PRODUCTION_PUBLIC_BASE_URL');
     expect(productionWorkflow).toContain('authenticated Admin/Management only');
     expect(productionWorkflow).not.toContain('doctl apps create-deployment');
