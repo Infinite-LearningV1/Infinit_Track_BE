@@ -1,11 +1,9 @@
 import { jest } from '@jest/globals';
 
 const buildValidationError = () => {
-
   const error = new Error(
     'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
   );
-
   error.code = 'E_VALIDATION';
   error.statusCode = 400;
   return error;
@@ -161,7 +159,6 @@ describe('summary report excel contract', () => {
       success: false,
       code: 'E_VALIDATION',
       message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
-
     });
   });
 });
