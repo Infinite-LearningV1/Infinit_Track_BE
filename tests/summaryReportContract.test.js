@@ -220,7 +220,9 @@ describe('summary report controller contract', () => {
   });
 
   it('returns validation payloads from the shared report source contract', async () => {
-    const validationError = new Error('Parameter period harus berupa nilai yang valid');
+    const validationError = new Error(
+      'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
+    );
     validationError.code = 'E_VALIDATION';
     validationError.statusCode = 400;
     mockBuildSummaryReportSource.mockRejectedValueOnce(validationError);
@@ -236,7 +238,7 @@ describe('summary report controller contract', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       code: 'E_VALIDATION',
-      message: 'Parameter period harus berupa nilai yang valid'
+      message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
     });
   });
 });

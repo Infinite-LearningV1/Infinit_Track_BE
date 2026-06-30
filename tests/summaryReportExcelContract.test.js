@@ -1,7 +1,9 @@
 import { jest } from '@jest/globals';
 
 const buildValidationError = () => {
-  const error = new Error('Parameter period harus berupa nilai yang valid');
+  const error = new Error(
+    'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
+  );
   error.code = 'E_VALIDATION';
   error.statusCode = 400;
   return error;
@@ -35,7 +37,8 @@ const sourceFixture = {
   period_summary: {
     total_records: 14,
     attendance_rate: 87.5,
-    average_discipline_score: 79.25
+    average_discipline_score: 79.25,
+    needs_attention_users: 1
   },
   export_scope_summary: {
     scope: 'filtered_records_only',
@@ -74,7 +77,7 @@ const sourceFixture = {
       alpha_count: 0,
       avg_discipline_score: 88,
       discipline_label: 'Sangat Baik',
-      recommended_action_code: 'none'
+      recommended_action_code: 'review'
     }
   ],
   metadata: {
@@ -89,7 +92,7 @@ describe('summary report excel contract', () => {
     mockBuildSummaryReportSource.mockResolvedValue(sourceFixture);
   });
 
-  it('projects the shared report source into workbook-oriented sections with runtime-calculated action codes', async () => {
+  it('projects the shared report source into workbook-oriented sections while preserving runtime-calculated action codes', async () => {
     const req = { query: { period: 'monthly', q: 'Rina' } };
     const res = buildRes();
     const next = jest.fn();
@@ -125,6 +128,7 @@ describe('summary report excel contract', () => {
       discipline_label: 'Sangat Baik'
     });
     expect(payload.attendance_report_sheet[0]).not.toHaveProperty('phone_number');
+    expect(payload.summary_sheet.period_summary.needs_attention_users).toBe(1);
     expect(payload.discipline_insight_sheet).toEqual([
       {
         user_id: 101,
@@ -135,7 +139,7 @@ describe('summary report excel contract', () => {
         alpha_count: 0,
         avg_discipline_score: 88,
         discipline_label: 'Sangat Baik',
-        recommended_action_code: 'none'
+        recommended_action_code: 'review'
       }
     ]);
   });
@@ -154,7 +158,7 @@ describe('summary report excel contract', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       code: 'E_VALIDATION',
-      message: 'Parameter period harus berupa nilai yang valid'
+      message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
     });
   });
 });

@@ -263,31 +263,61 @@ GET /api/bookings/history?status=approved&sort_by=schedule_date&sort_order=DESC&
 #### **Enhanced Summary with Discipline Index**
 
 ```bash
-# Comprehensive analytics dengan real-time discipline calculation
-GET /api/summary/reports?period=monthly&from=2025-07-01&to=2025-07-31
+# Canonical summary reporting surface
+GET /api/summary/reports?period=monthly&q=john&page=1&limit=10
 
-# Response includes discipline analytics
+# Response includes period-wide summary + filtered/export-aware report sections
 {
   "success": true,
-  "summary": {
-    "total_employees": 45,
-    "average_attendance_rate": 92.5,
-    "average_discipline_score": 78.2
+  "generated_at": "2026-06-29T01:00:00.000Z",
+  "period_summary": {
+    "total_records": 14,
+    "attendance_rate": 87.5,
+    "average_discipline_score": 79.25,
+    "late_alpha_risk_users": 2,
+    "needs_attention_users": 1
+  },
+  "export_scope_summary": {
+    "scope": "filtered_records_only",
+    "total_records": 2,
+    "attendance_rate": 100,
+    "average_discipline_score": 88
   },
   "report": {
+    "user_attendance_summary": [
+      {
+        "user_id": 20,
+        "full_name": "John Doe",
+        "late_days": 3,
+        "alpha_days": 0,
+        "summary_note": "Complete"
+      }
+    ],
     "data": [
       {
         "user_id": 20,
-        "user_name": "John Doe",
-        "total_present": 22,
-        "total_late": 3,
+        "full_name": "John Doe",
+        "status": "Tepat Waktu",
         "discipline_score": 85.5,
         "discipline_label": "Sangat Baik"
       }
     ]
+  },
+  "analytics": {
+    "discipline_analysis": {
+      "users_analyzed": 1,
+      "average_discipline_score": 85.5,
+      "methodology": "Fuzzy AHP Engine"
+    }
   }
 }
 ```
+
+Notes:
+- `discipline_label` is an official detail/export field on `report.data[]`.
+- `discipline_label` is not promoted into `report.user_attendance_summary[]`.
+- `needs_attention_users` is the official summary-report attention metric under `period_summary`.
+- `needs_attention` remains a dashboard-only KPI under `/api/summary/dashboard-analytics`.
 
 ### **🔒 5.3 Authentication & Authorization**
 

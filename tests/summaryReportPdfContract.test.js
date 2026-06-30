@@ -1,7 +1,9 @@
 import { jest } from '@jest/globals';
 
 const buildValidationError = () => {
-  const error = new Error('Parameter period harus berupa nilai yang valid');
+  const error = new Error(
+    'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
+  );
   error.code = 'E_VALIDATION';
   error.statusCode = 400;
   return error;
@@ -36,7 +38,8 @@ const sourceFixture = {
   period_summary: {
     total_records: 14,
     attendance_rate: 87.5,
-    average_discipline_score: 79.25
+    average_discipline_score: 79.25,
+    needs_attention_users: 1
   },
   export_scope_summary: {
     scope: 'filtered_records_only',
@@ -122,6 +125,7 @@ describe('summary report pdf contract', () => {
     ]);
     expect(payload.detailed_attendance_table[0]).not.toHaveProperty('report_insight');
     expect(payload.detailed_attendance_table[0]).not.toHaveProperty('phone_number');
+    expect(payload.period_summary.needs_attention_users).toBe(1);
   });
 
   it('returns validation payloads from the shared report source contract', async () => {
@@ -138,7 +142,7 @@ describe('summary report pdf contract', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       code: 'E_VALIDATION',
-      message: 'Parameter period harus berupa nilai yang valid'
+      message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
     });
   });
 });
