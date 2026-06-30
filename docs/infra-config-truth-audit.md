@@ -1,5 +1,7 @@
 # INF-32 Backend Config Truth Audit
 
+> Historical audit snapshot dated 2026-04-20. Some findings below are retained for provenance and have since been superseded by live runtime code. In particular, the current runtime now reads `DB_SSL` and `DB_SSL_REJECT_UNAUTHORIZED` through `src/config/index.js` and `src/config/database.js`.
+
 ## Scope
 Audit runtime/config truth across these surfaces:
 - local development
@@ -27,7 +29,7 @@ This means staging deployment can succeed or fail depending on which surface an 
 |---|---|---|---|---|---|---|---|
 | `DB_HOST` | `.env.example`, `.do/app*.yaml`, `docker-compose.yml` env | `src/config/index.js`, `src/config/database.js` | defaults to local MySQL expectation | compose sets `db`; droplet target likely needs external DB host | `ci.yml` sets `localhost`; deploy-* workflows and `.do` surfaces imply other runtime targets | `CLAUDE.md` points to `.do/app*.yaml`, while this rollout targets droplet staging | same concept but surface-dependent value, no single canonical source |
 | `DB_USER`, `DB_PASS`, `DB_NAME` | `.env.example`, `.do/app*.yaml`, `docker-compose.yml` | `src/config/index.js` | env-driven | compose defaults to sample values | `ci.yml` sets test values; deploy-* workflows and `.do` imply runtime values elsewhere | docs mention env-driven workflow | no explicit staging source-of-truth document |
-| `DB_SSL` | `.env.example`, `.do/app-production.yaml`, `k8s/configmap.yaml` | **not read by active runtime config** | no effect | no effect unless future code reads it | not used in `ci.yml` | production app spec assumes it exists | declared but unused by `src/config/index.js` / `database.js` |
+| `DB_SSL` | `.env.example`, `.do/app-production.yaml`, `k8s/configmap.yaml` | `src/config/index.js`, `src/config/database.js`, `src/config/database-cli.cjs` | toggles TLS locally when env is set | controls managed-DB TLS behavior for droplet/runtime and sequelize-cli migrations | not used in `ci.yml` | production app spec assumes it exists | historical audit row was stale before runtime code caught up; current runtime does read it |
 | `JWT_SECRET` | `.env.example`, `.do/app*.yaml` | `src/config/index.js` / auth middleware | validated only in production; functionally required wherever JWT sign/verify flows run | required in droplet runtime for auth-enabled deployments | `ci.yml` sets a test secret | docs imply backend-only secret | wording must distinguish prod-only validation from broader runtime requirement |
 | `JWT_TTL_SECONDS` | `.env.example`, `.do/app*.yaml` | `src/config/index.js` | defaults to 86400 | env-driven | `ci.yml` does not set it | consistent enough | low drift |
 | `CORS_ORIGIN` | `.env.example`, `.do/app*.yaml`, README | `src/config/index.js`, `src/middlewares/security.js` | defaults to `*` | compose does not set explicit value | `ci.yml` does not set it | production guidance exists | dangerous local default can leak into staging if not explicitly set |
