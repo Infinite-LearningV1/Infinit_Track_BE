@@ -3743,7 +3743,7 @@ paths:
       tags:
         - Reports & Analytics
       summary: Get summary report Excel export payload (Admin/Management only)
-      description: Retrieve the workbook-oriented summary report export contract from the shared backend reporting source. The payload includes workbook metadata, summary sheet data, attendance rows, and discipline insight rows with neutral recommended action codes.
+      description: Retrieve the workbook-oriented summary report export contract from the shared backend reporting source. The payload includes workbook metadata, summary sheet data, attendance rows, and discipline insight rows with runtime-calculated recommended action codes.
       security:
         - bearerAuth: []
       parameters:
