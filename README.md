@@ -515,13 +515,14 @@ PRODUCTION_EXPECTED_IP=<production-public-ip>
 # Staging / release-candidate flow
 git add .
 git commit -m "Deploy-ready change"
-git push origin master
+git push origin <review-branch>
+# → open PR to master
 # → GitHub merge gate for master requires PR review + build
 # → build means npm ci + npm run lint + npm test
 # → runtime rollout and smoke verification remain operational release evidence
 
 # Production / approved release flow
-# → merge/push reviewed, verified release candidate to master
+# → merge reviewed, verified PR into master
 # → GitHub merge gate remains PR review + build; runtime/smoke verification is operational evidence.
 ```
 
