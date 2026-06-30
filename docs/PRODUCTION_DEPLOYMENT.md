@@ -27,6 +27,13 @@ The backend uses a single official release path:
 - production deploy is automatic from `master`.
 - all required evidence is green before merge into `master`.
 
+## Master GitHub Gate
+
+GitHub enforces PR review + `build` for `master`.
+In this repository, `build` means install + lint + test.
+
+runtime/smoke verification is still an operational verification concern, not an enforced GitHub merge gate today.
+
 ## Current Deployment Model
 
 ### Phase 1: Publish image to DOCR
