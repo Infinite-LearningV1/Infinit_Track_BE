@@ -1,12 +1,12 @@
 name: Deploy to Production
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Type "deploy-to-production" to confirm'
-        required: true
-        default: ''
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -22,22 +22,9 @@ env:
   PRODUCTION_EXPECTED_IP: ${{ vars.PRODUCTION_EXPECTED_IP }}
 
 jobs:
-  validate:
-    name: Validate Deployment Request
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check confirmation
-        run: |
-          if [ "${{ github.event.inputs.confirm }}" != "deploy-to-production" ]; then
-            echo "Deployment not confirmed. Type 'deploy-to-production' exactly."
-            exit 1
-          fi
-
   test:
     name: Lint & Test
     runs-on: ubuntu-latest
-    needs: validate
 
     steps:
       - name: Checkout code
@@ -72,6 +59,7 @@ jobs:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Checkout code
@@ -103,6 +91,7 @@ jobs:
     name: Deploy to Production Droplet
     runs-on: ubuntu-latest
     needs: build-push
+    if: github.event_name != 'pull_request'
 
     environment:
       name: production
@@ -181,7 +170,7 @@ jobs:
   notify-failure:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [validate, test, build-push, deploy-production]
+    needs: [test, build-push, deploy-production]
     if: failure()
 
     steps:
@@ -189,7 +178,7 @@ jobs:
         run: |
           echo "## Production Deployment Failed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The production release path is blocked until confirmation, lint, test, image publication, droplet rollout, migrations, and smoke verification all pass." >> $GITHUB_STEP_SUMMARY
+          echo "The production release path is blocked until lint, test, image publication, droplet rollout, migrations, and smoke verification all pass." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Investigate:" >> $GITHUB_STEP_SUMMARY
           echo "- DOCR image publication logs" >> $GITHUB_STEP_SUMMARY
