@@ -64,6 +64,15 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
 - Do not treat `geofence_evidence_context`, `/api/attendance/geofence-evidence`, or today-locations map presence as final attendance truth or fraud evidence.
 - Do not treat `/api/analysis/fuzzy-ahp/dashboard` as a canonical detail-analysis surface.
 
+## Summary reporting field ownership
+- `discipline_label` is an official detail/export attribute, not a report-summary attribute.
+- `discipline_label` is available in `report.data[]` on `/api/summary/reports`.
+- `discipline_label` is also available in `/api/summary/reports/excel` through `attendance_report_sheet[]` and `discipline_insight_sheet[]`.
+- `discipline_label` is intentionally not promoted into `report.user_attendance_summary[]`; consumers that need discipline presentation at summary level must derive it from the dedicated detail/export surfaces or request a backend contract change.
+- `needs_attention_users` is the official summary-report attention metric and lives under `period_summary` on `/api/summary/reports`, `/api/summary/reports/pdf`, and `/api/summary/reports/excel`.
+- `needs_attention` remains a dashboard-analytics KPI under `/api/summary/dashboard-analytics`; it is not a synonym field on the summary report surface.
+- If a runtime still serves `GET /api/summary` or fails to expose `/api/summary/reports/pdf` or `/api/summary/reports/excel`, treat that runtime as stale or non-canonical until deployment state is verified against the current backend release path.
+
 ## Map View Contract
 - Consumer: Web FE dashboard cockpit Map View.
 - Endpoint: `GET /api/attendance/today-locations`.
