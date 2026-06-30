@@ -468,6 +468,33 @@ describe('backend runtime config contract', () => {
     expect(dropletRuntime).not.toContain('docker compose up -d app');
   });
 
+  test('treats master as the only deploy source branch for both staging and production workflows', () => {
+    const stagingWorkflow = readWorkflow('.github/workflows/deploy-staging.yml');
+    const productionWorkflow = readWorkflow('.github/workflows/deploy-production.yml');
+
+    expect(stagingWorkflow).toContain('push:');
+    expect(stagingWorkflow).toContain('branches:');
+    expect(stagingWorkflow).toContain('- master');
+    expect(stagingWorkflow).not.toContain('branches:\n      - develop');
+
+    expect(productionWorkflow).toContain('push:');
+    expect(productionWorkflow).toContain('branches:');
+    expect(productionWorkflow).toContain('- master');
+    expect(productionWorkflow).not.toContain('workflow_dispatch:');
+    expect(productionWorkflow).not.toContain('deploy-to-production');
+  });
+
+  test('documents the official backend release path as develop to master to deploy', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+
+    expect(readme).toContain('develop -> review -> master -> deploy');
+    expect(productionGuide).toContain('develop -> review -> master -> deploy');
+    expect(productionGuide).toContain('staging deploy is automatic from `master`');
+    expect(productionGuide).toContain('production deploy is automatic from `master`');
+    expect(productionGuide).toContain('all required evidence is green before merge into `master`');
+  });
+
   test('locks staging and production workflows to droplet rollout with blocking verification', () => {
     const stagingWorkflow = readWorkflow('.github/workflows/deploy-staging.yml');
     const productionWorkflow = readWorkflow('.github/workflows/deploy-production.yml');
