@@ -446,7 +446,7 @@ describe('backend runtime config contract', () => {
     expect(claude).toContain('Treat `.do/app*.yaml` and `k8s/` as legacy or historical backend paths');
     expect(readme).toContain('DigitalOcean Container Registry (DOCR) + droplet-hosted Docker Compose runtime + host Nginx');
     expect(readme).toContain('registry.digitalocean.com/infinit-track/infinit-track-backend');
-    expect(readme).toContain('Smoke/readiness verification adalah release gate');
+    expect(readme).toContain('Smoke/readiness verification adalah release gate operasional');
     expect(readme).toContain('Staging host is environment-specific');
     expect(readme).toContain('Docker Compose');
     expect(readme).toContain('bash ./test-production.sh --local-base-url http://127.0.0.1:3005 --public-base-url http://127.0.0.1:3005');
@@ -495,6 +495,36 @@ describe('backend runtime config contract', () => {
     expect(productionGuide).toContain('staging deploy is automatic from `master`');
     expect(productionGuide).toContain('production deploy is automatic from `master`');
     expect(productionGuide).toContain('all required evidence is green before merge into `master`');
+  });
+
+  test('describes master github gate honestly as pr review plus build where build means install lint and test', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+    const ciWorkflow = readWorkflow('.github/workflows/ci.yml');
+
+    expect(readme).toContain('GitHub enforces PR review + `build`');
+    expect(readme).toContain('`build` means install + lint + test');
+    expect(productionGuide).toContain('GitHub enforces PR review + `build`');
+    expect(productionGuide).toContain('`build` means install + lint + test');
+
+    expect(ciWorkflow).toContain('name: CI');
+    expect(ciWorkflow).toContain('build:');
+    expect(ciWorkflow).toContain('npm ci');
+    expect(ciWorkflow).toContain('npm run lint');
+    expect(ciWorkflow).toContain('npm test');
+  });
+
+  test('does not claim github-enforced smoke or runtime verification on master', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+
+    expect(readme).toContain('runtime/smoke verification is still an operational verification concern');
+    expect(productionGuide).toContain('runtime/smoke verification is still an operational verification concern');
+
+    expect(readme).not.toContain('GitHub enforces smoke');
+    expect(readme).not.toContain('GitHub enforces runtime verification');
+    expect(productionGuide).not.toContain('GitHub-enforced smoke gate');
+    expect(productionGuide).not.toContain('GitHub-enforced runtime verification');
   });
 
   test('locks staging and production workflows to droplet rollout with blocking verification', () => {
