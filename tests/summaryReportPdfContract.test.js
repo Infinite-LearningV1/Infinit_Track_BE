@@ -1,5 +1,12 @@
 import { jest } from '@jest/globals';
 
+const buildValidationError = () => {
+  const error = new Error('Parameter period harus berupa nilai yang valid');
+  error.code = 'E_VALIDATION';
+  error.statusCode = 400;
+  return error;
+};
+
 const mockBuildSummaryReportSource = jest.fn();
 
 jest.unstable_mockModule('../src/services/summaryReport.service.js', () => ({
@@ -115,5 +122,23 @@ describe('summary report pdf contract', () => {
     ]);
     expect(payload.detailed_attendance_table[0]).not.toHaveProperty('report_insight');
     expect(payload.detailed_attendance_table[0]).not.toHaveProperty('phone_number');
+  });
+
+  it('returns validation payloads from the shared report source contract', async () => {
+    mockBuildSummaryReportSource.mockRejectedValueOnce(buildValidationError());
+
+    const req = { query: { period: 'all' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReportPdf(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter period harus berupa nilai yang valid'
+    });
   });
 });

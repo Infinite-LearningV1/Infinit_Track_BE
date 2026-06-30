@@ -1,5 +1,12 @@
 import { jest } from '@jest/globals';
 
+const buildValidationError = () => {
+  const error = new Error('Parameter period harus berupa nilai yang valid');
+  error.code = 'E_VALIDATION';
+  error.statusCode = 400;
+  return error;
+};
+
 const mockBuildSummaryReportSource = jest.fn();
 
 jest.unstable_mockModule('../src/services/summaryReport.service.js', () => ({
@@ -82,7 +89,7 @@ describe('summary report excel contract', () => {
     mockBuildSummaryReportSource.mockResolvedValue(sourceFixture);
   });
 
-  it('projects the shared report source into workbook-oriented sections with neutral action codes', async () => {
+  it('projects the shared report source into workbook-oriented sections with runtime-calculated action codes', async () => {
     const req = { query: { period: 'monthly', q: 'Rina' } };
     const res = buildRes();
     const next = jest.fn();
@@ -114,7 +121,8 @@ describe('summary report excel contract', () => {
       attendance_id: 501,
       email: 'rina@example.com',
       work_category: 'WFO',
-      location_description: 'Kantor Pusat'
+      location_description: 'Kantor Pusat',
+      discipline_label: 'Sangat Baik'
     });
     expect(payload.attendance_report_sheet[0]).not.toHaveProperty('phone_number');
     expect(payload.discipline_insight_sheet).toEqual([
@@ -130,5 +138,23 @@ describe('summary report excel contract', () => {
         recommended_action_code: 'none'
       }
     ]);
+  });
+
+  it('returns validation payloads from the shared report source contract', async () => {
+    mockBuildSummaryReportSource.mockRejectedValueOnce(buildValidationError());
+
+    const req = { query: { period: 'all' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReportExcel(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter period harus berupa nilai yang valid'
+    });
   });
 });
