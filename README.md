@@ -454,6 +454,17 @@ Infinit Track Backend menggunakan **GitOps-style deployment** berbasis **Digital
 Official backend release path: `develop -> review -> master -> deploy`.
 Staging and production both derive from `master`; `master` should only receive reviewed, verified release candidates.
 
+GitHub enforces PR review + `build` on `master`.
+
+In this repository, `build` means install + lint + test:
+
+- install dependencies (`npm ci`)
+- lint (`npm run lint`)
+- test (`npm test`)
+
+runtime/smoke verification is still an operational verification concern.
+It is not part of the enforced GitHub merge gate for `master` today.
+
 ```
 Development → Image Build → Staging Droplet → Production Droplet
      ↓             ↓              ↓                    ↓
@@ -467,7 +478,7 @@ Development → Image Build → Staging Droplet → Production Droplet
 - ✅ Image release dipin oleh `BACKEND_IMAGE_TAG`
 - ✅ Manual/CI deploy harus diverifikasi lewat `/livez` dan `/health`
 - ✅ Managed MySQL tetap terpisah per environment
-- ✅ Smoke/readiness verification adalah release gate, bukan best-effort check
+- ✅ Smoke/readiness verification adalah release gate operasional, bukan enforced GitHub merge gate untuk `master` today
 - ✅ Rollback dilakukan dengan mengembalikan tag image terakhir yang sehat
 
 ### **📋 8.2 Quick Start - First Deployment**
@@ -505,12 +516,13 @@ PRODUCTION_EXPECTED_IP=<production-public-ip>
 git add .
 git commit -m "Deploy-ready change"
 git push origin master
-# → push ke master memicu workflow staging:
-#   lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate
+# → GitHub merge gate for master requires PR review + build
+# → build means npm ci + npm run lint + npm test
+# → runtime rollout and smoke verification remain operational release evidence
 
 # Production / approved release flow
 # → merge/push reviewed, verified release candidate to master
-# → workflow menjalankan lint + test + DOCR publish + production droplet rollout + migrate + blocking smoke gate.
+# → GitHub merge gate remains PR review + build; runtime/smoke verification is operational evidence.
 ```
 
 ### **🎯 8.3 Deployment Workflows**
@@ -605,7 +617,7 @@ Automated tests after each deployment:
 # Run locally against the current staging host
 npm run smoke-test "$STAGING_PUBLIC_BASE_URL"
 
-# Included in GitHub Actions automatically
+# Operational verification; not part of the enforced GitHub merge gate for master today
 # Tests: Liveness, Readiness, Docs, CORS, Security, Auth, Performance
 ```
 

@@ -446,7 +446,7 @@ describe('backend runtime config contract', () => {
     expect(claude).toContain('Treat `.do/app*.yaml` and `k8s/` as legacy or historical backend paths');
     expect(readme).toContain('DigitalOcean Container Registry (DOCR) + droplet-hosted Docker Compose runtime + host Nginx');
     expect(readme).toContain('registry.digitalocean.com/infinit-track/infinit-track-backend');
-    expect(readme).toContain('Smoke/readiness verification adalah release gate');
+    expect(readme).toContain('Smoke/readiness verification adalah release gate operasional');
     expect(readme).toContain('Staging host is environment-specific');
     expect(readme).toContain('Docker Compose');
     expect(readme).toContain('bash ./test-production.sh --local-base-url http://127.0.0.1:3005 --public-base-url http://127.0.0.1:3005');
