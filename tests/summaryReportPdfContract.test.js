@@ -1,9 +1,11 @@
 import { jest } from '@jest/globals';
 
 const buildValidationError = () => {
+
   const error = new Error(
     'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
   );
+
   error.code = 'E_VALIDATION';
   error.statusCode = 400;
   return error;
@@ -143,6 +145,24 @@ describe('summary report pdf contract', () => {
       success: false,
       code: 'E_VALIDATION',
       message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
+    });
+  });
+
+  it('returns validation payloads from the shared report source contract', async () => {
+    mockBuildSummaryReportSource.mockRejectedValueOnce(buildValidationError());
+
+    const req = { query: { period: 'all' } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getSummaryReportPdf(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter period harus berupa nilai yang valid'
     });
   });
 });
