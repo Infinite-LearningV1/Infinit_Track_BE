@@ -98,8 +98,10 @@ export const getWibAnalysisWindow = (period, { from, to } = {}) => {
     };
   }
 
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
   return {
-    startAt: wibDateToUtc({ year: wibNow.year, month: wibNow.month, day: 1 }),
+    startAt: thirtyDaysAgo,
     endAt: now,
     requestedWindow: {
       start_at: null,
@@ -325,6 +327,21 @@ export const buildDisciplineAnalysis = async ({ startAt, endAt, includeLegacyId 
     weightsObj.lateness_frequency,
     weightsObj.work_focus
   ];
+  const buildEmptyResult = () => ({
+    entity_kind: 'user',
+    consistency: buildConsistency({
+      CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
+      CI: 0,
+      lambda_max: 0
+    }),
+    weights: {
+      criteria,
+      values,
+      method: "Chang's Extent Analysis"
+    },
+    distribution: { ...EMPTY_DISTRIBUTION },
+    ranking: []
+  });
 
   const attendanceDateRange = [formatWibDateOnly(startAt), formatWibDateOnly(endAt)];
   const userIds = users.map((user) => user.id_users);
@@ -340,24 +357,9 @@ export const buildDisciplineAnalysis = async ({ startAt, endAt, includeLegacyId 
         }
       })
     : [];
-  const emptyResult = {
-    entity_kind: 'user',
-    consistency: buildConsistency({
-      CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
-      CI: 0,
-      lambda_max: 0
-    }),
-    weights: {
-      criteria,
-      values,
-      method: "Chang's Extent Analysis"
-    },
-    distribution: { ...EMPTY_DISTRIBUTION },
-    ranking: []
-  };
 
   if (!attendances.length) {
-    return emptyResult;
+    return buildEmptyResult();
   }
 
   const attendancesByUserId = attendances.reduce((acc, attendance) => {
@@ -383,6 +385,10 @@ export const buildDisciplineAnalysis = async ({ startAt, endAt, includeLegacyId 
       label: result.label,
       breakdown: result.breakdown
     });
+  }
+
+  if (!ranking.length) {
+    return buildEmptyResult();
   }
 
   ranking.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -943,7 +949,16 @@ const buildDashboardRankingPreview = (ranking) => ({
 });
 
 export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
-  const { startAt, endAt } = getAnalysisWindow('monthly');
+  let { startAt, endAt } = getAnalysisWindow('monthly');
+
+  const windowDays = Math.floor((endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60 * 24));
+  if (windowDays < 7) {
+    console.warn(
+      `[FAHP Dashboard] Window too small for type=${type}: ${windowDays} days. Falling back to 30-day window.`
+    );
+    endAt = new Date();
+    startAt = new Date(endAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+  }
 
   let result;
   switch (type) {
@@ -959,9 +974,10 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
   }
 
   const ranking = Array.isArray(result?.ranking) ? result.ranking : [];
-  const rankingPreview = buildDashboardRankingPreview(ranking);
-  const hasData = rankingPreview.items.length > 0;
-  const consistency = buildDashboardConsistency(result?.consistency ?? null);
+  const isExplicitEmptyState = type === 'discipline' && ranking.length === 0;
+  const rankingPreview = isExplicitEmptyState ? null : buildDashboardRankingPreview(ranking);
+  const hasData = isExplicitEmptyState ? false : rankingPreview.items.length > 0;
+  const consistency = isExplicitEmptyState ? null : buildDashboardConsistency(result?.consistency ?? null);
 
   return {
     type,
@@ -975,11 +991,12 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
       start_at: formatWibDateTime(startAt),
       end_at: formatWibDateTime(endAt)
     },
-    status: hasData ? 'ready' : 'empty',
-    needs_data: !hasData,
+    status: isExplicitEmptyState ? 'empty' : hasData ? 'ready' : 'empty',
+    needs_data: isExplicitEmptyState ? true : !hasData,
+    ...(isExplicitEmptyState ? { reason: 'NO_DISCIPLINE_DATA_IN_WINDOW' } : {}),
     consistency,
-    criteria_weights: buildDashboardCriteriaWeights(result?.weights),
+    criteria_weights: isExplicitEmptyState ? null : buildDashboardCriteriaWeights(result?.weights),
     ranking_preview: rankingPreview,
-    distribution: result?.distribution ?? { ...EMPTY_DISTRIBUTION }
+    distribution: isExplicitEmptyState ? null : result?.distribution ?? { ...EMPTY_DISTRIBUTION }
   };
 };
