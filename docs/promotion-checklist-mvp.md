@@ -41,3 +41,30 @@ Minimum proof examples:
 If any row is missing evidence, the promotion candidate is not ready for `master`.
 
 This MVP checklist does not prove full payload correctness or business-rule correctness; it only records status-code contract evidence for the endpoint inventory in `docs/openapi.yaml`.
+
+## Scoped Proof Batch — Users, Bookings, Summary
+
+This batch covers:
+- Users
+- Bookings
+- Summary
+
+Protected endpoints in this batch use anonymous `401` as the default minimum proof in this phase.
+
+| Tag / Area | Method | Path | Classification | Expected Proof | Evidence | Status |
+|---|---|---|---|---|---|---|
+| Users | GET | /api/users | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Users | POST | /api/users | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Users | GET | /api/users/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Users | PATCH | /api/users/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Users | DELETE | /api/users/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Users | POST | /api/users/{id}/photo | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Bookings | GET | /api/bookings | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Bookings | POST | /api/bookings | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Bookings | GET | /api/bookings/history | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Bookings | PATCH | /api/bookings/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Bookings | DELETE | /api/bookings/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Summary | GET | /api/summary/dashboard-analytics | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Summary | GET | /api/summary/reports | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Summary | GET | /api/summary/reports/pdf | authenticated route | 401 when anonymous | [fill in] | Needs Verification |
+| Summary | GET | /api/summary/reports/excel | authenticated route | 401 when anonymous | [fill in] | Needs Verification |

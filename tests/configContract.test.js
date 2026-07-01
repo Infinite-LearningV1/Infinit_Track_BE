@@ -506,21 +506,38 @@ describe('backend runtime config contract', () => {
 
   test('documents users bookings summary proof batch in the promotion checklist artifact', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
+    const expectedRows = [
+      '| Users | GET | /api/users | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Users | POST | /api/users | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Users | GET | /api/users/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Users | PATCH | /api/users/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Users | DELETE | /api/users/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Users | POST | /api/users/{id}/photo | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Bookings | GET | /api/bookings | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Bookings | POST | /api/bookings | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Bookings | GET | /api/bookings/history | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Bookings | PATCH | /api/bookings/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Bookings | DELETE | /api/bookings/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Summary | GET | /api/summary/dashboard-analytics | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Summary | GET | /api/summary/reports | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Summary | GET | /api/summary/reports/pdf | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
+      '| Summary | GET | /api/summary/reports/excel | authenticated route | 401 when anonymous | [fill in] | Needs Verification |'
+    ];
 
-    expect(checklist).toContain('Users');
-    expect(checklist).toContain('Bookings');
-    expect(checklist).toContain('Summary');
-    expect(checklist).toContain('anonymous `401`');
+    expect(checklist).toContain('## Scoped Proof Batch — Users, Bookings, Summary');
+    expect(checklist).toContain('Protected endpoints in this batch use anonymous `401` as the default minimum proof in this phase.');
+    for (const row of expectedRows) {
+      expect(checklist).toContain(row);
+    }
   });
 
   test('keeps missing proof in the scoped batch as a master-promotion blocker', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
 
-    expect(checklist).toContain('Needs Verification');
     expect(checklist).toContain('One endpoint without proof = block promotion');
-    expect(checklist).toContain('Users');
-    expect(checklist).toContain('Bookings');
-    expect(checklist).toContain('Summary');
+    expect(checklist).toContain('| Users | GET | /api/users | authenticated route | 401 when anonymous | [fill in] | Needs Verification |');
+    expect(checklist).toContain('| Bookings | GET | /api/bookings | authenticated route | 401 when anonymous | [fill in] | Needs Verification |');
+    expect(checklist).toContain('| Summary | GET | /api/summary/reports | authenticated route | 401 when anonymous | [fill in] | Needs Verification |');
   });
 
   test('documents that one endpoint without proof blocks promotion to master', () => {
