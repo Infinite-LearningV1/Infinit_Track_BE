@@ -29,7 +29,7 @@ const mockGetFuzzyAhpDashboardRecap = jest.fn((req, res) => {
         period: 'monthly'
       },
       executed_window: {
-        start_at: '2026-06-01T00:00:00+07:00',
+        start_at: '2026-05-27T00:00:00+07:00',
         end_at: '2026-06-26T00:00:00+07:00'
       },
       status: 'ready',
@@ -67,6 +67,46 @@ const mockGetFuzzyAhpDashboardRecap = jest.fn((req, res) => {
   });
 });
 
+const mockUserFindAll = jest.fn();
+const mockAttendanceFindAll = jest.fn();
+const mockBookingFindOne = jest.fn();
+const mockLocationFindAll = jest.fn();
+const mockLocationFindByPk = jest.fn();
+const mockLocationEventFindOne = jest.fn();
+const mockLocationEventFindAll = jest.fn();
+
+const mockGetDisciplineAhpWeights = jest.fn(() => ({
+  alpha_rate: 0.4,
+  lateness_severity: 0.3,
+  lateness_frequency: 0.2,
+  work_focus: 0.1,
+  consistency_ratio: 0.01
+}));
+const mockCalculateDisciplineIndex = jest.fn(async () => ({
+  score: 87.5,
+  label: 'Sangat Tinggi',
+  breakdown: {}
+}));
+const mockGetWfaAhpWeights = jest.fn(() => ({
+  location_type: 0.5,
+  distance_factor: 0.3,
+  amenity_score: 0.2,
+  consistency_ratio: 0.01
+}));
+const mockCalculateWfaScore = jest.fn(async () => ({
+  score: 82.3,
+  label: 'Tinggi'
+}));
+const mockCategorizePlace = jest.fn(() => 'office');
+const mockGetSmartAcAhpWeights = jest.fn(() => ({
+  history: 0.4,
+  checkin_pattern: 0.3,
+  context: 0.2,
+  transition: 0.1,
+  consistency_ratio: 0.043,
+  consistency_index: 0.01,
+  lambda_max: 4.1
+}));
 const mockFuzzyAhpDashboardRecapValidation = jest.fn((req, _res, next) => {
   const queryKeys = Object.keys(req.query);
 
@@ -124,7 +164,30 @@ jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
   wfaFahpValidation: []
 }));
 
+jest.unstable_mockModule('../src/models/index.js', () => ({
+  Attendance: { findAll: mockAttendanceFindAll },
+  Booking: { findOne: mockBookingFindOne },
+  Location: { findAll: mockLocationFindAll, findByPk: mockLocationFindByPk },
+  LocationEvent: { findOne: mockLocationEventFindOne, findAll: mockLocationEventFindAll },
+  User: { findAll: mockUserFindAll }
+}));
+
+jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
+  default: {
+    getDisciplineAhpWeights: mockGetDisciplineAhpWeights,
+    calculateDisciplineIndex: mockCalculateDisciplineIndex,
+    getWfaAhpWeights: mockGetWfaAhpWeights,
+    calculateWfaScore: mockCalculateWfaScore,
+    categorizePlace: mockCategorizePlace,
+    getSmartAcAhpWeights: mockGetSmartAcAhpWeights
+  }
+}));
+
 const { default: analysisRoutes } = await import('../src/routes/analysis.routes.js');
+const {
+  buildFuzzyAhpDashboardRecapPayload,
+  getWibAnalysisWindow
+} = await import('../src/services/fuzzyAhpAnalysis.service.js');
 
 const createAnalysisRoutesApp = () => {
   const app = express();
@@ -217,7 +280,7 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
           period: 'monthly'
         },
         executed_window: {
-          start_at: '2026-06-01T00:00:00+07:00',
+          start_at: '2026-05-27T00:00:00+07:00',
           end_at: '2026-06-26T00:00:00+07:00'
         },
         status: 'ready',
@@ -290,5 +353,113 @@ describe('analysis fuzzy ahp dashboard recap real router wiring', () => {
     expect(mockFuzzyAhpDashboardRecapValidation).toHaveBeenCalled();
     expect(mockValidate).toHaveBeenCalled();
     expect(mockGetFuzzyAhpDashboardRecap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('fuzzy ahp dashboard recap service behavior', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetDisciplineAhpWeights.mockReturnValue({
+      alpha_rate: 0.4,
+      lateness_severity: 0.3,
+      lateness_frequency: 0.2,
+      work_focus: 0.1,
+      consistency_ratio: 0.01
+    });
+    mockCalculateDisciplineIndex.mockResolvedValue({
+      score: 87.5,
+      label: 'Sangat Tinggi',
+      breakdown: {}
+    });
+    mockGetWfaAhpWeights.mockReturnValue({
+      location_type: 0.5,
+      distance_factor: 0.3,
+      amenity_score: 0.2,
+      consistency_ratio: 0.01
+    });
+    mockCalculateWfaScore.mockResolvedValue({
+      score: 82.3,
+      label: 'Tinggi'
+    });
+    mockCategorizePlace.mockReturnValue('office');
+    mockLocationFindByPk.mockResolvedValue(null);
+    mockLocationEventFindOne.mockResolvedValue(null);
+    mockLocationEventFindAll.mockResolvedValue([]);
+    mockLocationFindAll.mockResolvedValue([]);
+    mockUserFindAll.mockResolvedValue([]);
+    mockAttendanceFindAll.mockResolvedValue([]);
+  });
+
+  it('returns an approximately 30-day monthly analysis window', () => {
+    const { startAt, endAt } = getWibAnalysisWindow('monthly');
+    const daysDiff = Math.floor((endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60 * 24));
+
+    expect(daysDiff).toBeGreaterThanOrEqual(25);
+    expect(daysDiff).toBeLessThanOrEqual(31);
+  });
+
+  it('returns an explicit empty discipline recap when attendance data is missing', async () => {
+    mockUserFindAll.mockResolvedValue([{ id_users: 12, full_name: 'Andi' }]);
+    mockAttendanceFindAll.mockResolvedValue([]);
+
+    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'discipline' });
+
+    expect(payload.status).toBe('empty');
+    expect(payload.needs_data).toBe(true);
+    expect(payload.reason).toBe('NO_DISCIPLINE_DATA_IN_WINDOW');
+    expect(payload.criteria_weights).toBeNull();
+  });
+
+  it('returns empty wfa recap when there are no monthly location events', async () => {
+    mockLocationFindAll.mockResolvedValue([
+      {
+        location_id: 3,
+        description: 'Office Hub',
+        latitude: '-6.2',
+        longitude: '106.8'
+      }
+    ]);
+
+    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'wfa' });
+
+    expect(payload.status).toBe('empty');
+    expect(payload.needs_data).toBe(true);
+    expect(payload.ranking_preview.items).toEqual([]);
+  });
+
+  it('keeps wfa recap ready when windowed location activity exists', async () => {
+    mockLocationEventFindAll.mockResolvedValue([{ location_id: 3 }]);
+    mockLocationFindAll.mockResolvedValue([
+      {
+        location_id: 3,
+        description: 'Office Hub',
+        latitude: '-6.2',
+        longitude: '106.8'
+      },
+      {
+        location_id: 4,
+        description: 'Unused Hub',
+        latitude: '-6.21',
+        longitude: '106.81'
+      }
+    ]);
+
+    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'wfa' });
+
+    expect(payload.status).toBe('ready');
+    expect(payload.needs_data).toBe(false);
+    expect(payload.criteria_weights).toHaveLength(3);
+    expect(payload.ranking_preview.items).toHaveLength(1);
+    expect(payload.ranking_preview.items[0].id).toBe(3);
+  });
+
+  it('returns empty smart_ac recap when all users lack monthly attendance evidence', async () => {
+    mockUserFindAll.mockResolvedValue([{ id_users: 12, full_name: 'Andi' }]);
+
+    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'smart_ac' });
+
+    expect(payload.status).toBe('empty');
+    expect(payload.needs_data).toBe(true);
+    expect(payload.ranking_preview.items).toEqual([]);
   });
 });
