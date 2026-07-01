@@ -36,7 +36,7 @@ Minimum proof examples:
 
 | Tag / Area | Method | Path | Classification | Expected Proof | Evidence | Status |
 |---|---|---|---|---|---|---|
-| Example | GET | /api/example | authenticated route | 401 when anonymous | [fill in] | PASS / FAIL / Needs Verification |
+| Example | GET | /api/example | authenticated route | 401 when anonymous | example evidence: anonymous probe returned 401 | PASS |
 
 If any row is missing evidence, the promotion candidate is not ready for `master`.
 
