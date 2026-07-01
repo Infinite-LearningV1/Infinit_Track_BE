@@ -497,6 +497,29 @@ describe('backend runtime config contract', () => {
     expect(productionGuide).toContain('all required evidence is green before merge into `master`');
   });
 
+  test('documents promotion checklist mvp as openapi-driven and status-code only', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('`docs/openapi.yaml`');
+    expect(checklist).toContain('status-code contract only');
+    expect(readme).toContain('promotion checklist MVP');
+    expect(productionGuide).toContain('promotion checklist MVP');
+  });
+
+  test('documents that one endpoint without proof blocks promotion to master', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+
+    expect(checklist).toContain('One endpoint without proof = block promotion');
+    expect(checklist).toContain('Claude verdict');
+    expect(checklist).toContain('Operator approval');
+    expect(productionGuide).toContain('Claude verdict');
+    expect(productionGuide).toContain('operator approval');
+    expect(productionGuide).toContain('develop -> master');
+  });
+
   test('describes master github gate honestly as pr review plus build where build means install lint and test', () => {
     const readme = readRootReadme();
     const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
