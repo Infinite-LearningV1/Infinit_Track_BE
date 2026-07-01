@@ -504,6 +504,25 @@ describe('backend runtime config contract', () => {
     expect(checklist).toContain('status-code contract only');
   });
 
+  test('documents users bookings summary proof batch in the promotion checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('Users');
+    expect(checklist).toContain('Bookings');
+    expect(checklist).toContain('Summary');
+    expect(checklist).toContain('anonymous `401`');
+  });
+
+  test('keeps missing proof in the scoped batch as a master-promotion blocker', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('Needs Verification');
+    expect(checklist).toContain('One endpoint without proof = block promotion');
+    expect(checklist).toContain('Users');
+    expect(checklist).toContain('Bookings');
+    expect(checklist).toContain('Summary');
+  });
+
   test('documents that one endpoint without proof blocks promotion to master', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
 
