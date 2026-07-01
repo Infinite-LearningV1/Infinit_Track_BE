@@ -512,6 +512,30 @@ describe('backend runtime config contract', () => {
     expect(checklist).toContain('Operator approval');
   });
 
+  test('documents checklist-first master promotion decision rules in operator-facing release docs', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+
+    expect(readme).toContain('Promotion to `master` is gated by the promotion checklist MVP.');
+    expect(readme).toContain('endpoint inventory source: `docs/openapi.yaml`');
+    expect(readme).toContain('verification depth: status-code contract only');
+    expect(readme).toContain('one endpoint without proof blocks promotion');
+    expect(readme).toContain('Claude provides the verdict');
+    expect(readme).toContain('operator provides the final go/no-go approval');
+
+    expect(productionGuide).toContain('Before `develop -> master` promotion:');
+    expect(productionGuide).toContain('run the promotion checklist MVP');
+    expect(productionGuide).toContain(
+      'require status-code proof for all endpoints represented in `docs/openapi.yaml`'
+    );
+    expect(productionGuide).toContain('block promotion if any endpoint lacks proof');
+    expect(productionGuide).toContain('review the Claude verdict');
+    expect(productionGuide).toContain('operator approves or rejects promotion');
+    expect(productionGuide).toContain(
+      'If the checklist passes and the operator approves, promotion to `master` may proceed and existing automation may run.'
+    );
+  });
+
   test('describes master github gate honestly as pr review plus build where build means install lint and test', () => {
     const readme = readRootReadme();
     const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
