@@ -30,8 +30,11 @@ C:/Users/Febriyadi/.claude/worktrees/Infinit_Track_BE-pr62-merged-review/Infinit
 
 ## Risks / Notes
 - Dashboard recap empty-state contract for discipline now returns `reason: NO_DISCIPLINE_DATA_IN_WINDOW`, `criteria_weights: null`, `ranking_preview: null`, `distribution: null`, and `consistency: null`.
+- WFA dashboard recap now scopes its ranking candidates to locations that actually appear in `LocationEvent` rows inside the executed monthly window, so the advertised monthly window is no longer misleading.
+- Smart AC dashboard recap now returns `status: 'empty'` when the monthly window has no usable evidence (instead of reporting `ready` from zero-score placeholder rows).
 - The shared discipline analysis builder remains backward-compatible for the non-dashboard FAHP endpoint to avoid unintended API contract drift.
-- DOCS/ADR UPDATE REQUIRED: dashboard empty-state runtime behavior changed, but `docs/openapi.yaml` was not updated in this scope because the approved implementation constrained changes to the specified files.
+- Deferred follow-up: `tests/analysisFuzzyAhpDashboardRecapRoute.test.js` still duplicates the dashboard query validator contract instead of exercising the production validator directly.
+- DOCS/ADR UPDATE REQUIRED: dashboard recap runtime semantics changed, but `docs/openapi.yaml` was not updated in this scope because the approved implementation constrained changes to the specified files.
 - Needs Verification: authenticated runtime smoke on a live server was not executed in this cycle.
 
 ## Related Issues
