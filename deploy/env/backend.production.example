@@ -1,3 +1,6 @@
+# Copy this template to deploy/env/backend.production.env on the target runtime.
+# The copied .env file is local-only runtime state and should remain untracked.
+
 # Runtime
 NODE_ENV=production
 PORT=3005

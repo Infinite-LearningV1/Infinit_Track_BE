@@ -105,14 +105,20 @@ const arrangeAttendanceFindAllForSummary = () => {
     .mockResolvedValueOnce(buildSummaryRows())
     .mockResolvedValueOnce([
       {
+        id_attendance: 201,
+        user_id: 7,
+        attendance_date: '2026-04-23',
         time_in: new Date('2026-04-23T01:15:00.000Z'),
+        time_out: new Date('2026-04-23T10:00:00.000Z'),
         work_hour: 8,
         status: { attendance_status_name: 'Tepat Waktu' }
-      }
-    ])
-    .mockResolvedValueOnce([
+      },
       {
+        id_attendance: 202,
+        user_id: 8,
+        attendance_date: '2026-04-23',
         time_in: new Date('2026-04-23T01:20:00.000Z'),
+        time_out: new Date('2026-04-23T10:00:00.000Z'),
         work_hour: 8,
         status: { attendance_status_name: 'Terlambat' }
       }

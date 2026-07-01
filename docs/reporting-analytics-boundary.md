@@ -42,12 +42,14 @@ Infinite Track exposes related but distinct read surfaces for reporting, dashboa
 - This repo document records only route ownership and source-of-truth boundary. Keep detailed per-endpoint validation, examples, and run guidance in Postman instead of duplicating a manual guide here; use the legacy combined endpoint only for explicit migration compatibility checks.
 
 ## Consumer rules
-- Use `/api/summary/reports` for reporting tables, exports, and `report.user_attendance_summary`.
-- Use `q` as the canonical free-text search parameter for `/api/summary/reports` rows.
+- Use `/api/summary/reports` for reporting tables, paginated report rows, `report.user_attendance_summary`, and the additive `period_summary` plus `export_scope_summary` fields.
+- Use `/api/summary/reports/pdf` for PDF export payload preparation.
+- Use `/api/summary/reports/excel` for workbook/Excel export payload preparation.
+- Use `q` as the canonical free-text search parameter for `/api/summary/reports`, `/api/summary/reports/pdf`, and `/api/summary/reports/excel`.
 - Treat `search`, `query`, and `keyword` as deprecated compatibility aliases for `q`.
-- Do not use `period=all` for `/api/summary/reports`; use `daily`, `weekly`, `monthly`, or `range`.
-- Search filters `report.data` and `report.pagination`; top-level `summary` remains period-wide, while `analytics.discipline_analysis` reflects the visible report users on the current page.
-- Treat `/api/summary` as a temporary deprecated alias during migration; it must return the same contract as `/api/summary/reports`.
+- Do not use `period=all` for the summary reporting/export surface; use `daily`, `weekly`, `monthly`, or `range`.
+- Search filters the export/report scope dataset; top-level legacy `summary` remains period-wide, while `analytics.discipline_analysis` on `/api/summary/reports` reflects the visible report users on the current page.
+- `/api/summary` is no longer an active compatibility surface and must not be consumed or documented as an available GET route.
 - Use `/api/summary/dashboard-analytics` for dashboard analytics cards, charts, mode mix, insights, and FAHP snapshot panels.
 - Use `/api/attendance/geofence-evidence` for geofence evidence context panels bound to a historical attendance window.
 - Use `/api/attendance/today-locations` for today-focused map widgets or hero maps.

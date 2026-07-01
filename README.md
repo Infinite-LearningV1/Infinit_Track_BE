@@ -205,7 +205,9 @@ bersifat internal-only dan memerlukan sesi `Admin` atau `Management` yang teraut
 | `GET`                        | `/api/wfa/recommendations`        | Rekomendasi lokasi WFA dengan Fuzzy AHP               | Pengguna         |
 | `GET`                        | `/api/wfa/ahp-config`             | Konfigurasi algoritma AHP                             | Admin            |
 | **📊 Analytics & Reports**   |
-| `GET`                        | `/api/summary`                    | **[ENHANCED]** Laporan komprehensif + Indeks Disiplin | Admin/Management |
+| `GET`                        | `/api/summary/reports`            | **[ENHANCED]** Laporan komprehensif + Indeks Disiplin | Admin/Management |
+| `GET`                        | `/api/summary/reports/pdf`        | Payload kontrak export PDF                             | Admin/Management |
+| `GET`                        | `/api/summary/reports/excel`      | Payload kontrak export Excel/workbook                  | Admin/Management |
 | `GET`                        | `/api/discipline/user/:id`        | Indeks kedisiplinan individual                        | Admin/Management |
 | `GET`                        | `/api/discipline/all`             | Overview disiplin semua karyawan                      | Admin            |
 | `GET`                        | `/api/analysis/fuzzy-ahp`         | Analisis bobot fuzzy AHP                              | Admin/Management |
@@ -261,31 +263,62 @@ GET /api/bookings/history?status=approved&sort_by=schedule_date&sort_order=DESC&
 #### **Enhanced Summary with Discipline Index**
 
 ```bash
-# Comprehensive analytics dengan real-time discipline calculation
-GET /api/summary?period=monthly&start_date=2025-07-01&end_date=2025-07-31
+# Canonical summary reporting surface
+GET /api/summary/reports?period=monthly&q=john&page=1&limit=10
 
-# Response includes discipline analytics
+# Response includes period-wide summary + filtered/export-aware report sections
 {
   "success": true,
-  "summary": {
-    "total_employees": 45,
-    "average_attendance_rate": 92.5,
-    "average_discipline_score": 78.2
+  "generated_at": "2026-06-29T01:00:00.000Z",
+  "period_summary": {
+    "total_records": 14,
+    "attendance_rate": 87.5,
+    "average_discipline_score": 79.25,
+    "late_alpha_risk_users": 2,
+    "needs_attention_users": 1
+  },
+  "export_scope_summary": {
+    "scope": "filtered_records_only",
+    "total_records": 2,
+    "attendance_rate": 100,
+    "average_discipline_score": 88
   },
   "report": {
+    "user_attendance_summary": [
+      {
+        "user_id": 20,
+        "full_name": "John Doe",
+        "late_days": 3,
+        "alpha_days": 0,
+        "summary_note": "Complete"
+      }
+    ],
     "data": [
       {
         "user_id": 20,
-        "user_name": "John Doe",
-        "total_present": 22,
-        "total_late": 3,
+        "full_name": "John Doe",
+        "status": "Tepat Waktu",
         "discipline_score": 85.5,
         "discipline_label": "Sangat Baik"
       }
     ]
+  },
+  "analytics": {
+    "discipline_analysis": {
+      "users_analyzed": 1,
+      "average_discipline_score": 85.5,
+      "methodology": "Fuzzy AHP Engine"
+    }
   }
 }
 ```
+
+Notes:
+- `discipline_label` is an official detail/export field on `report.data[]`.
+- `discipline_label` is not promoted into `report.user_attendance_summary[]`.
+- `needs_attention_users` is the official summary-report attention metric under `period_summary`.
+- Excel `discipline_insight_sheet[].recommended_action_code` is runtime-calculated from summary inputs with the backend precedence: `review` (alpha present), then `remind` (discipline score < 70), then `monitor` (late days > 0), otherwise `none`.
+- `needs_attention` remains a dashboard-only KPI under `/api/summary/dashboard-analytics`.
 
 ### **🔒 5.3 Authentication & Authorization**
 
@@ -449,6 +482,20 @@ const disciplineFactors = {
 
 Infinit Track Backend menggunakan **GitOps-style deployment** berbasis **DigitalOcean Container Registry (DOCR) + droplet-hosted Docker Compose runtime + host Nginx**. Image backend dibangun di CI, dipush ke `registry.digitalocean.com/infinit-track/infinit-track-backend`, lalu runtime droplet menarik image immutable melalui `BACKEND_IMAGE_TAG`.
 
+Official backend release path: `develop -> review -> master -> deploy`.
+Staging and production both derive from `master`; `master` should only receive reviewed, verified release candidates.
+
+GitHub enforces PR review + `build` on `master`.
+
+In this repository, `build` means install + lint + test:
+
+- install dependencies (`npm ci`)
+- lint (`npm run lint`)
+- test (`npm test`)
+
+runtime/smoke verification is still an operational verification concern.
+It is not part of the enforced GitHub merge gate for `master` today.
+
 ```
 Development → Image Build → Staging Droplet → Production Droplet
      ↓             ↓              ↓                    ↓
@@ -462,7 +509,7 @@ Development → Image Build → Staging Droplet → Production Droplet
 - ✅ Image release dipin oleh `BACKEND_IMAGE_TAG`
 - ✅ Manual/CI deploy harus diverifikasi lewat `/livez` dan `/health`
 - ✅ Managed MySQL tetap terpisah per environment
-- ✅ Smoke/readiness verification adalah release gate, bukan best-effort check
+- ✅ Smoke/readiness verification adalah release gate operasional, bukan enforced GitHub merge gate untuk `master` today
 - ✅ Rollback dilakukan dengan mengembalikan tag image terakhir yang sehat
 
 ### **📋 8.2 Quick Start - First Deployment**
@@ -499,17 +546,15 @@ PRODUCTION_EXPECTED_IP=<production-public-ip>
 # Staging / release-candidate flow
 git add .
 git commit -m "Deploy-ready change"
-git push origin master
-# → push ke master memicu workflow staging:
-#   lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate
-
-# Optional: run staging workflow manually from GitHub Actions
-# → workflow_dispatch pada "Deploy to Staging"
+git push origin <review-branch>
+# → open PR to master
+# → GitHub merge gate for master requires PR review + build
+# → build means npm ci + npm run lint + npm test
+# → runtime rollout and smoke verification remain operational release evidence
 
 # Production / approved release flow
-# Trigger workflow "Deploy to Production" secara manual,
-# isi konfirmasi deploy-to-production,
-# lalu workflow menjalankan lint + test + DOCR publish + droplet rollout + migrate + blocking smoke gate.
+# → merge reviewed, verified PR into master
+# → GitHub merge gate remains PR review + build; runtime/smoke verification is operational evidence.
 ```
 
 ### **🎯 8.3 Deployment Workflows**
@@ -554,7 +599,7 @@ Canonical production release should do this in order:
 | **Database**       | Staging DB (test data) | Production DB (**separate**) |
 | **JWT_SECRET**     | Staging secret         | **Different** secret         |
 | **CORS_ORIGIN**    | Staging frontend       | Production frontend          |
-| **Deploy Trigger** | Automatic              | Manual + Approval            |
+| **Deploy Trigger** | Automatic from `master` | Automatic from `master` after reviewed, verified promotion |
 | **Instance Count** | 1                      | 2+ (HA)                      |
 | **Log Level**      | `info`                 | `warn`                       |
 
@@ -562,7 +607,7 @@ Canonical production release should do this in order:
 
 - Reuse production secrets in staging
 - Mix production & staging databases
-- Auto-deploy to production
+- Merge unreviewed or unverified changes to `master`
 
 ### **📊 8.5 Monitoring & Health Checks**
 
@@ -604,7 +649,7 @@ Automated tests after each deployment:
 # Run locally against the current staging host
 npm run smoke-test "$STAGING_PUBLIC_BASE_URL"
 
-# Included in GitHub Actions automatically
+# Operational verification; not part of the enforced GitHub merge gate for master today
 # Tests: Liveness, Readiness, Docs, CORS, Security, Auth, Performance
 ```
 
@@ -665,8 +710,8 @@ git push origin master
 git revert <commit-hash>
 git push origin master
 
-# Staging: Auto-deploys
-# Production: Manual trigger required
+# Staging: Auto-deploys from master
+# Production: Auto-deploys from master after reviewed, verified promotion
 ```
 
 #### **Database Rollback (Emergency)**
@@ -729,8 +774,8 @@ git push origin feature/new-feature
 # → Verify canonical staging host after rollout completes
 
 # 4. Production Deploy (when ready)
-# → Manual trigger via GitHub Actions: "Deploy to Production"
-# → Type deploy-to-production for confirmation
+# → Merge/push reviewed, verified release candidate to master
+# → Production deploy runs automatically from master after required evidence is green
 # → Monitor live host and logs after smoke gate passes
 ```
 
@@ -961,7 +1006,7 @@ _Infinite Track Backend adalah solusi enterprise-grade untuk manajemen kehadiran
 **Deployment Status:**
 
 - ✅ Staging: Auto-deploy dari master branch
-- ✅ Production: Manual deploy dengan approval workflow
+- ✅ Production: Automatic deploy from `master` after a reviewed and verified promotion
 - ✅ Database: Managed MySQL dengan automated backups
 - ✅ Monitoring: Real-time logs dan health checks
 - ✅ Security: CORS, security headers, rate limiting, JWT auth

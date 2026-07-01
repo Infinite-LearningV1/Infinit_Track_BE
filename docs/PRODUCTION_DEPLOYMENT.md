@@ -15,6 +15,25 @@ Backend deployment truth for the current phase is:
 
 This document should not be used to justify new App Platform deployment work unless that direction is intentionally reactivated later.
 
+## Official Release Path
+
+The backend uses a single official release path:
+
+`develop -> review -> master -> deploy`
+
+- `develop` is the integration and review surface.
+- `master` is the release branch.
+- staging deploy is automatic from `master`.
+- production deploy is automatic from `master`.
+- all required evidence is green before merge into `master`.
+
+## Master GitHub Gate
+
+GitHub enforces PR review + `build` for `master`.
+In this repository, `build` means install + lint + test.
+
+runtime/smoke verification is still an operational verification concern, not an enforced GitHub merge gate today.
+
 ## Current Deployment Model
 
 ### Phase 1: Publish image to DOCR
@@ -49,7 +68,7 @@ They are not part of the supported active backend deploy path and should be trea
 
 ### What this document does not claim
 - that the publish-only workflow (`docker-deploy.yml`) deploys the runtime to the droplet by itself
-- that production rollout is already automated in the same way the staging droplet workflow is
+- that automatic production rollout removes the required review and evidence gate before merge into `master`
 - that Kubernetes is an active deployment path
 
 ## Deployment Readiness Checklist
