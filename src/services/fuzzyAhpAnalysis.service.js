@@ -519,15 +519,63 @@ export const buildWfaFahpPayload = async ({ lat, lon, radiusMeters }) => {
   };
 };
 
-export const buildWfaAnalysis = async () => {
-  const places = await Location.findAll({});
+export const buildWfaAnalysis = async ({ startAt, endAt } = {}) => {
   const weightsObj = fuzzyEngine.getWfaAhpWeights();
   const criteria = ['location_type', 'distance_factor', 'amenity_score'];
   const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.amenity_score];
+  const buildEmptyResult = () => ({
+    entity_kind: 'place',
+    consistency: buildConsistency({
+      CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
+      CI: 0,
+      lambda_max: 0
+    }),
+    weights: {
+      criteria,
+      values,
+      method: "Chang's Extent Analysis"
+    },
+    distribution: { ...EMPTY_DISTRIBUTION },
+    ranking: []
+  });
 
+  let locationIdsInWindow = null;
+  if (startAt && endAt && typeof LocationEvent.findAll === 'function') {
+    const locationEvents = await LocationEvent.findAll({
+      where: {
+        event_timestamp: {
+          [Op.gte]: startAt,
+          [Op.lte]: endAt
+        },
+        location_id: {
+          [Op.ne]: null
+        }
+      }
+    });
+
+    locationIdsInWindow = [...new Set(locationEvents.map((event) => event.location_id).filter((id) => id != null))];
+    if (!locationIdsInWindow.length) {
+      return buildEmptyResult();
+    }
+  }
+
+  const places = await Location.findAll({
+    ...(locationIdsInWindow
+      ? {
+          where: {
+            location_id: {
+              [Op.in]: locationIdsInWindow
+            }
+          }
+        }
+      : {})
+  });
+  const scopedPlaces = locationIdsInWindow
+    ? places.filter((place) => locationIdsInWindow.includes(place.location_id))
+    : places;
   const ranking = [];
 
-  for (const place of places) {
+  for (const place of scopedPlaces) {
     const placeDetails = {
       properties: {
         name: place.description,
@@ -551,6 +599,10 @@ export const buildWfaAnalysis = async () => {
         distance: 1000
       }
     });
+  }
+
+  if (!ranking.length) {
+    return buildEmptyResult();
   }
 
   ranking.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -966,7 +1018,7 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
       result = await buildDisciplineAnalysis({ startAt, endAt, includeLegacyId: false });
       break;
     case 'wfa':
-      result = await buildWfaAnalysis();
+      result = await buildWfaAnalysis({ startAt, endAt });
       break;
     default:
       result = await buildSmartAcAnalysis({ startAt, endAt });
@@ -974,10 +1026,17 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
   }
 
   const ranking = Array.isArray(result?.ranking) ? result.ranking : [];
-  const isExplicitEmptyState = type === 'discipline' && ranking.length === 0;
-  const rankingPreview = isExplicitEmptyState ? null : buildDashboardRankingPreview(ranking);
-  const hasData = isExplicitEmptyState ? false : rankingPreview.items.length > 0;
-  const consistency = isExplicitEmptyState ? null : buildDashboardConsistency(result?.consistency ?? null);
+  const isDisciplineExplicitEmptyState = type === 'discipline' && ranking.length === 0;
+  const isSmartAcEvidenceEmpty =
+    type === 'smart_ac' && ranking.length > 0 && !ranking.some((item) => Number(item?.score || 0) > 0);
+  const rankingForPreview = isSmartAcEvidenceEmpty ? [] : ranking;
+  const rankingPreview = isDisciplineExplicitEmptyState ? null : buildDashboardRankingPreview(rankingForPreview);
+  const hasData = isDisciplineExplicitEmptyState
+    ? false
+    : type === 'smart_ac'
+      ? rankingForPreview.length > 0
+      : rankingPreview.items.length > 0;
+  const consistency = isDisciplineExplicitEmptyState ? null : buildDashboardConsistency(result?.consistency ?? null);
 
   return {
     type,
@@ -991,12 +1050,12 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
       start_at: formatWibDateTime(startAt),
       end_at: formatWibDateTime(endAt)
     },
-    status: isExplicitEmptyState ? 'empty' : hasData ? 'ready' : 'empty',
-    needs_data: isExplicitEmptyState ? true : !hasData,
-    ...(isExplicitEmptyState ? { reason: 'NO_DISCIPLINE_DATA_IN_WINDOW' } : {}),
+    status: isDisciplineExplicitEmptyState || isSmartAcEvidenceEmpty ? 'empty' : hasData ? 'ready' : 'empty',
+    needs_data: isDisciplineExplicitEmptyState || isSmartAcEvidenceEmpty ? true : !hasData,
+    ...(isDisciplineExplicitEmptyState ? { reason: 'NO_DISCIPLINE_DATA_IN_WINDOW' } : {}),
     consistency,
-    criteria_weights: isExplicitEmptyState ? null : buildDashboardCriteriaWeights(result?.weights),
+    criteria_weights: isDisciplineExplicitEmptyState ? null : buildDashboardCriteriaWeights(result?.weights),
     ranking_preview: rankingPreview,
-    distribution: isExplicitEmptyState ? null : result?.distribution ?? { ...EMPTY_DISTRIBUTION }
+    distribution: isDisciplineExplicitEmptyState ? null : result?.distribution ?? { ...EMPTY_DISTRIBUTION }
   };
 };
