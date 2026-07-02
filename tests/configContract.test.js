@@ -504,6 +504,22 @@ describe('backend runtime config contract', () => {
     expect(checklist).toContain('status-code contract only');
   });
 
+  test('documents auth and attendance proof batch in the promotion checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('Auth');
+    expect(checklist).toContain('Attendance');
+    expect(checklist).toContain('anonymous `401`');
+  });
+
+  test('distinguishes auth public routes from protected auth routes in the checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('public-by-contract auth endpoints');
+    expect(checklist).toContain('minimum documented status expected by contract');
+    expect(checklist).toContain('protected auth endpoints use anonymous `401`');
+  });
+
   test('documents users bookings summary proof batch in the promotion checklist artifact', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
     const expectedRows = [
