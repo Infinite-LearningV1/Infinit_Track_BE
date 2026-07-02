@@ -507,21 +507,21 @@ describe('backend runtime config contract', () => {
   test('documents auth and attendance proof batch in the promotion checklist artifact', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
     const expectedRows = [
-      '| Auth | POST | /api/auth/login | public route | documented public status | [fill in] | Needs Verification |',
-      '| Auth | POST | /api/auth/refresh | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Auth | POST | /api/auth/logout | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Auth | GET | /api/auth/me | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | GET | /api/attendance/today-locations | admin/management-only route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | GET | /api/attendance/geofence-evidence | admin/management-only route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | GET | /api/attendance | admin/management-only route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | POST | /api/attendance/check-in | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | POST | /api/attendance/checkout/{id} | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | GET | /api/attendance/history | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | GET | /api/attendance/status-today | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | POST | /api/attendance/location-event | authenticated route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | POST | /api/attendance/research-trigger/daily | admin/management-only route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | POST | /api/attendance/research-trigger/full-day | admin/management-only route | 401 when anonymous | [fill in] | Needs Verification |',
-      '| Attendance | DELETE | /api/attendance/{id} | admin/management-only route | 401 when anonymous | [fill in] | Needs Verification |'
+      '| Auth | POST | /api/auth/login | public route | documented validation status | 2026-07-02 anonymous probe returned 400 | PASS |',
+      '| Auth | POST | /api/auth/refresh | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Auth | POST | /api/auth/logout | public route | documented public status | 2026-07-02 anonymous probe returned 200 | PASS |',
+      '| Auth | GET | /api/auth/me | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/today-locations | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/geofence-evidence | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/check-in | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/checkout/{id} | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/checkout/1` returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/history | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/status-today | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/location-event | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/research-trigger/daily | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/research-trigger/full-day | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | DELETE | /api/attendance/{id} | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/1` returned 401 | PASS |'
     ];
 
     expect(checklist).toContain('## Scoped Proof Batch — Auth, Attendance');
