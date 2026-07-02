@@ -82,18 +82,18 @@ For this batch, public-by-contract auth endpoints use the minimum documented sta
 
 | Tag / Area | Method | Path | Classification | Expected Proof | Evidence | Status |
 |---|---|---|---|---|---|---|
-| Auth | POST | /api/auth/login | public route | documented validation status | anonymous probe returned 400 | PASS |
-| Auth | POST | /api/auth/refresh | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Auth | POST | /api/auth/logout | public route | documented public status | anonymous probe returned 200 | PASS |
-| Auth | GET | /api/auth/me | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | GET | /api/attendance/today-locations | admin/management-only route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | GET | /api/attendance/geofence-evidence | admin/management-only route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | GET | /api/attendance | admin/management-only route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | POST | /api/attendance/check-in | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | POST | /api/attendance/checkout/{id} | authenticated route | 401 when anonymous | anonymous probe to `/api/attendance/checkout/1` returned 401 | PASS |
-| Attendance | GET | /api/attendance/history | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | GET | /api/attendance/status-today | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | POST | /api/attendance/location-event | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | POST | /api/attendance/research-trigger/daily | admin/management-only route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | POST | /api/attendance/research-trigger/full-day | admin/management-only route | 401 when anonymous | anonymous probe returned 401 | PASS |
-| Attendance | DELETE | /api/attendance/{id} | admin/management-only route | 401 when anonymous | anonymous probe to `/api/attendance/1` returned 401 | PASS |
+| Auth | POST | /api/auth/login | public route | documented validation status | 2026-07-02 anonymous probe returned 400 | PASS |
+| Auth | POST | /api/auth/refresh | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Auth | POST | /api/auth/logout | public route | documented public status | 2026-07-02 anonymous probe returned 200 | PASS |
+| Auth | GET | /api/auth/me | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | GET | /api/attendance/today-locations | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | GET | /api/attendance/geofence-evidence | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | GET | /api/attendance | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | POST | /api/attendance/check-in | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | POST | /api/attendance/checkout/{id} | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/checkout/1` returned 401 | PASS |
+| Attendance | GET | /api/attendance/history | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | GET | /api/attendance/status-today | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | POST | /api/attendance/location-event | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | POST | /api/attendance/research-trigger/daily | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | POST | /api/attendance/research-trigger/full-day | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
+| Attendance | DELETE | /api/attendance/{id} | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/1` returned 401 | PASS |
