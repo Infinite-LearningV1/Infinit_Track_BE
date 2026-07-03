@@ -25,7 +25,7 @@ Command/tool:
 
 Observed summary:
 - The checklist includes the Auth/Attendance proof-batch section and endpoint rows from Task 2.
-- Rows already matched the required observed statuses from the current runtime probe, but evidence did not identify this run date.
+- The Auth/Attendance batch rows started as placeholder evidence with `Needs Verification` status and were then moved to proof-filled `PASS` rows based on runtime observation.
 - Updated Auth/Attendance evidence cells to include `2026-07-02` runtime proof.
 
 ### Inspect OpenAPI Auth/Attendance inventory
@@ -151,7 +151,7 @@ npm test -- --runInBand tests/configContract.test.js
 
 Observed summary:
 - Result: PASS.
-- `tests/configContract.test.js` now passes with the proof-filled Auth/Attendance checklist rows.
+- `tests/configContract.test.js` now passes with the proof-filled Auth/Attendance checklist rows, including the corrected public-by-contract `/api/auth/refresh` row.
 - Targeted summary: `Test Suites: 1 passed, 1 total`; `Tests: 33 passed, 33 total`.
 - The global blocking rule remains intact: the checklist still states `One endpoint without proof = block promotion` and the test still asserts that rule.
 
