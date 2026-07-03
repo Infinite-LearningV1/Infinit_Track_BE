@@ -496,6 +496,14 @@ In this repository, `build` means install + lint + test:
 runtime/smoke verification is still an operational verification concern.
 It is not part of the enforced GitHub merge gate for `master` today.
 
+Promotion to `master` is gated by the promotion checklist MVP.
+
+- endpoint inventory source: `docs/openapi.yaml`
+- verification depth: status-code contract only
+- one endpoint without proof blocks promotion
+- Claude provides the verdict
+- operator provides the final go/no-go approval
+
 ```
 Development → Image Build → Staging Droplet → Production Droplet
      ↓             ↓              ↓                    ↓

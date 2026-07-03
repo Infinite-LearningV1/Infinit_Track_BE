@@ -497,6 +497,174 @@ describe('backend runtime config contract', () => {
     expect(productionGuide).toContain('all required evidence is green before merge into `master`');
   });
 
+  test('documents promotion checklist mvp as openapi-driven and status-code only', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('`docs/openapi.yaml`');
+    expect(checklist).toContain('status-code contract only');
+  });
+
+  test('documents auth and attendance proof batch in the promotion checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+    const expectedRows = [
+      '| Auth | POST | /api/auth/login | public route | documented validation status | 2026-07-02 anonymous probe returned 400 | PASS |',
+      '| Auth | POST | /api/auth/refresh | public route | documented rejection status | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Auth | POST | /api/auth/logout | public route | documented public status | 2026-07-02 anonymous probe returned 200 | PASS |',
+      '| Auth | GET | /api/auth/me | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/today-locations | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/geofence-evidence | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/check-in | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/checkout/{id} | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/checkout/1` returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/history | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | GET | /api/attendance/status-today | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/location-event | authenticated route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/research-trigger/daily | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | POST | /api/attendance/research-trigger/full-day | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |',
+      '| Attendance | DELETE | /api/attendance/{id} | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/1` returned 401 | PASS |'
+    ];
+
+    expect(checklist).toContain('## Scoped Proof Batch — Auth, Attendance');
+    expect(checklist).toContain('This batch covers:\n- Auth\n- Attendance');
+    expect(checklist).toContain('Auth public endpoints use their minimum documented contract status.');
+    expect(checklist).toContain(
+      'Protected Auth endpoints and protected Attendance endpoints use anonymous `401` as the default minimum proof in this phase.'
+    );
+    for (const row of expectedRows) {
+      expect(checklist).toContain(row);
+    }
+  });
+
+  test('distinguishes auth public routes from protected auth routes in the checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('public-by-contract auth endpoints');
+    expect(checklist).toContain('minimum documented status expected by contract');
+    expect(checklist).toContain('protected auth endpoints use anonymous `401`');
+  });
+
+  test('documents users bookings summary proof batch in the promotion checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+    const expectedRows = [
+      '| Users | GET | /api/users | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Users | POST | /api/users | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Users | GET | /api/users/{id} | authenticated route | 401 when anonymous | anonymous probe to `/api/users/1` returned 401 | PASS |',
+      '| Users | PATCH | /api/users/{id} | authenticated route | 401 when anonymous | anonymous probe to `/api/users/1` returned 401 | PASS |',
+      '| Users | DELETE | /api/users/{id} | authenticated route | 401 when anonymous | anonymous probe to `/api/users/1` returned 401 | PASS |',
+      '| Users | POST | /api/users/{id}/photo | authenticated route | 401 when anonymous | anonymous probe to `/api/users/1/photo` returned 401 | PASS |',
+      '| Bookings | GET | /api/bookings | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Bookings | POST | /api/bookings | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Bookings | GET | /api/bookings/history | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Bookings | PATCH | /api/bookings/{id} | authenticated route | 401 when anonymous | anonymous probe to `/api/bookings/1` returned 401 | PASS |',
+      '| Bookings | DELETE | /api/bookings/{id} | authenticated route | 401 when anonymous | anonymous probe to `/api/bookings/1` returned 401 | PASS |',
+      '| Summary | GET | /api/summary/dashboard-analytics | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Summary | GET | /api/summary/reports | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Summary | GET | /api/summary/reports/pdf | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |',
+      '| Summary | GET | /api/summary/reports/excel | authenticated route | 401 when anonymous | anonymous probe returned 401 | PASS |'
+    ];
+
+    expect(checklist).toContain('## Scoped Proof Batch — Users, Bookings, Summary');
+    expect(checklist).toContain('Protected endpoints in this batch use anonymous `401` as the default minimum proof in this phase.');
+    for (const row of expectedRows) {
+      expect(checklist).toContain(row);
+    }
+  });
+
+  test('documents final endpoint proof batch in the promotion checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+    const expectedRows = [
+      '| Analysis | GET | /api/analysis/fuzzy-ahp | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/discipline | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/wfa | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/smart-ac | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/dashboard | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| WFA | GET | /api/wfa/recommendations | authenticated route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| WFA | GET | /api/wfa/ahp-config | authenticated route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Discipline | GET | /api/discipline/all | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Discipline | GET | /api/discipline/config | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Settings | GET | /api/settings/operational | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Settings | PATCH | /api/settings/operational | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/roles | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/programs | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/positions | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/divisions | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |'
+    ];
+
+    expect(checklist).toContain('## Scoped Proof Batch — Analysis, WFA, Discipline, Settings, Reference Data');
+    expect(checklist).toContain(
+      'This batch covers:\n- Analysis\n- WFA\n- Discipline\n- Settings\n- Reference Data'
+    );
+    expect(checklist).toContain(
+      'Protected endpoints in this batch use anonymous `401` as the default minimum proof in this phase.'
+    );
+    expect(checklist).toContain('The endpoint inventory in this batch is derived from `docs/openapi.yaml`.');
+    for (const row of expectedRows) {
+      expect(checklist).toContain(row);
+    }
+  });
+
+  test('keeps known endpoint mismatches visible in the final proof batch', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain(
+      '| Discipline | GET | /api/discipline/user/{userId} | ownership/privilege boundary on authenticated route | 401 when anonymous + 403 when authenticated non-owner without privilege | 2026-07-03 anonymous probe to `/api/discipline/user/1` returned 401; insufficient-privilege proof not yet recorded | FAIL |'
+    );
+    expect(checklist).toContain(
+      '| WFA | POST | /api/wfa/test-ahp | intentionally excluded debug/test route | Keep excluded from public OpenAPI inventory unless contract owner says otherwise | Path is listed in `tests/openApiMountedRoutesContract.test.js` `excludedPaths` and is not represented in `docs/openapi.yaml` | Needs Verification |'
+    );
+    expect(checklist).toContain(
+      '| Discipline | POST | /api/discipline/test-ahp | intentionally excluded debug/test route | Keep excluded from public OpenAPI inventory unless contract owner says otherwise | Path is listed in `tests/openApiMountedRoutesContract.test.js` `excludedPaths` and is not represented in `docs/openapi.yaml` | Needs Verification |'
+    );
+    expect(checklist).toContain(
+      '- Record insufficient-privilege `403` evidence for `GET /api/discipline/user/{userId}` before treating the endpoint as promotion-complete.'
+    );
+    expect(checklist).toContain(
+      '- Confirm whether `POST /api/wfa/test-ahp` should remain an internal-only route outside the public OpenAPI contract.'
+    );
+    expect(checklist).toContain(
+      '- Confirm whether `POST /api/discipline/test-ahp` should remain an internal-only route outside the public OpenAPI contract.'
+    );
+    expect(checklist).toContain('One endpoint without proof = block promotion');
+  });
+
+  test('keeps missing proof as a master-promotion blocker at the checklist rule level', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('One endpoint without proof = block promotion');
+  });
+
+  test('documents that one endpoint without proof blocks promotion to master', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('One endpoint without proof = block promotion');
+    expect(checklist).toContain('Claude verdict');
+    expect(checklist).toContain('Operator approval');
+  });
+
+  test('documents checklist-first master promotion decision rules in operator-facing release docs', () => {
+    const readme = readRootReadme();
+    const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
+
+    expect(readme).toContain('Promotion to `master` is gated by the promotion checklist MVP.');
+    expect(readme).toContain('endpoint inventory source: `docs/openapi.yaml`');
+    expect(readme).toContain('verification depth: status-code contract only');
+    expect(readme).toContain('one endpoint without proof blocks promotion');
+    expect(readme).toContain('Claude provides the verdict');
+    expect(readme).toContain('operator provides the final go/no-go approval');
+
+    expect(productionGuide).toContain('Before `develop -> master` promotion:');
+    expect(productionGuide).toContain('run the promotion checklist MVP');
+    expect(productionGuide).toContain(
+      'require status-code proof for all endpoints represented in `docs/openapi.yaml`'
+    );
+    expect(productionGuide).toContain('block promotion if any endpoint lacks proof');
+    expect(productionGuide).toContain('review the Claude verdict');
+    expect(productionGuide).toContain('operator approves or rejects promotion');
+    expect(productionGuide).toContain(
+      'If the checklist passes and the operator approves, promotion to `master` may proceed and existing automation may run.'
+    );
+  });
+
   test('describes master github gate honestly as pr review plus build where build means install lint and test', () => {
     const readme = readRootReadme();
     const productionGuide = readScript('docs/PRODUCTION_DEPLOYMENT.md');
