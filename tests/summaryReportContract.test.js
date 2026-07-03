@@ -196,9 +196,19 @@ describe('summary report controller contract', () => {
       full_name: 'Rina',
       work_category: 'WFO',
       location_description: 'Kantor Pusat',
-      status: 'Tepat Waktu'
+      status: 'Tepat Waktu',
+      discipline_label: 'Sangat Baik'
     });
     expect(payload.report.data[0]).not.toHaveProperty('phone_number');
+    expect(payload.report.user_attendance_summary).toHaveLength(1);
+    expect(payload.report.user_attendance_summary[0]).toMatchObject({
+      user_id: 101,
+      full_name: 'Rina',
+      summary_note: 'Complete'
+    });
+    expect(payload.report.user_attendance_summary[0]).not.toHaveProperty('discipline_label');
+    expect(payload.period_summary.needs_attention_users).toBe(1);
+    expect(payload.period_summary).not.toHaveProperty('needs_attention');
     expect(payload.report.pagination).toEqual({
       current_page: 1,
       total_pages: 1,
@@ -210,7 +220,9 @@ describe('summary report controller contract', () => {
   });
 
   it('returns validation payloads from the shared report source contract', async () => {
-    const validationError = new Error('Parameter period harus berupa nilai yang valid');
+    const validationError = new Error(
+      'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
+    );
     validationError.code = 'E_VALIDATION';
     validationError.statusCode = 400;
     mockBuildSummaryReportSource.mockRejectedValueOnce(validationError);
@@ -226,7 +238,7 @@ describe('summary report controller contract', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: false,
       code: 'E_VALIDATION',
-      message: 'Parameter period harus berupa nilai yang valid'
+      message: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
     });
   });
 });
