@@ -570,6 +570,23 @@ describe('backend runtime config contract', () => {
     }
   });
 
+  test('documents final endpoint proof batch in the promotion checklist artifact', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('Analysis');
+    expect(checklist).toContain('Discipline');
+    expect(checklist).toContain('Settings');
+    expect(checklist).toContain('Reference Data');
+  });
+
+  test('keeps known endpoint mismatches visible in the final proof batch', () => {
+    const checklist = readScript('docs/promotion-checklist-mvp.md');
+
+    expect(checklist).toContain('FAIL');
+    expect(checklist).toContain('Needs Verification');
+    expect(checklist).toContain('One endpoint without proof = block promotion');
+  });
+
   test('keeps missing proof as a master-promotion blocker at the checklist rule level', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
 
