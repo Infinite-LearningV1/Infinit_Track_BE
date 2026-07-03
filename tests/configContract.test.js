@@ -572,18 +572,58 @@ describe('backend runtime config contract', () => {
 
   test('documents final endpoint proof batch in the promotion checklist artifact', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
+    const expectedRows = [
+      '| Analysis | GET | /api/analysis/fuzzy-ahp | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/discipline | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/wfa | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/smart-ac | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Analysis | GET | /api/analysis/fuzzy-ahp/dashboard | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| WFA | GET | /api/wfa/recommendations | authenticated route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| WFA | GET | /api/wfa/ahp-config | authenticated route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Discipline | GET | /api/discipline/all | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Discipline | GET | /api/discipline/config | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Settings | GET | /api/settings/operational | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Settings | PATCH | /api/settings/operational | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/roles | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/programs | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/positions | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |',
+      '| Reference Data | GET | /api/divisions | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |'
+    ];
 
-    expect(checklist).toContain('Analysis');
-    expect(checklist).toContain('Discipline');
-    expect(checklist).toContain('Settings');
-    expect(checklist).toContain('Reference Data');
+    expect(checklist).toContain('## Scoped Proof Batch — Analysis, WFA, Discipline, Settings, Reference Data');
+    expect(checklist).toContain(
+      'This batch covers:\n- Analysis\n- WFA\n- Discipline\n- Settings\n- Reference Data'
+    );
+    expect(checklist).toContain(
+      'Protected endpoints in this batch use anonymous `401` as the default minimum proof in this phase.'
+    );
+    expect(checklist).toContain('The endpoint inventory in this batch is derived from `docs/openapi.yaml`.');
+    for (const row of expectedRows) {
+      expect(checklist).toContain(row);
+    }
   });
 
   test('keeps known endpoint mismatches visible in the final proof batch', () => {
     const checklist = readScript('docs/promotion-checklist-mvp.md');
 
-    expect(checklist).toContain('FAIL');
-    expect(checklist).toContain('Needs Verification');
+    expect(checklist).toContain(
+      '| Discipline | GET | /api/discipline/user/{userId} | ownership/privilege boundary on authenticated route | 401 when anonymous + 403 when authenticated non-owner without privilege | 2026-07-03 anonymous probe to `/api/discipline/user/1` returned 401; insufficient-privilege proof not yet recorded | FAIL |'
+    );
+    expect(checklist).toContain(
+      '| WFA | POST | /api/wfa/test-ahp | intentionally excluded debug/test route | Keep excluded from public OpenAPI inventory unless contract owner says otherwise | Path is listed in `tests/openApiMountedRoutesContract.test.js` `excludedPaths` and is not represented in `docs/openapi.yaml` | Needs Verification |'
+    );
+    expect(checklist).toContain(
+      '| Discipline | POST | /api/discipline/test-ahp | intentionally excluded debug/test route | Keep excluded from public OpenAPI inventory unless contract owner says otherwise | Path is listed in `tests/openApiMountedRoutesContract.test.js` `excludedPaths` and is not represented in `docs/openapi.yaml` | Needs Verification |'
+    );
+    expect(checklist).toContain(
+      '- Record insufficient-privilege `403` evidence for `GET /api/discipline/user/{userId}` before treating the endpoint as promotion-complete.'
+    );
+    expect(checklist).toContain(
+      '- Confirm whether `POST /api/wfa/test-ahp` should remain an internal-only route outside the public OpenAPI contract.'
+    );
+    expect(checklist).toContain(
+      '- Confirm whether `POST /api/discipline/test-ahp` should remain an internal-only route outside the public OpenAPI contract.'
+    );
     expect(checklist).toContain('One endpoint without proof = block promotion');
   });
 

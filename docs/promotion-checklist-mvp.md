@@ -29,8 +29,14 @@ Each endpoint must be classified as one of:
 Minimum proof examples:
 - public route -> documented success or validation status (`200`, `201`, `400`, etc.)
 - authenticated route hit anonymously -> `401`
-- role-restricted route hit with insufficient privilege -> `403`
+- admin/management-only route (MVP minimum proof) -> `401` when anonymous
+- role-restricted or ownership boundary route -> `403` when authenticated with insufficient privilege
 - intentionally absent/deprecated route -> `404`
+
+MVP simplification for this artifact:
+- Admin/Management-only endpoints are treated as minimum protected-route proof only.
+- For this MVP checklist, they are promotion-complete once anonymous access is rejected with `401`.
+- Deeper insufficient-privilege `403` proof remains follow-up verification unless a route is explicitly tracked as an ownership/privilege boundary.
 
 ## Promotion Checklist Matrix
 
@@ -97,3 +103,46 @@ For this batch, public-by-contract auth endpoints use the minimum documented sta
 | Attendance | POST | /api/attendance/research-trigger/daily | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
 | Attendance | POST | /api/attendance/research-trigger/full-day | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe returned 401 | PASS |
 | Attendance | DELETE | /api/attendance/{id} | admin/management-only route | 401 when anonymous | 2026-07-02 anonymous probe to `/api/attendance/1` returned 401 | PASS |
+
+## Scoped Proof Batch — Analysis, WFA, Discipline, Settings, Reference Data
+
+This batch covers:
+- Analysis
+- WFA
+- Discipline
+- Settings
+- Reference Data
+
+Protected endpoints in this batch use anonymous `401` as the default minimum proof in this phase.
+The endpoint inventory in this batch is derived from `docs/openapi.yaml`.
+
+| Tag / Area | Method | Path | Classification | Expected Proof | Evidence | Status |
+|---|---|---|---|---|---|---|
+| Analysis | GET | /api/analysis/fuzzy-ahp | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Analysis | GET | /api/analysis/fuzzy-ahp/discipline | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Analysis | GET | /api/analysis/fuzzy-ahp/wfa | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Analysis | GET | /api/analysis/fuzzy-ahp/smart-ac | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Analysis | GET | /api/analysis/fuzzy-ahp/dashboard | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| WFA | GET | /api/wfa/recommendations | authenticated route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| WFA | GET | /api/wfa/ahp-config | authenticated route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Discipline | GET | /api/discipline/all | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Discipline | GET | /api/discipline/config | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Settings | GET | /api/settings/operational | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Settings | PATCH | /api/settings/operational | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Reference Data | GET | /api/roles | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Reference Data | GET | /api/programs | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Reference Data | GET | /api/positions | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+| Reference Data | GET | /api/divisions | admin/management-only route | 401 when anonymous | 2026-07-03 anonymous probe returned 401 | PASS |
+
+### Known Contract Boundaries Still Requiring Verification
+
+| Tag / Area | Method | Path | Classification | Expected Proof | Evidence | Status |
+|---|---|---|---|---|---|---|
+| Discipline | GET | /api/discipline/user/{userId} | ownership/privilege boundary on authenticated route | 401 when anonymous + 403 when authenticated non-owner without privilege | 2026-07-03 anonymous probe to `/api/discipline/user/1` returned 401; insufficient-privilege proof not yet recorded | FAIL |
+| WFA | POST | /api/wfa/test-ahp | intentionally excluded debug/test route | Keep excluded from public OpenAPI inventory unless contract owner says otherwise | Path is listed in `tests/openApiMountedRoutesContract.test.js` `excludedPaths` and is not represented in `docs/openapi.yaml` | Needs Verification |
+| Discipline | POST | /api/discipline/test-ahp | intentionally excluded debug/test route | Keep excluded from public OpenAPI inventory unless contract owner says otherwise | Path is listed in `tests/openApiMountedRoutesContract.test.js` `excludedPaths` and is not represented in `docs/openapi.yaml` | Needs Verification |
+
+Needs Verification:
+- Record insufficient-privilege `403` evidence for `GET /api/discipline/user/{userId}` before treating the endpoint as promotion-complete.
+- Confirm whether `POST /api/wfa/test-ahp` should remain an internal-only route outside the public OpenAPI contract.
+- Confirm whether `POST /api/discipline/test-ahp` should remain an internal-only route outside the public OpenAPI contract.
