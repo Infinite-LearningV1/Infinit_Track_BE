@@ -1964,6 +1964,33 @@ paths:
                 confirm:
                   type: string
                   example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+                seed_suffix:
+                  type: string
+                  maxLength: 80
+                  example: 'research-batch-001'
+                existing_strategy:
+                  type: string
+                  enum:
+                    - skip
+                    - replace
+                  default: skip
+                  example: skip
+                discipline_mix:
+                  type: object
+                  description: Optional deterministic discipline distribution for generated rows.
+                  properties:
+                    ontime:
+                      type: number
+                      example: 75
+                    late:
+                      type: number
+                      example: 12
+                    early:
+                      type: number
+                      example: 8
+                    alpha:
+                      type: number
+                      example: 5
       responses:
         '200':
           description: Research attendance daily trigger processed successfully
@@ -1987,7 +2014,10 @@ paths:
                     example: '2026-07-01'
                   seed:
                     type: string
-                    example: '2026-07-01:daily'
+                    example: '2026-07-01:daily:research-batch-001'
+                  existing_strategy:
+                    type: string
+                    example: skip
                   policy:
                     type: object
                   population:
@@ -1997,6 +2027,9 @@ paths:
                     type: object
                     nullable: true
                   mode_summary:
+                    type: object
+                    nullable: true
+                  discipline_summary:
                     type: object
                     nullable: true
                   warnings:
@@ -2010,7 +2043,13 @@ paths:
                   planned_writes:
                     type: object
                     nullable: true
+                  would_replace:
+                    type: object
+                    nullable: true
                   applied_writes:
+                    type: object
+                    nullable: true
+                  replaced:
                     type: object
                     nullable: true
                   skipped_existing:
@@ -2019,16 +2058,53 @@ paths:
                   skipped_conflict:
                     type: integer
                     example: 0
+              examples:
+                dryRun:
+                  value:
+                    success: true
+                    endpoint_type: daily
+                    mode: dry-run
+                    target_date: '2026-07-01'
+                    seed: '2026-07-01:daily:research-batch-001'
+                    existing_strategy: skip
+                    discipline_summary:
+                      ontime: 12
+                      late: 2
+                      early: 1
+                      alpha: 1
+                    planned_writes:
+                      attendance: 16
+                      bookings: 1
+                      location_events: 30
+                    would_replace:
+                      attendance: 0
+                      location_events: 0
         '400':
-          description: Invalid trigger request payload or confirmation guard failure
+          description: Invalid trigger request payload, discipline mix, seed suffix, or confirmation guard failure
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Feature disabled, non-working day blocked, or no eligible users
+          description: Feature disabled, non-working day blocked, no eligible users, or invalid reference conflict
+          content:
+            application/json:
+              examples:
+                invalidReference:
+                  value:
+                    success: false
+                    code: E_INVALID_REFERENCE_STATE
+                    message: Research attendance trigger memiliki conflict reference.
+                    target_date: '2026-07-02'
+                    endpoint_type: daily
+                    conflicts:
+                      - type: invalid_reference
+                        user_id: 62
+                        target_date: '2026-07-02'
+                        mode: WFA
+                    hint: Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.
         '500':
-          description: Invalid reference state or trigger execution failure
+          description: Unexpected trigger execution failure
 
   /api/attendance/research-trigger/full-day:
     post:
@@ -2063,6 +2139,33 @@ paths:
                 confirm:
                   type: string
                   example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+                seed_suffix:
+                  type: string
+                  maxLength: 80
+                  example: 'research-batch-001'
+                existing_strategy:
+                  type: string
+                  enum:
+                    - skip
+                    - replace
+                  default: skip
+                  example: skip
+                discipline_mix:
+                  type: object
+                  description: Optional deterministic discipline distribution for generated rows.
+                  properties:
+                    ontime:
+                      type: number
+                      example: 75
+                    late:
+                      type: number
+                      example: 12
+                    early:
+                      type: number
+                      example: 8
+                    alpha:
+                      type: number
+                      example: 5
       responses:
         '200':
           description: Research attendance full-day trigger processed successfully
@@ -2086,7 +2189,10 @@ paths:
                     example: '2026-07-01'
                   seed:
                     type: string
-                    example: '2026-07-01:full-day'
+                    example: '2026-07-01:full-day:research-batch-001'
+                  existing_strategy:
+                    type: string
+                    example: replace
                   policy:
                     type: object
                   population:
@@ -2096,6 +2202,9 @@ paths:
                     type: object
                     nullable: true
                   mode_summary:
+                    type: object
+                    nullable: true
+                  discipline_summary:
                     type: object
                     nullable: true
                   warnings:
@@ -2109,7 +2218,13 @@ paths:
                   planned_writes:
                     type: object
                     nullable: true
+                  would_replace:
+                    type: object
+                    nullable: true
                   applied_writes:
+                    type: object
+                    nullable: true
+                  replaced:
                     type: object
                     nullable: true
                   skipped_existing:
@@ -2118,16 +2233,53 @@ paths:
                   skipped_conflict:
                     type: integer
                     example: 0
+              examples:
+                apply:
+                  value:
+                    success: true
+                    endpoint_type: full-day
+                    mode: apply
+                    target_date: '2026-07-01'
+                    seed: '2026-07-01:full-day:research-batch-001'
+                    existing_strategy: replace
+                    discipline_summary:
+                      ontime: 39
+                      late: 6
+                      early: 4
+                      alpha: 3
+                    applied_writes:
+                      attendance: 52
+                      bookings: 2
+                      location_events: 98
+                    replaced:
+                      attendance: 12
+                      location_events: 24
         '400':
-          description: Invalid trigger request payload or confirmation guard failure
+          description: Invalid trigger request payload, discipline mix, seed suffix, or confirmation guard failure
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Feature disabled, non-working day blocked, or no eligible users
+          description: Feature disabled, non-working day blocked, no eligible users, or invalid reference conflict
+          content:
+            application/json:
+              examples:
+                invalidReference:
+                  value:
+                    success: false
+                    code: E_INVALID_REFERENCE_STATE
+                    message: Research attendance trigger memiliki conflict reference.
+                    target_date: '2026-07-02'
+                    endpoint_type: full-day
+                    conflicts:
+                      - type: invalid_reference
+                        user_id: 62
+                        target_date: '2026-07-02'
+                        mode: WFA
+                    hint: Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.
         '500':
-          description: Invalid reference state or trigger execution failure
+          description: Unexpected trigger execution failure
 
   /api/attendance/{id}:
     delete:
