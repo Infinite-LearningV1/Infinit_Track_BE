@@ -322,9 +322,9 @@ describe('getAttendanceStatus current attendance mode', () => {
           attendance_session_state: {
             id: 3,
             key: 'completed',
-            label: 'Completed Session'
+            label: 'Completed Today'
           },
-          active_attendance_id: 601
+          active_attendance_id: null
         })
       })
     );

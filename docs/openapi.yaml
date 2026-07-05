@@ -1881,7 +1881,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: number
+                            type: integer
                             example: 2
                           key:
                             type: string
@@ -1890,14 +1890,14 @@ paths:
                             type: string
                             example: Active Session
                       active_attendance_id:
-                        type: number
+                        type: integer
                         nullable: true
                         example: 123
                   meta:
                     type: object
                     properties:
                       cache_ttl_seconds:
-                        type: number
+                        type: integer
                         example: 300
         '401':
           $ref: '#/components/responses/Unauthorized'
