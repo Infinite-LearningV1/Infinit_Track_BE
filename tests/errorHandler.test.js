@@ -95,4 +95,45 @@ describe('errorHandler middleware', () => {
       details
     });
   });
+
+  it('surfaces invalid research trigger reference conflicts to operators', () => {
+    const conflicts = [{ type: 'invalid_reference', user_id: 62, target_date: '2026-07-02', mode: 'WFA' }];
+    const err = Object.assign(new Error('Research attendance trigger memiliki conflict reference.'), {
+      status: 409,
+      code: 'E_INVALID_REFERENCE_STATE',
+      target_date: '2026-07-02',
+      endpoint_type: 'daily',
+      conflicts,
+      hint: 'Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.',
+      stack: 'stack-trace'
+    });
+    const req = {
+      path: '/api/attendance/research-trigger/daily',
+      method: 'POST',
+      ip: '127.0.0.1'
+    };
+    const res = createResponse();
+
+    errorHandler(err, req, res, jest.fn());
+
+    expect(mockLoggerError).toHaveBeenCalledWith({
+      message: 'Research attendance trigger memiliki conflict reference.',
+      code: 'E_INVALID_REFERENCE_STATE',
+      conflicts,
+      stack: 'stack-trace',
+      path: '/api/attendance/research-trigger/daily',
+      method: 'POST',
+      ip: '127.0.0.1'
+    });
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Research attendance trigger memiliki conflict reference.',
+      code: 'E_INVALID_REFERENCE_STATE',
+      target_date: '2026-07-02',
+      endpoint_type: 'daily',
+      conflicts,
+      hint: 'Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.'
+    });
+  });
 });

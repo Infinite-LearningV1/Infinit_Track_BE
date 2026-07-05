@@ -120,7 +120,17 @@ describe('research attendance trigger infrastructure helpers', () => {
     );
     expect(mockCommit).toHaveBeenCalled();
     expect(mockRollback).not.toHaveBeenCalled();
-    expect(result).toEqual({ attendance: 2, bookings: 1, locationEvents: 4 });
+    expect(result).toEqual({
+      applied_writes: {
+        attendance: 2,
+        bookings: 1,
+        location_events: 4
+      },
+      replaced: {
+        attendance: 0,
+        location_events: 0
+      }
+    });
   });
 
   it('rolls back transaction when apply write fails', async () => {

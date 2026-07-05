@@ -35,7 +35,7 @@ Sistem ini memiliki empat pilar fungsionalitas utama yang membuatnya lebih dari 
 - **Missed Checkout Flag:** Menandai sesi yang melewati jam pulang + toleransi tanpa checkout (tanpa prediksi fuzzy).
 - **WFA Resolution:** Memproses booking WFA yang disetujui.
 - **Manual Trigger API:** Admin dapat memicu jobs secara manual.
-- **Research Attendance Trigger API:** Admin/Management dapat membangun atau menerapkan research attendance plan operator-only melalui `/api/attendance/research-trigger/daily` dan `/api/attendance/research-trigger/full-day`, dengan default `dry_run=true` dan feature flag `RESEARCH_ATTENDANCE_TRIGGER_ENABLED=false`.
+- **Research Attendance Trigger API:** Admin/Management dapat membangun atau menerapkan research attendance plan operator-only melalui `/api/attendance/research-trigger/daily` dan `/api/attendance/research-trigger/full-day`, dengan default `dry_run=true`, optional policy `seed_suffix`, `existing_strategy`, `discipline_mix`, serta feature flag `RESEARCH_ATTENDANCE_TRIGGER_ENABLED=false`.
 
 ### **📊 4. Dashboard Analitik dengan Indeks Kedisiplinan**
 
