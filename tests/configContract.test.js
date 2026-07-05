@@ -51,7 +51,7 @@ function readK8sDeployment() {
 }
 
 function readScript(relativePath) {
-  return fs.readFileSync(path.resolve(repoRoot, relativePath), 'utf8');
+  return fs.readFileSync(path.resolve(repoRoot, relativePath), 'utf8').replace(/\r\n/g, '\n');
 }
 
 function migrationFiles() {
