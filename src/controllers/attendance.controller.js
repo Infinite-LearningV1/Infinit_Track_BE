@@ -841,13 +841,16 @@ export const getAttendanceStatus = async (req, res, next) => {
     let effectiveNow = null;
     const nowQuery = req.query?.now;
     const nowHeader = req.headers['x-client-now'];
+    const normalizeToJakartaBusinessTime = (value) => {
+      const parsed = new Date(value);
+      if (isNaN(parsed.getTime())) return null;
+      return new Date(parsed.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    };
     if (nowQuery) {
-      const parsed = new Date(nowQuery);
-      if (!isNaN(parsed.getTime())) effectiveNow = parsed;
+      effectiveNow = normalizeToJakartaBusinessTime(nowQuery);
     }
     if (!effectiveNow && nowHeader) {
-      const parsed = new Date(Array.isArray(nowHeader) ? nowHeader[0] : nowHeader);
-      if (!isNaN(parsed.getTime())) effectiveNow = parsed;
+      effectiveNow = normalizeToJakartaBusinessTime(Array.isArray(nowHeader) ? nowHeader[0] : nowHeader);
     }
     if (!effectiveNow) {
       const now = new Date();
