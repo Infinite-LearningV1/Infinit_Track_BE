@@ -99,8 +99,28 @@ describe('client-critical OpenAPI contract', () => {
       holiday_checkin_enabled: { type: 'boolean' },
       current_time: { type: 'string' },
       checkin_window: { type: 'object' },
-      checkout_auto_time: { type: 'string' }
+      checkout_auto_time: { type: 'string' },
+      attendance_session_state: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          key: { type: 'string' },
+          label: { type: 'string' }
+        }
+      },
+      active_attendance_id: {
+        type: 'number',
+        nullable: true
+      }
     });
+
+    expect(statusSchema.properties.meta).toMatchObject({
+      type: 'object',
+      properties: {
+        cache_ttl_seconds: { type: 'number' }
+      }
+    });
+
     expect(dataSchema.properties).not.toHaveProperty('has_checked_in');
     expect(dataSchema.properties).not.toHaveProperty('has_checked_out');
     expect(dataSchema.properties).not.toHaveProperty('attendance');

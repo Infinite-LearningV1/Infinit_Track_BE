@@ -223,6 +223,23 @@ describe('client-critical smoke gate collection contract', () => {
 
     expect(wfoScript).toContain("pm.expect(body.data.is_holiday).to.be.a('boolean');");
     expect(wfhScript).toContain("pm.expect(body.data.is_holiday).to.be.a('boolean');");
+
+    expect(wfoScript).toContain("pm.expect(body.data.attendance_session_state).to.be.an('object');");
+    expect(wfoScript).toContain("pm.expect(body.data.attendance_session_state.id).to.be.a('number');");
+    expect(wfoScript).toContain("pm.expect(body.data.attendance_session_state.key).to.be.a('string');");
+    expect(wfoScript).toContain("pm.expect(body.data.attendance_session_state.label).to.be.a('string');");
+    expect(wfoScript).toContain("pm.expect(body.data).to.have.property('active_attendance_id');");
+    expect(wfoScript).toContain("pm.expect(body.meta).to.be.an('object');");
+    expect(wfoScript).toContain("pm.expect(body.meta.cache_ttl_seconds).to.eql(300);");
+
+    expect(wfhScript).toContain("pm.expect(body.data.attendance_session_state).to.be.an('object');");
+    expect(wfhScript).toContain("pm.expect(body.data.attendance_session_state.id).to.be.a('number');");
+    expect(wfhScript).toContain("pm.expect(body.data.attendance_session_state.key).to.be.a('string');");
+    expect(wfhScript).toContain("pm.expect(body.data.attendance_session_state.label).to.be.a('string');");
+    expect(wfhScript).toContain("pm.expect(body.data).to.have.property('active_attendance_id');");
+    expect(wfhScript).toContain("pm.expect(body.meta).to.be.an('object');");
+    expect(wfhScript).toContain("pm.expect(body.meta.cache_ttl_seconds).to.eql(300);");
+
     expect(wfoScript).toContain("Boolean(body.data.is_holiday && body.data.is_holiday.length)");
     expect(wfhScript).toContain("Boolean(body.data.is_holiday && body.data.is_holiday.length)");
 

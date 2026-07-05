@@ -1877,6 +1877,28 @@ paths:
                         type: object
                       checkout_auto_time:
                         type: string
+                      attendance_session_state:
+                        type: object
+                        properties:
+                          id:
+                            type: number
+                            example: 2
+                          key:
+                            type: string
+                            example: active
+                          label:
+                            type: string
+                            example: Active Session
+                      active_attendance_id:
+                        type: number
+                        nullable: true
+                        example: 123
+                  meta:
+                    type: object
+                    properties:
+                      cache_ttl_seconds:
+                        type: number
+                        example: 300
         '401':
           $ref: '#/components/responses/Unauthorized'
 
