@@ -207,6 +207,12 @@ function buildTimestamp(dateString, hour, minute = 0) {
   return `${dateString} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 }
 
+function buildNextDateOnly(dateString) {
+  const date = new Date(`${dateString}T00:00:00+07:00`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function buildTimestampFromMinutes(dateString, totalMinutes) {
   const hour = Math.floor(totalMinutes / 60);
   const minute = totalMinutes % 60;
@@ -461,10 +467,9 @@ function extractDateOnlyFromTimestamp(value) {
   return String(value).slice(0, 10);
 }
 
-function buildReplacementPlan({ selectedUsers, targetDate, snapshot }) {
-  const selectedUserIds = new Set(selectedUsers.map((user) => user.userId));
+function buildReplacementPlan({ targetDate, snapshot }) {
   const targetDateAttendanceRows = (snapshot.existingAttendanceRows || []).filter(
-    (row) => row.attendance_date === targetDate && selectedUserIds.has(row.user_id)
+    (row) => row.attendance_date === targetDate
   );
   const replaceableAttendanceRows = targetDateAttendanceRows.filter(isResearchOwnedAttendanceRow);
   const unsafeAttendanceRows = targetDateAttendanceRows.filter(
@@ -616,7 +621,7 @@ export async function buildResearchAttendanceTriggerPlan({
   const disciplineAssignments = assignDisciplineStatuses(selectedUsers, seed, request.disciplineMix);
   const replacement =
     request.existingStrategy === 'replace'
-      ? buildReplacementPlan({ selectedUsers, targetDate, snapshot })
+      ? buildReplacementPlan({ targetDate, snapshot })
       : {
           attendanceRows: [],
           unsafeAttendanceRows: [],
@@ -646,7 +651,7 @@ export async function buildResearchAttendanceTriggerPlan({
 
   if (request.existingStrategy === 'replace' && replacement.unsafeAttendanceRows.length > 0) {
     warnings.push(
-      `existing_strategy=replace hanya mengganti attendance research-owned. ${replacement.unsafeAttendanceRows.length} row existing non-research tetap di-skip.`
+      `existing_strategy=replace mengganti semua attendance research-owned pada tanggal target. ${replacement.unsafeAttendanceRows.length} row existing non-research tetap dipertahankan dan tidak ikut direplace.`
     );
   }
 
@@ -843,7 +848,7 @@ export async function applyResearchAttendancePlanInTransaction(plan) {
             },
             event_timestamp: {
               [sequelize.Sequelize.Op.gte]: `${plan.targetDate} 00:00:00`,
-              [sequelize.Sequelize.Op.lt]: `${plan.targetDate} 23:59:59`
+              [sequelize.Sequelize.Op.lt]: `${buildNextDateOnly(plan.targetDate)} 00:00:00`
             }
           },
           transaction
@@ -952,7 +957,13 @@ export async function executeResearchAttendanceTrigger({
   const seed = buildTriggerSeed(request, endpointType);
   const collectSnapshot = dependencies.collectSnapshot || (() => collectTriggerSnapshotForDate(request.targetDate));
   const buildPlan = dependencies.buildPlan || defaultBuildPlan;
-  const applyPlan = dependencies.applyPlan || ((payload) => applyResearchAttendancePlanInTransaction(payload.plan));
+  const applyPlan =
+    dependencies.applyPlan ||
+    ((payload) =>
+      applyResearchAttendancePlanInTransaction({
+        ...payload.plan,
+        targetDate: payload.targetDate
+      }));
 
   const snapshot = await collectSnapshot();
   const plan = await buildPlan({ endpointType, targetDate: request.targetDate, seed, request, snapshot, user });

@@ -6,6 +6,8 @@ const mockAttendanceFindAll = jest.fn();
 const mockBookingFindAll = jest.fn();
 const mockLocationEventFindAll = jest.fn();
 const mockUserFindAll = jest.fn();
+const mockAttendanceDestroy = jest.fn();
+const mockLocationEventDestroy = jest.fn();
 const mockCommit = jest.fn();
 const mockRollback = jest.fn();
 const mockTransaction = jest.fn(async () => ({
@@ -27,13 +29,15 @@ jest.unstable_mockModule('../scripts/research/generate-attendance-dataset.js', (
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
   Attendance: {
-    findAll: mockAttendanceFindAll
+    findAll: mockAttendanceFindAll,
+    destroy: mockAttendanceDestroy
   },
   Booking: {
     findAll: mockBookingFindAll
   },
   LocationEvent: {
-    findAll: mockLocationEventFindAll
+    findAll: mockLocationEventFindAll,
+    destroy: mockLocationEventDestroy
   },
   User: {
     findAll: mockUserFindAll
@@ -44,7 +48,8 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
     Sequelize: {
       Op: {
         gte: Symbol.for('gte'),
-        lt: Symbol.for('lt')
+        lt: Symbol.for('lt'),
+        in: Symbol.for('in')
       }
     }
   }
@@ -58,6 +63,8 @@ const {
 describe('research attendance trigger infrastructure helpers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAttendanceDestroy.mockResolvedValue(0);
+    mockLocationEventDestroy.mockResolvedValue(0);
     mockUserFindAll.mockResolvedValue([
       {
         id_users: 10,
@@ -106,13 +113,42 @@ describe('research attendance trigger infrastructure helpers', () => {
       locationEvents: 4
     });
 
+    mockLocationEventDestroy.mockResolvedValue(4);
+    mockAttendanceDestroy.mockResolvedValue(2);
+
     const result = await applyResearchAttendancePlanInTransaction({
+      targetDate: '2026-07-10',
+      replacement: {
+        attendanceRows: [
+          { id_attendance: 11, user_id: 1, attendance_date: '2026-07-10' },
+          { id_attendance: 12, user_id: 2, attendance_date: '2026-07-10' }
+        ],
+        replaceableUserIds: [1, 2],
+        location_events: 4
+      },
       plannedAttendanceRows: [{ id_attendance: 1 }],
       plannedBookingRows: [{ booking_id: 1 }],
       plannedLocationEventRows: [{ id: 1 }]
     });
 
     expect(mockTransaction).toHaveBeenCalled();
+    expect(mockLocationEventDestroy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user_id: expect.any(Object),
+          event_timestamp: expect.any(Object)
+        }),
+        transaction: expect.objectContaining({ commit: mockCommit, rollback: mockRollback })
+      })
+    );
+    expect(mockAttendanceDestroy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id_attendance: expect.any(Object)
+        }),
+        transaction: expect.objectContaining({ commit: mockCommit, rollback: mockRollback })
+      })
+    );
     expect(mockApplyResearchAttendancePlan).toHaveBeenCalledWith(
       expect.objectContaining({
         transaction: expect.objectContaining({ commit: mockCommit, rollback: mockRollback })
@@ -127,8 +163,8 @@ describe('research attendance trigger infrastructure helpers', () => {
         location_events: 4
       },
       replaced: {
-        attendance: 0,
-        location_events: 0
+        attendance: 2,
+        location_events: 4
       }
     });
   });

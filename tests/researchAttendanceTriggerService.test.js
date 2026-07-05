@@ -474,6 +474,106 @@ describe('research attendance trigger service', () => {
     );
   });
 
+  it('replace on daily regenerates from all target-date research-owned rows instead of only the new batch selection', async () => {
+    const baselineSnapshot = createSnapshot();
+    const batchAPlan = await buildResearchAttendanceTriggerPlan({
+      endpointType: 'daily',
+      targetDate: '2026-07-10',
+      seed: '2026-07-10:daily:batch-a',
+      request: {
+        allowNonWorkingDay: false,
+        existingStrategy: 'replace',
+        disciplineMix: DEFAULT_DISCIPLINE_MIX,
+        seedSuffix: 'batch-a'
+      },
+      snapshot: baselineSnapshot,
+      user: { id: 99, role_name: 'Admin' }
+    });
+
+    const replaySnapshot = createSnapshot(52, {
+      existingAttendanceRows: batchAPlan.plannedAttendanceRows.map((row, index) => ({
+        id_attendance: index + 1,
+        ...row
+      })),
+      existingLocationEvents: batchAPlan.plannedLocationEventRows.map((row, index) => ({
+        id: index + 1,
+        ...row
+      }))
+    });
+
+    const batchBPlan = await buildResearchAttendanceTriggerPlan({
+      endpointType: 'daily',
+      targetDate: '2026-07-10',
+      seed: '2026-07-10:daily:batch-b',
+      request: {
+        allowNonWorkingDay: false,
+        existingStrategy: 'replace',
+        disciplineMix: DEFAULT_DISCIPLINE_MIX,
+        seedSuffix: 'batch-b'
+      },
+      snapshot: replaySnapshot,
+      user: { id: 99, role_name: 'Admin' }
+    });
+
+    expect(batchAPlan.selection_summary.target_user_ids).toHaveLength(16);
+    expect(batchBPlan.selection_summary.target_user_ids).toHaveLength(16);
+    expect(batchBPlan.selection_summary.target_user_ids).not.toEqual(
+      batchAPlan.selection_summary.target_user_ids
+    );
+    expect(batchBPlan.replacement).toMatchObject({
+      attendance: batchAPlan.plannedAttendanceRows.length,
+      location_events: batchAPlan.plannedLocationEventRows.length
+    });
+    expect(batchBPlan.plannedAttendanceRows).toHaveLength(16);
+    expect(batchBPlan.plannedLocationEventRows).toHaveLength(30);
+  });
+
+  it('replace keeps non-research target-date attendance untouched with warnings', async () => {
+    const snapshot = createSnapshot(52, {
+      existingAttendanceRows: [
+        {
+          id_attendance: 1,
+          user_id: 1,
+          attendance_date: '2026-07-10',
+          notes: RESEARCH_TRIGGER_ATTENDANCE_NOTE
+        },
+        {
+          id_attendance: 2,
+          user_id: 44,
+          attendance_date: '2026-07-10',
+          notes: 'Manual attendance'
+        }
+      ],
+      existingLocationEvents: [
+        { id: 1, user_id: 1, event_timestamp: '2026-07-10 08:00:00' },
+        { id: 2, user_id: 1, event_timestamp: '2026-07-10 17:00:00' },
+        { id: 3, user_id: 44, event_timestamp: '2026-07-10 08:00:00' }
+      ]
+    });
+
+    const plan = await buildResearchAttendanceTriggerPlan({
+      endpointType: 'daily',
+      targetDate: '2026-07-10',
+      seed: '2026-07-10:daily:batch-b',
+      request: {
+        allowNonWorkingDay: false,
+        existingStrategy: 'replace',
+        disciplineMix: DEFAULT_DISCIPLINE_MIX,
+        seedSuffix: 'batch-b'
+      },
+      snapshot,
+      user: { id: 99, role_name: 'Admin' }
+    });
+
+    expect(plan.replacement).toMatchObject({
+      attendance: 1,
+      location_events: 2
+    });
+    expect(plan.warnings).toContain(
+      'existing_strategy=replace mengganti semua attendance research-owned pada tanggal target. 1 row existing non-research tetap dipertahankan dan tidak ikut direplace.'
+    );
+  });
+
   it('returns an apply response when confirmation is valid and writes succeed', async () => {
     const applyPlan = jest.fn(async () => ({
       applied_writes: {
