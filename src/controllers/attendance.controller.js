@@ -29,6 +29,7 @@ import {
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { buildGeofenceEvidenceSnapshot } from '../utils/geofenceEvidenceSnapshot.js';
 import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
+import { deriveStatusTodaySessionState } from '../utils/attendanceSessionState.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
@@ -1006,7 +1007,13 @@ export const getAttendanceStatus = async (req, res, next) => {
       (isWfaMode || !isHolidayOrWeekend || holidayCheckinEnabled);
 
     // Tentukan can_check_out
-    const can_check_out = currentAttendance && !currentAttendance.time_out; // Bentuk respons
+    const can_check_out = currentAttendance && !currentAttendance.time_out;
+    const { attendanceSessionState, activeAttendanceId } = deriveStatusTodaySessionState({
+      currentAttendance,
+      canCheckIn: can_check_in
+    });
+
+    // Bentuk respons
     const response = {
       success: true,
       data: {
@@ -1027,7 +1034,12 @@ export const getAttendanceStatus = async (req, res, next) => {
           start_time: checkinStartTime,
           end_time: checkinEndTime
         },
-        checkout_auto_time: checkoutAutoTime
+        checkout_auto_time: checkoutAutoTime,
+        attendance_session_state: attendanceSessionState,
+        active_attendance_id: activeAttendanceId
+      },
+      meta: {
+        cache_ttl_seconds: 300
       }
     };
 

@@ -200,4 +200,158 @@ describe('getAttendanceStatus current attendance mode', () => {
     expect(typeof res.json.mock.calls[0][0].data.is_holiday).toBe('boolean');
     expect(next).not.toHaveBeenCalled();
   });
+
+  it('returns additive lifecycle contract fields for not_started state', async () => {
+    const models = buildModelsMock({ attendance: null, booking: null, location: null });
+    mockControllerDependencies({ models });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+
+    const req = {
+      user: { id: 7 },
+      query: { now: '2026-04-14T10:00:00+07:00' },
+      headers: {}
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          attendance_session_state: {
+            id: 1,
+            key: 'not_started',
+            label: 'Not Started'
+          },
+          active_attendance_id: null
+        }),
+        meta: {
+          cache_ttl_seconds: 300
+        }
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns active lifecycle state and current attendance id when attendance is open', async () => {
+    const models = buildModelsMock({
+      attendance: {
+        id_attendance: 501,
+        user_id: 7,
+        attendance_date: '2026-04-14',
+        time_in: new Date('2026-04-14T09:00:00+07:00'),
+        time_out: null,
+        location: {
+          location_id: 22,
+          latitude: '-0.8917',
+          longitude: '119.8707',
+          radius: 150,
+          description: 'Rumah Pegawai',
+          address: 'Jl. WFH Palu',
+          attendance_category: { category_name: 'Work From Home' }
+        }
+      }
+    });
+    mockControllerDependencies({ models });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+
+    const req = {
+      user: { id: 7 },
+      query: { now: '2026-04-14T10:00:00+07:00' },
+      headers: {}
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attendance_session_state: {
+            id: 2,
+            key: 'active',
+            label: 'Active Session'
+          },
+          active_attendance_id: 501
+        }),
+        meta: {
+          cache_ttl_seconds: 300
+        }
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns completed lifecycle state when attendance has time_out', async () => {
+    const models = buildModelsMock({
+      attendance: {
+        id_attendance: 601,
+        user_id: 7,
+        attendance_date: '2026-04-14',
+        time_in: new Date('2026-04-14T08:00:00+07:00'),
+        time_out: new Date('2026-04-14T17:00:00+07:00'),
+        location: {
+          location_id: 22,
+          latitude: '-0.8917',
+          longitude: '119.8707',
+          radius: 150,
+          description: 'Rumah Pegawai',
+          address: 'Jl. WFH Palu',
+          attendance_category: { category_name: 'Work From Home' }
+        }
+      }
+    });
+    mockControllerDependencies({ models });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 7 }, query: { now: '2026-04-14T18:30:00+07:00' }, headers: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attendance_session_state: {
+            id: 3,
+            key: 'completed',
+            label: 'Completed Session'
+          },
+          active_attendance_id: 601
+        })
+      })
+    );
+  });
+
+  it('returns unavailable lifecycle state when no attendance exists and check-in window is closed', async () => {
+    const models = buildModelsMock();
+    mockControllerDependencies({ models });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 7 }, query: { now: '2026-04-14T23:30:00+07:00' }, headers: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attendance_session_state: {
+            id: 4,
+            key: 'unavailable',
+            label: 'Unavailable'
+          },
+          active_attendance_id: null
+        })
+      })
+    );
+  });
 });
