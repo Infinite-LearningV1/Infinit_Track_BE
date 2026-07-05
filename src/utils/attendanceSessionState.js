@@ -12,7 +12,7 @@ export const STATUS_TODAY_SESSION_STATES = Object.freeze({
   completed: Object.freeze({
     id: 3,
     key: 'completed',
-    label: 'Completed Session'
+    label: 'Completed Today'
   }),
   unavailable: Object.freeze({
     id: 4,
@@ -23,13 +23,13 @@ export const STATUS_TODAY_SESSION_STATES = Object.freeze({
 
 export function deriveStatusTodaySessionState({ currentAttendance, canCheckIn }) {
   if (currentAttendance) {
-    const activeAttendanceId = currentAttendance.id_attendance ?? null;
+    const isCompleted = Boolean(currentAttendance.time_out);
 
     return {
-      attendanceSessionState: currentAttendance.time_out
+      attendanceSessionState: isCompleted
         ? STATUS_TODAY_SESSION_STATES.completed
         : STATUS_TODAY_SESSION_STATES.active,
-      activeAttendanceId
+      activeAttendanceId: isCompleted ? null : (currentAttendance.id_attendance ?? null)
     };
   }
 

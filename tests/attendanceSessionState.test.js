@@ -33,7 +33,7 @@ describe('deriveStatusTodaySessionState', () => {
 
     expect(result).toEqual({
       attendanceSessionState: STATUS_TODAY_SESSION_STATES.completed,
-      activeAttendanceId: 78
+      activeAttendanceId: null
     });
   });
 

@@ -103,13 +103,13 @@ describe('client-critical OpenAPI contract', () => {
       attendance_session_state: {
         type: 'object',
         properties: {
-          id: { type: 'number' },
+          id: { type: 'integer' },
           key: { type: 'string' },
           label: { type: 'string' }
         }
       },
       active_attendance_id: {
-        type: 'number',
+        type: 'integer',
         nullable: true
       }
     });
@@ -117,7 +117,7 @@ describe('client-critical OpenAPI contract', () => {
     expect(statusSchema.properties.meta).toMatchObject({
       type: 'object',
       properties: {
-        cache_ttl_seconds: { type: 'number' }
+        cache_ttl_seconds: { type: 'integer' }
       }
     });
 
