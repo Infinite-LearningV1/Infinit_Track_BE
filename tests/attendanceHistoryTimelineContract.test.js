@@ -118,6 +118,10 @@ describe('getAttendanceHistory timeline contract', () => {
     jest.clearAllMocks();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('rejects invalid custom date input with 400 before querying attendance', async () => {
     const { Attendance } = mockControllerDependencies();
     const { getAttendanceHistory } = await import('../src/controllers/attendance.controller.js');
@@ -232,6 +236,33 @@ describe('getAttendanceHistory timeline contract', () => {
         offset: 0
       })
     );
+  });
+
+  it('uses local business dates for monthly period boundaries without UTC off-by-one drift', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-07T00:00:00+07:00'));
+
+    const { Attendance } = mockControllerDependencies({
+      findAllResults: [[], [], [{ total_work_hours: null }]],
+      findAndCountAllResult: { count: 0, rows: [] }
+    });
+    const { getAttendanceHistory } = await import('../src/controllers/attendance.controller.js');
+
+    const req = { user: { id: 42 }, query: { period: 'monthly', page: '1', limit: '5' } };
+    const res = buildRes();
+
+    await getAttendanceHistory(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const body = res.json.mock.calls[0][0];
+    expect(body.data.period).toEqual({
+      type: 'monthly',
+      label: 'This Month',
+      start_date: '2026-07-01',
+      end_date: '2026-07-31'
+    });
+    const attendanceDateFilter = Attendance.findAndCountAll.mock.calls[0][0].where.attendance_date;
+    const betweenSymbol = Object.getOwnPropertySymbols(attendanceDateFilter)[0];
+    expect(attendanceDateFilter[betweenSymbol]).toEqual(['2026-07-01', '2026-07-31']);
   });
 
   it('keeps alpha rows from displaying misleading work hours and uses final status badge', async () => {
