@@ -159,6 +159,13 @@ const parsePositiveInteger = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const formatLocalDateOnly = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const buildDateLabel = (dateOnly) => {
   const [year, month, day] = String(dateOnly).split('-').map(Number);
   if (!year || !month || !day) return String(dateOnly || '');
@@ -307,8 +314,8 @@ export const getAttendanceHistory = async (req, res) => {
 
     if (period !== 'all') {
       if (period !== 'custom') {
-        startDateOnly = startDate.toISOString().split('T')[0];
-        endDateOnly = endDate.toISOString().split('T')[0];
+        startDateOnly = formatLocalDateOnly(startDate);
+        endDateOnly = formatLocalDateOnly(endDate);
       }
 
       whereClause.attendance_date = {
