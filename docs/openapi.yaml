@@ -1790,26 +1790,43 @@ paths:
       tags:
         - Attendance
       summary: Get user attendance history
-      description: Retrieve attendance history for the current user
+      description: Retrieve authenticated user's attendance history for Recent Attendance and Attendance Timeline UI. Active Session is a computed display badge only and is not stored in attendance_statuses.
       parameters:
         - in: query
-          name: month
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, all, custom]
+            default: daily
+          description: Date window to retrieve. Use custom with start_date and end_date.
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-01'
+          description: Required when period=custom. Must use YYYY-MM-DD.
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-31'
+          description: Required when period=custom. Must use YYYY-MM-DD and be greater than or equal to start_date.
+        - in: query
+          name: page
           schema:
             type: integer
             minimum: 1
-            maximum: 12
-          description: Filter by month (1-12)
-        - in: query
-          name: year
-          schema:
-            type: integer
-          description: Filter by year
+            default: 1
+          description: Page number for paginated attendance rows.
         - in: query
           name: limit
           schema:
             type: integer
-            default: 50
-          description: Number of records to return
+            minimum: 1
+            default: 5
+          description: Number of records to return.
       responses:
         '200':
           description: Attendance history retrieved successfully
@@ -1822,9 +1839,184 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Attendance'
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            example: custom
+                          label:
+                            type: string
+                            example: Custom Range
+                          start_date:
+                            type: string
+                            nullable: true
+                            example: '2026-05-01'
+                          end_date:
+                            type: string
+                            nullable: true
+                            example: '2026-05-31'
+                      summary:
+                        type: object
+                        properties:
+                          total_ontime:
+                            type: integer
+                            example: 8
+                          total_late:
+                            type: integer
+                            example: 2
+                          total_early:
+                            type: integer
+                            example: 1
+                          total_alpha:
+                            type: integer
+                            example: 0
+                          total_wfo:
+                            type: integer
+                            example: 6
+                          total_wfa:
+                            type: integer
+                            example: 3
+                          total_wfh:
+                            type: integer
+                            example: 2
+                          total_work_hours:
+                            type: number
+                            format: float
+                            example: 88.5
+                      attendances:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id_attendance:
+                              type: integer
+                              example: 123
+                            attendance_date:
+                              type: string
+                              format: date
+                              example: '2026-05-03'
+                            date:
+                              type: string
+                              description: Legacy day-of-month display field retained for backward compatibility.
+                              example: '03'
+                            monthYear:
+                              type: string
+                              description: Legacy month-year display field retained for backward compatibility.
+                              example: May 2026
+                            date_label:
+                              type: string
+                              example: 03 May 2026
+                            mode_key:
+                              type: string
+                              nullable: true
+                              enum: [wfo, wfh, wfa]
+                              example: wfo
+                            mode_label:
+                              type: string
+                              nullable: true
+                              example: WFO
+                            time_in:
+                              type: string
+                              nullable: true
+                              example: '08:04'
+                            time_out:
+                              type: string
+                              nullable: true
+                              example: '17:06'
+                            time_range:
+                              type: string
+                              example: '08:04 - 17:06'
+                            work_hour:
+                              type: string
+                              nullable: true
+                              description: Formatted work hour display. Null for alpha/absent rows to avoid misleading duration display.
+                              example: '09:02'
+                            work_hour_raw:
+                              type: number
+                              nullable: true
+                              format: float
+                              example: 9.03
+                            status_key:
+                              type: string
+                              nullable: true
+                              enum: [ontime, late, early, alpha]
+                              example: ontime
+                            status_label:
+                              type: string
+                              nullable: true
+                              example: On Time
+                            display_badge_key:
+                              type: string
+                              nullable: true
+                              enum: [active, ontime, late, early, alpha]
+                              example: active
+                            display_badge_label:
+                              type: string
+                              nullable: true
+                              example: Active Session
+                            location_label:
+                              type: string
+                              nullable: true
+                              example: Kantor Utama
+                            category:
+                              type: string
+                              nullable: true
+                              description: Legacy category label retained for backward compatibility.
+                              example: Work From Office
+                            status:
+                              type: string
+                              nullable: true
+                              description: Legacy final status label retained for backward compatibility.
+                              example: ontime
+                            location:
+                              type: string
+                              nullable: true
+                              description: Legacy location label retained for backward compatibility.
+                              example: Kantor Utama
+                            notes:
+                              type: string
+                              nullable: true
+                              example: Manual attendance
+                      pagination:
+                        type: object
+                        properties:
+                          current_page:
+                            type: integer
+                            example: 1
+                          total_pages:
+                            type: integer
+                            example: 4
+                          total_items:
+                            type: integer
+                            example: 20
+                          items_per_page:
+                            type: integer
+                            example: 5
+                          has_next_page:
+                            type: boolean
+                            example: true
+                          has_prev_page:
+                            type: boolean
+                            example: false
+                  message:
+                    type: string
+                    example: Riwayat absensi berhasil diambil
+        '400':
+          description: Invalid period or custom date input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom
         '401':
           $ref: '#/components/responses/Unauthorized'
 
