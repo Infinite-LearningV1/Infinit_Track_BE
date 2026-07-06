@@ -1985,7 +1985,16 @@ paths:
                         properties:
                           current_page:
                             type: integer
+                            description: Effective page returned. If the requested page exceeds total_pages and records exist, this is clamped to the last available page.
                             example: 1
+                          requested_page:
+                            type: integer
+                            description: Original requested page after positive-integer normalization.
+                            example: 120
+                          page_was_clamped:
+                            type: boolean
+                            description: True when the requested page exceeded total_pages and the response was served from the last available page.
+                            example: true
                           total_pages:
                             type: integer
                             example: 4

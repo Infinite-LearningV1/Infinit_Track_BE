@@ -13,16 +13,22 @@ const formatJakartaClock = (value) => {
   return `${String(shifted.getUTCHours()).padStart(2, '0')}:${String(shifted.getUTCMinutes()).padStart(2, '0')}`;
 };
 
-const mockControllerDependencies = ({ findAllResults = [], findAndCountAllResult } = {}) => {
+const mockControllerDependencies = ({ findAllResults = [], findAndCountAllResult, findAndCountAllResults } = {}) => {
   const mockFindAll = jest.fn();
   for (const result of findAllResults) {
     mockFindAll.mockResolvedValueOnce(result);
   }
   mockFindAll.mockResolvedValue([]);
 
+  const mockFindAndCountAll = jest.fn();
+  for (const result of findAndCountAllResults || []) {
+    mockFindAndCountAll.mockResolvedValueOnce(result);
+  }
+  mockFindAndCountAll.mockResolvedValue(findAndCountAllResult || { count: 0, rows: [] });
+
   const Attendance = {
     findAll: mockFindAll,
-    findAndCountAll: jest.fn().mockResolvedValue(findAndCountAllResult || { count: 0, rows: [] })
+    findAndCountAll: mockFindAndCountAll
   };
 
   jest.unstable_mockModule('../src/config/database.js', () => ({
@@ -267,5 +273,56 @@ describe('getAttendanceHistory timeline contract', () => {
         work_hour_raw: 32
       })
     );
+  });
+
+  it('clamps out-of-range pages to the last available page instead of returning an empty page', async () => {
+    const lastPageAttendance = {
+      id_attendance: 999,
+      user_id: 42,
+      category_id: 1,
+      status_id: 1,
+      attendance_date: '2026-05-01',
+      time_in: new Date('2026-05-01T08:00:00+07:00'),
+      time_out: new Date('2026-05-01T17:00:00+07:00'),
+      work_hour: 9,
+      notes: 'Manual attendance',
+      attendance_category: { category_name: 'Work From Office' },
+      status: { attendance_status_name: 'ontime' },
+      location: { description: 'Kantor Utama' }
+    };
+
+    const { Attendance } = mockControllerDependencies({
+      findAllResults: [[{ status_id: 1, count: '3' }], [{ category_id: 1, count: '3' }], [{ total_work_hours: '27' }]],
+      findAndCountAllResults: [
+        { count: 3, rows: [] },
+        { count: 3, rows: [lastPageAttendance] }
+      ]
+    });
+    const { getAttendanceHistory } = await import('../src/controllers/attendance.controller.js');
+
+    const req = { user: { id: 42 }, query: { period: 'all', page: '120', limit: '100' } };
+    const res = buildRes();
+
+    await getAttendanceHistory(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const body = res.json.mock.calls[0][0];
+    expect(body.data.attendances).toHaveLength(1);
+    expect(body.data.attendances[0].id_attendance).toBe(999);
+    expect(body.data.pagination).toEqual(
+      expect.objectContaining({
+        current_page: 1,
+        requested_page: 120,
+        page_was_clamped: true,
+        total_pages: 1,
+        total_items: 3,
+        items_per_page: 100,
+        has_next_page: false,
+        has_prev_page: false
+      })
+    );
+    expect(Attendance.findAndCountAll).toHaveBeenCalledTimes(2);
+    expect(Attendance.findAndCountAll.mock.calls[0][0]).toEqual(expect.objectContaining({ limit: 100, offset: 11900 }));
+    expect(Attendance.findAndCountAll.mock.calls[1][0]).toEqual(expect.objectContaining({ limit: 100, offset: 0 }));
   });
 });
