@@ -24,19 +24,51 @@ export const STATUS_TODAY_SESSION_STATES = Object.freeze({
 export function deriveStatusTodaySessionState({ currentAttendance, canCheckIn }) {
   if (currentAttendance) {
     const isCompleted = Boolean(currentAttendance.time_out);
+    const stateKey = isCompleted ? 'completed' : 'active';
 
     return {
-      attendanceSessionState: isCompleted
-        ? STATUS_TODAY_SESSION_STATES.completed
-        : STATUS_TODAY_SESSION_STATES.active,
+      stateKey,
+      attendanceSessionState: STATUS_TODAY_SESSION_STATES[stateKey],
       activeAttendanceId: isCompleted ? null : (currentAttendance.id_attendance ?? null)
     };
   }
 
+  const stateKey = canCheckIn ? 'not_started' : 'unavailable';
+
   return {
-    attendanceSessionState: canCheckIn
-      ? STATUS_TODAY_SESSION_STATES.not_started
-      : STATUS_TODAY_SESSION_STATES.unavailable,
+    stateKey,
+    attendanceSessionState: STATUS_TODAY_SESSION_STATES[stateKey],
     activeAttendanceId: null
   };
+}
+
+export function mapAttendanceSessionStateRow(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id_attendance_session_state,
+    key: row.state_key,
+    label: row.state_label
+  };
+}
+
+export async function resolveAttendanceSessionState({ AttendanceSessionStateModel, stateKey }) {
+  const fallbackState = STATUS_TODAY_SESSION_STATES[stateKey] ?? STATUS_TODAY_SESSION_STATES.unavailable;
+
+  if (!AttendanceSessionStateModel?.findOne) {
+    return fallbackState;
+  }
+
+  try {
+    const stateRow = await AttendanceSessionStateModel.findOne({
+      where: {
+        state_key: stateKey,
+        is_active: true
+      }
+    });
+
+    return mapAttendanceSessionStateRow(stateRow) ?? fallbackState;
+  } catch (_error) {
+    return fallbackState;
+  }
 }

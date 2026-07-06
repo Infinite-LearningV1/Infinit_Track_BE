@@ -89,6 +89,21 @@ describe('client-critical OpenAPI contract', () => {
         type: 'string',
         nullable: true
       },
+      checked_in_at_iso: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true
+      },
+      checked_out_at_iso: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true
+      },
+      work_duration_seconds: {
+        type: 'integer',
+        nullable: true,
+        minimum: 0
+      },
       active_mode: { type: 'string' },
       active_location: {
         type: 'object',

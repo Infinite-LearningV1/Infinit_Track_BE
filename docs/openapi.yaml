@@ -2061,6 +2061,21 @@ paths:
                       checked_out_at:
                         type: string
                         nullable: true
+                      checked_in_at_iso:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: ISO timestamp for check-in, intended for duration calculations.
+                      checked_out_at_iso:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: ISO timestamp for check-out, null while the session is active.
+                      work_duration_seconds:
+                        type: integer
+                        nullable: true
+                        minimum: 0
+                        description: Derived elapsed work duration in seconds. Active sessions use current_time as the end point.
                       active_mode:
                         type: string
                       active_location:

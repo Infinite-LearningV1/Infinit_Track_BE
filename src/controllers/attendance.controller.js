@@ -29,7 +29,10 @@ import {
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { buildGeofenceEvidenceSnapshot } from '../utils/geofenceEvidenceSnapshot.js';
 import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
-import { deriveStatusTodaySessionState } from '../utils/attendanceSessionState.js';
+import {
+  deriveStatusTodaySessionState,
+  resolveAttendanceSessionState
+} from '../utils/attendanceSessionState.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
@@ -982,6 +985,24 @@ export const debugCheckInTime = async (req, res) => {
   }
 };
 
+const toIsoStringOrNull = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const calculateWorkDurationSeconds = ({ timeIn, timeOut, effectiveNow }) => {
+  if (!timeIn) return null;
+
+  const start = new Date(timeIn).getTime();
+  const end = new Date(timeOut || effectiveNow).getTime();
+
+  if (isNaN(start) || isNaN(end)) return null;
+
+  return Math.max(0, Math.floor((end - start) / 1000));
+};
+
 export const getAttendanceStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -1161,10 +1182,24 @@ export const getAttendanceStatus = async (req, res, next) => {
 
     // Tentukan can_check_out
     const can_check_out = currentAttendance && !currentAttendance.time_out;
-    const { attendanceSessionState, activeAttendanceId } = deriveStatusTodaySessionState({
+    const { stateKey, activeAttendanceId } = deriveStatusTodaySessionState({
       currentAttendance,
       canCheckIn: can_check_in
     });
+    const { AttendanceSessionState: AttendanceSessionStateModel } = await import('../models/index.js');
+    const attendanceSessionState = await resolveAttendanceSessionState({
+      AttendanceSessionStateModel,
+      stateKey
+    });
+    const checkedInAtIso = currentAttendance ? toIsoStringOrNull(currentAttendance.time_in) : null;
+    const checkedOutAtIso = currentAttendance?.time_out ? toIsoStringOrNull(currentAttendance.time_out) : null;
+    const workDurationSeconds = currentAttendance
+      ? calculateWorkDurationSeconds({
+          timeIn: currentAttendance.time_in,
+          timeOut: currentAttendance.time_out,
+          effectiveNow
+        })
+      : null;
 
     // Bentuk respons
     const response = {
@@ -1177,6 +1212,9 @@ export const getAttendanceStatus = async (req, res, next) => {
           currentAttendance && currentAttendance.time_out
             ? formatTimeOnly(currentAttendance.time_out)
             : null,
+        checked_in_at_iso: checkedInAtIso,
+        checked_out_at_iso: checkedOutAtIso,
+        work_duration_seconds: workDurationSeconds,
         active_mode,
         active_location,
         today_date: todayDate,
