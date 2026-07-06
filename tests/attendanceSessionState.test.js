@@ -1,7 +1,9 @@
+import { jest } from '@jest/globals';
 
 import {
   STATUS_TODAY_SESSION_STATES,
-  deriveStatusTodaySessionState
+  deriveStatusTodaySessionState,
+  resolveAttendanceSessionState
 } from '../src/utils/attendanceSessionState.js';
 
 describe('deriveStatusTodaySessionState', () => {
@@ -16,6 +18,7 @@ describe('deriveStatusTodaySessionState', () => {
     });
 
     expect(result).toEqual({
+      stateKey: 'active',
       attendanceSessionState: STATUS_TODAY_SESSION_STATES.active,
       activeAttendanceId: 77
     });
@@ -32,6 +35,7 @@ describe('deriveStatusTodaySessionState', () => {
     });
 
     expect(result).toEqual({
+      stateKey: 'completed',
       attendanceSessionState: STATUS_TODAY_SESSION_STATES.completed,
       activeAttendanceId: null
     });
@@ -44,6 +48,7 @@ describe('deriveStatusTodaySessionState', () => {
     });
 
     expect(result).toEqual({
+      stateKey: 'not_started',
       attendanceSessionState: STATUS_TODAY_SESSION_STATES.not_started,
       activeAttendanceId: null
     });
@@ -56,8 +61,62 @@ describe('deriveStatusTodaySessionState', () => {
     });
 
     expect(result).toEqual({
+      stateKey: 'unavailable',
       attendanceSessionState: STATUS_TODAY_SESSION_STATES.unavailable,
       activeAttendanceId: null
     });
+  });
+
+  it('resolves state object from the DB-backed master row when available', async () => {
+    const AttendanceSessionStateModel = {
+      findOne: jest.fn().mockResolvedValue({
+        id_attendance_session_state: 2,
+        state_key: 'active',
+        state_label: 'Active Session'
+      })
+    };
+
+    const result = await resolveAttendanceSessionState({
+      AttendanceSessionStateModel,
+      stateKey: 'active'
+    });
+
+    expect(AttendanceSessionStateModel.findOne).toHaveBeenCalledWith({
+      where: {
+        state_key: 'active',
+        is_active: true
+      }
+    });
+    expect(result).toEqual({
+      id: 2,
+      key: 'active',
+      label: 'Active Session'
+    });
+  });
+
+  it('falls back to the locked contract object when the master row is unavailable', async () => {
+    const AttendanceSessionStateModel = {
+      findOne: jest.fn().mockResolvedValue(null)
+    };
+
+    const result = await resolveAttendanceSessionState({
+      AttendanceSessionStateModel,
+      stateKey: 'completed'
+    });
+
+    expect(result).toEqual(STATUS_TODAY_SESSION_STATES.completed);
+  });
+
+  it('falls back to the locked contract object when master lookup fails during rollout', async () => {
+    const AttendanceSessionStateModel = {
+      findOne: jest.fn().mockRejectedValue(new Error('attendance_session_states missing'))
+    };
+
+    const result = await resolveAttendanceSessionState({
+      AttendanceSessionStateModel,
+      stateKey: 'active'
+    });
+
+    expect(result).toEqual(STATUS_TODAY_SESSION_STATES.active);
   });
 });

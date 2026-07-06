@@ -8,7 +8,7 @@ describe('getAttendanceStatus current attendance mode', () => {
     return res;
   }
 
-  function buildModelsMock({ attendance = null, booking = null, location = null } = {}) {
+  function buildModelsMock({ attendance = null, booking = null, location = null, sessionState = null } = {}) {
     return {
       Attendance: {
         findOne: jest.fn().mockResolvedValue(attendance)
@@ -26,6 +26,9 @@ describe('getAttendanceStatus current attendance mode', () => {
       },
       AttendanceCategory: {},
       AttendanceStatus: {},
+      AttendanceSessionState: {
+        findOne: jest.fn().mockResolvedValue(sessionState)
+      },
       BookingStatus: {},
       User: {},
       Role: {},
@@ -222,6 +225,9 @@ describe('getAttendanceStatus current attendance mode', () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
+          checked_in_at_iso: null,
+          checked_out_at_iso: null,
+          work_duration_seconds: null,
           attendance_session_state: {
             id: 1,
             key: 'not_started',
@@ -262,7 +268,7 @@ describe('getAttendanceStatus current attendance mode', () => {
 
     const req = {
       user: { id: 7 },
-      query: { now: '2026-04-14T10:00:00+07:00' },
+      query: { now: '2026-04-14T11:00:00+07:00' },
       headers: {}
     };
     const res = buildRes();
@@ -273,6 +279,9 @@ describe('getAttendanceStatus current attendance mode', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          checked_in_at_iso: '2026-04-14T02:00:00.000Z',
+          checked_out_at_iso: null,
+          work_duration_seconds: expect.any(Number),
           attendance_session_state: {
             id: 2,
             key: 'active',
@@ -283,6 +292,60 @@ describe('getAttendanceStatus current attendance mode', () => {
         meta: {
           cache_ttl_seconds: 300
         }
+      })
+    );
+    expect(res.json.mock.calls[0][0].data.work_duration_seconds).toBeGreaterThanOrEqual(0);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns lifecycle state label from the DB-backed master row when available', async () => {
+    const models = buildModelsMock({
+      attendance: {
+        id_attendance: 502,
+        user_id: 7,
+        attendance_date: '2026-04-14',
+        time_in: new Date('2026-04-14T09:00:00+07:00'),
+        time_out: null,
+        location: {
+          location_id: 22,
+          latitude: '-0.8917',
+          longitude: '119.8707',
+          radius: 150,
+          description: 'Rumah Pegawai',
+          address: 'Jl. WFH Palu',
+          attendance_category: { category_name: 'Work From Home' }
+        }
+      },
+      sessionState: {
+        id_attendance_session_state: 2,
+        state_key: 'active',
+        state_label: 'Active Session'
+      }
+    });
+    mockControllerDependencies({ models });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+    const req = { user: { id: 7 }, query: { now: '2026-04-14T10:00:00+07:00' }, headers: {} };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(models.AttendanceSessionState.findOne).toHaveBeenCalledWith({
+      where: {
+        state_key: 'active',
+        is_active: true
+      }
+    });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attendance_session_state: {
+            id: 2,
+            key: 'active',
+            label: 'Active Session'
+          }
+        })
       })
     );
     expect(next).not.toHaveBeenCalled();
@@ -319,6 +382,9 @@ describe('getAttendanceStatus current attendance mode', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          checked_in_at_iso: '2026-04-14T01:00:00.000Z',
+          checked_out_at_iso: '2026-04-14T10:00:00.000Z',
+          work_duration_seconds: 32400,
           attendance_session_state: {
             id: 3,
             key: 'completed',

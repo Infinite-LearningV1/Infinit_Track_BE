@@ -11,6 +11,7 @@ import Division from './division.model.js';
 import Photo from './photo.model.js';
 import AttendanceCategory from './attendanceCategory.model.js';
 import AttendanceStatus from './attendanceStatus.model.js';
+import AttendanceSessionState from './attendanceSessionState.model.js';
 import Location from './location.js';
 import Settings from './settings.model.js';
 import Booking from './booking.model.js';
@@ -132,6 +133,7 @@ export {
   Photo,
   AttendanceCategory,
   AttendanceStatus,
+  AttendanceSessionState,
   Location,
   Settings,
   Booking,
