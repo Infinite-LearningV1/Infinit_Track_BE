@@ -230,9 +230,10 @@ export const getAttendanceHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const { period = 'daily', start_date: customStartDate, end_date: customEndDate } = req.query;
-    const pageNum = parsePositiveInteger(req.query.page, 1);
+    const requestedPageNum = parsePositiveInteger(req.query.page, 1);
+    let pageNum = requestedPageNum;
     const limitNum = parsePositiveInteger(req.query.limit, 5);
-    const offset = (pageNum - 1) * limitNum;
+    let offset = (pageNum - 1) * limitNum;
 
     const now = new Date();
     const jakartaOffset = 7 * 60;
@@ -320,7 +321,32 @@ export const getAttendanceHistory = async (req, res) => {
       status_id: { [Op.ne]: 3 }
     };
 
-    const [summaryByStatus, summaryByCategory, workHourSummary, attendanceData] = await Promise.all([
+    const buildAttendanceListQuery = () => ({
+      where: whereClause,
+      include: [
+        {
+          model: AttendanceCategory,
+          as: 'attendance_category',
+          attributes: ['category_name']
+        },
+        {
+          model: AttendanceStatus,
+          as: 'status',
+          attributes: ['attendance_status_name']
+        },
+        {
+          model: Location,
+          as: 'location',
+          attributes: ['description'],
+          required: false
+        }
+      ],
+      order: [['attendance_date', 'DESC']],
+      limit: limitNum,
+      offset
+    });
+
+    const [summaryByStatus, summaryByCategory, workHourSummary, firstAttendancePage] = await Promise.all([
       Attendance.findAll({
         where: whereClause,
         attributes: ['status_id', [sequelize.fn('COUNT', sequelize.col('status_id')), 'count']],
@@ -341,31 +367,17 @@ export const getAttendanceHistory = async (req, res) => {
         raw: true
       }),
 
-      Attendance.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: AttendanceCategory,
-            as: 'attendance_category',
-            attributes: ['category_name']
-          },
-          {
-            model: AttendanceStatus,
-            as: 'status',
-            attributes: ['attendance_status_name']
-          },
-          {
-            model: Location,
-            as: 'location',
-            attributes: ['description'],
-            required: false
-          }
-        ],
-        order: [['attendance_date', 'DESC']],
-        limit: limitNum,
-        offset
-      })
+      Attendance.findAndCountAll(buildAttendanceListQuery())
     ]);
+
+    const totalPages = Math.ceil(firstAttendancePage.count / limitNum);
+    let attendanceData = firstAttendancePage;
+
+    if (firstAttendancePage.count > 0 && firstAttendancePage.rows.length === 0 && pageNum > totalPages) {
+      pageNum = totalPages;
+      offset = (pageNum - 1) * limitNum;
+      attendanceData = await Attendance.findAndCountAll(buildAttendanceListQuery());
+    }
 
     const summary = {
       total_ontime: 0,
@@ -482,7 +494,7 @@ export const getAttendanceHistory = async (req, res) => {
       };
     });
 
-    const totalPages = Math.ceil(attendanceData.count / limitNum);
+    const pageWasClamped = requestedPageNum !== pageNum;
 
     res.status(200).json({
       success: true,
@@ -497,6 +509,8 @@ export const getAttendanceHistory = async (req, res) => {
         attendances: transformedData,
         pagination: {
           current_page: pageNum,
+          requested_page: requestedPageNum,
+          page_was_clamped: pageWasClamped,
           total_pages: totalPages,
           total_items: attendanceData.count,
           items_per_page: limitNum,
