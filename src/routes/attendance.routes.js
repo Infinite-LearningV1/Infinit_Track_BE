@@ -19,7 +19,9 @@ import {
   getSmartEngineConfig,
   getEnhancedAutoCheckoutSettings,
   getTodayLocations,
-  getGeofenceEvidence
+  getGeofenceEvidence,
+  previewMyAttendanceReportPdf,
+  exportMyAttendanceReportPdf
 } from '../controllers/attendance.controller.js';
 import {
   triggerResearchAttendanceDaily,
@@ -61,6 +63,8 @@ router.get(
 
 router.post('/check-in', checkInValidation, validate, checkIn);
 router.post('/checkout/:id', checkOutValidation, validate, checkOut);
+router.get('/history/personal/pdf', previewMyAttendanceReportPdf);
+router.get('/history/export.pdf', exportMyAttendanceReportPdf);
 router.get('/history', getAttendanceHistory);
 router.get('/status-today', getAttendanceStatus);
 router.get('/debug-checkin-time', roleGuard(['Admin', 'Management']), debugCheckInTime);

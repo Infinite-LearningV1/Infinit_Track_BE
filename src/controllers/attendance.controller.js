@@ -39,7 +39,12 @@ import {
   resolveWfaBookingsForDate
 } from '../jobs/resolveWfaBookings.job.js';
 import { runGeneralAlphaForDate } from '../jobs/createGeneralAlpha.job.js';
+import { buildPersonalAttendanceReportPayload } from '../services/attendanceReport.service.js';
 import logger from '../utils/logger.js';
+import {
+  buildAttendanceReportFileName,
+  renderMyAttendanceReportPdf
+} from '../utils/pdfReportRenderer.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 
 /**
@@ -234,6 +239,53 @@ const buildPeriodLabel = (period) => {
     default:
       return period;
   }
+};
+
+const buildPersonalReportQuery = (query = {}) => {
+  const safeQuery = { ...query };
+  delete safeQuery.user_id;
+  delete safeQuery.userId;
+  return safeQuery;
+};
+
+const sendMyAttendanceReportPdf = async (req, res, disposition) => {
+  try {
+    const payload = await buildPersonalAttendanceReportPayload({
+      userId: req.user.id,
+      query: buildPersonalReportQuery(req.query)
+    });
+    const pdfBuffer = renderMyAttendanceReportPdf(payload);
+    const fileName = buildAttendanceReportFileName(payload);
+
+    res.status(200);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${disposition}; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(pdfBuffer);
+  } catch (error) {
+    if (error.code === 'E_VALIDATION' || error.statusCode === 400) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        code: error.code || 'E_VALIDATION',
+        message: error.message
+      });
+    }
+
+    logger.error('Error in sendMyAttendanceReportPdf:', error);
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode === 404 ? error.message : 'Server error',
+      error: error.statusCode === 404 ? undefined : error.message
+    });
+  }
+};
+
+export const previewMyAttendanceReportPdf = async (req, res) => {
+  return sendMyAttendanceReportPdf(req, res, 'inline');
+};
+
+export const exportMyAttendanceReportPdf = async (req, res) => {
+  return sendMyAttendanceReportPdf(req, res, 'attachment');
 };
 
 export const getAttendanceHistory = async (req, res) => {
