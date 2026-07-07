@@ -1785,6 +1785,156 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/attendance/history/personal/pdf:
+    get:
+      tags:
+        - Attendance
+      summary: Preview personal attendance history PDF
+      description: Backend-generated official My Attendance Report PDF for Android in-app preview. The report is scoped to the authenticated user from the bearer token; arbitrary user_id query values are not accepted for this personal contract.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, custom]
+            default: monthly
+          description: Report period. Defaults to the current month when omitted.
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-01'
+          description: Required when period=custom. Must use YYYY-MM-DD.
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-31'
+          description: Required when period=custom. Must use YYYY-MM-DD and be greater than or equal to start_date.
+        - in: query
+          name: timezone
+          schema:
+            type: string
+            default: Asia/Jakarta
+            example: Asia/Makassar
+          description: Optional IANA timezone used for period boundary selection. Timestamp display remains backend-normalized.
+      responses:
+        '200':
+          description: Personal attendance PDF preview generated successfully
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: inline; filename="infinite-track-attendance-report-2026-05.pdf"
+              description: Inline disposition for Android in-app preview.
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+              description: PDF responses are not cacheable.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid period or custom date input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/attendance/history/export.pdf:
+    get:
+      tags:
+        - Attendance
+      summary: Download personal attendance history PDF
+      description: Backend-generated official My Attendance Report PDF for Android download/share/export. Uses the same backend report payload and PDF renderer as the preview endpoint; only Content-Disposition differs.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, custom]
+            default: monthly
+          description: Report period. Defaults to the current month when omitted.
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-01'
+          description: Required when period=custom. Must use YYYY-MM-DD.
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-31'
+          description: Required when period=custom. Must use YYYY-MM-DD and be greater than or equal to start_date.
+        - in: query
+          name: timezone
+          schema:
+            type: string
+            default: Asia/Jakarta
+            example: Asia/Makassar
+          description: Optional IANA timezone used for period boundary selection. Timestamp display remains backend-normalized.
+      responses:
+        '200':
+          description: Personal attendance PDF export generated successfully
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="infinite-track-attendance-report-2026-05.pdf"
+              description: Attachment disposition for Android download/share/export.
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+              description: PDF responses are not cacheable.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid period or custom date input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/attendance/history:
     get:
       tags:
