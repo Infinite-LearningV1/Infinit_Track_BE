@@ -1170,14 +1170,17 @@ export const getAttendanceStatus = async (req, res, next) => {
         category: currentAttendance.location.attendance_category.category_name
       };
     } else if (todayBooking) {
-      active_mode = 'Work From Anywhere';
+      const bookingCategoryName =
+        todayBooking.location?.attendance_category?.category_name || 'Work From Anywhere';
+
+      active_mode = bookingCategoryName;
       active_location = {
         location_id: todayBooking.location.location_id,
         latitude: parseFloat(todayBooking.location.latitude),
         longitude: parseFloat(todayBooking.location.longitude),
         radius: todayBooking.location.radius,
         description: todayBooking.location.description,
-        category: todayBooking.location.attendance_category.category_name
+        category: bookingCategoryName
       };
     } else {
       // Get WFO location from database
@@ -1225,7 +1228,7 @@ export const getAttendanceStatus = async (req, res, next) => {
 
     // Tentukan can_check_in
     // For WFA mode (booking approved today), ignore holiday/weekend gating; use time window only
-    const isWfaMode = active_mode === 'Work From Anywhere';
+    const isWfaMode = Boolean(todayBooking);
     const can_check_in =
       !currentAttendance &&
       currentTimeMinutes >= checkinStartMinutes &&
