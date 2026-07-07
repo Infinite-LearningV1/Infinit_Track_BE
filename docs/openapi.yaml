@@ -3175,9 +3175,10 @@ paths:
           name: status
           schema:
             type: string
-            enum: [pending, approved, rejected]
-          description: Filter bookings by status
-          example: 'approved'
+            enum: [all, pending, approved, rejected]
+            default: all
+          description: Filter bookings by status. Use all or omit the parameter to return all statuses in bookings[].
+          example: 'all'
         - in: query
           name: page
           schema:
@@ -3225,6 +3226,8 @@ paths:
                   data:
                     type: object
                     properties:
+                      summary:
+                        $ref: '#/components/schemas/BookingHistorySummary'
                       bookings:
                         type: array
                         items:
@@ -3236,7 +3239,8 @@ paths:
                         properties:
                           status:
                             type: string
-                            example: 'approved'
+                            enum: [all, pending, approved, rejected]
+                            example: 'all'
                           sort_by:
                             type: string
                             example: 'created_at'
@@ -6323,6 +6327,27 @@ components:
           format: date-time
           example: '2025-07-08T14:30:00.000Z'
 
+    BookingHistorySummary:
+      type: object
+      description: User-scoped WFA booking/request summary across all statuses. This summary is independent from the active status filter applied to bookings[].
+      properties:
+        total:
+          type: integer
+          example: 8
+          description: Total WFA booking/request records for the authenticated user across pending, approved, and rejected statuses
+        pending:
+          type: integer
+          example: 2
+          description: Pending WFA booking/request records for the authenticated user
+        approved:
+          type: integer
+          example: 5
+          description: Approved WFA booking/request records for the authenticated user
+        rejected:
+          type: integer
+          example: 1
+          description: Rejected WFA booking/request records for the authenticated user
+
     BookingHistoryItem:
       type: object
       description: Comprehensive booking history item with user details, location info, and status tracking
@@ -6368,7 +6393,17 @@ components:
           type: string
           enum: [pending, approved, rejected]
           example: 'approved'
-          description: Current booking status
+          description: Current booking status from the booking status table
+        status_key:
+          type: string
+          enum: [pending, approved, rejected]
+          example: 'approved'
+          description: Stable normalized status key for client filtering/display logic
+        status_label:
+          type: string
+          enum: [Pending, Approved, Rejected]
+          example: 'Approved'
+          description: Human-readable status label for display
         location:
           type: object
           description: WFA location details
