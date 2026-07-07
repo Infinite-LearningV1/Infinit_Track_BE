@@ -175,6 +175,90 @@ describe('getAttendanceStatus current attendance mode', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('uses booked location attendance category for booking branch active_mode and category', async () => {
+    const models = buildModelsMock({
+      booking: {
+        location: {
+          location_id: 31,
+          latitude: '-0.9000',
+          longitude: '119.8800',
+          radius: 120,
+          description: 'Coworking Space',
+          attendance_category: {
+            category_name: 'Work From Home'
+          }
+        }
+      }
+    });
+    mockControllerDependencies({ models, holidayInfo: [{ name: 'Booking Holiday Override Proof' }] });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+
+    const req = {
+      user: { id: 9 },
+      query: { now: '2026-04-14T10:00:00+07:00' },
+      headers: {}
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          can_check_in: true,
+          active_mode: 'Work From Home',
+          active_location: expect.objectContaining({
+            location_id: 31,
+            category: 'Work From Home'
+          })
+        })
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('falls back booking branch active_mode to Work From Anywhere when category relation is missing', async () => {
+    const models = buildModelsMock({
+      booking: {
+        location: {
+          location_id: 44,
+          latitude: '-0.9100',
+          longitude: '119.8700',
+          radius: 130,
+          description: 'Fallback Booking Spot'
+        }
+      }
+    });
+    mockControllerDependencies({ models });
+
+    const { getAttendanceStatus } = await import('../src/controllers/attendance.controller.js');
+
+    const req = {
+      user: { id: 9 },
+      query: { now: '2026-04-14T10:00:00+07:00' },
+      headers: {}
+    };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceStatus(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          active_mode: 'Work From Anywhere',
+          active_location: expect.objectContaining({
+            location_id: 44,
+            category: 'Work From Anywhere'
+          })
+        })
+      })
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('coerces holiday library truthy payload into boolean is_holiday in status response', async () => {
     const holidayPayload = [{ name: 'Hari Buruh Internasional' }];
     const models = buildModelsMock();
