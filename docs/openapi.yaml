@@ -2023,6 +2023,29 @@ paths:
                           total_alpha:
                             type: integer
                             example: 0
+                          total_present:
+                            type: integer
+                            example: 11
+                          total_absent:
+                            type: integer
+                            example: 1
+                          total_counted_days:
+                            type: integer
+                            example: 12
+                          total_working_days:
+                            type: integer
+                            nullable: true
+                            example: null
+                          attendance_rate:
+                            type: integer
+                            nullable: true
+                            example: 92
+                          attendance_rate_label:
+                            type: string
+                            example: 92%
+                          attendance_rate_denominator:
+                            type: string
+                            example: total_counted_days
                           total_wfo:
                             type: integer
                             example: 6
@@ -2036,6 +2059,60 @@ paths:
                             type: number
                             format: float
                             example: 88.5
+                          total_work_hours_label:
+                            type: string
+                            example: 88h 30m
+                          mode_distribution:
+                            type: object
+                            properties:
+                              total:
+                                type: integer
+                                example: 11
+                              wfo:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    example: wfo
+                                  label:
+                                    type: string
+                                    example: WFO
+                                  count:
+                                    type: integer
+                                    example: 6
+                                  percentage:
+                                    type: integer
+                                    example: 55
+                              wfa:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    example: wfa
+                                  label:
+                                    type: string
+                                    example: WFA
+                                  count:
+                                    type: integer
+                                    example: 3
+                                  percentage:
+                                    type: integer
+                                    example: 27
+                              wfh:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    example: wfh
+                                  label:
+                                    type: string
+                                    example: WFH
+                                  count:
+                                    type: integer
+                                    example: 2
+                                  percentage:
+                                    type: integer
+                                    example: 18
                       attendances:
                         type: array
                         items:
@@ -2071,13 +2148,30 @@ paths:
                             time_in:
                               type: string
                               nullable: true
+                              description: UI-facing check-in display. Null for alpha rows.
                               example: '08:04'
                             time_out:
                               type: string
                               nullable: true
+                              description: UI-facing check-out display. Null for alpha rows.
                               example: '17:06'
                             time_range:
                               type: string
+                              description: UI-facing time range. Alpha rows use '--:-- - --:--'.
+                              example: '08:04 - 17:06'
+                            raw_time_in:
+                              type: string
+                              nullable: true
+                              description: Raw backend/system-generated check-in time retained for audit/debug.
+                              example: '08:04'
+                            raw_time_out:
+                              type: string
+                              nullable: true
+                              description: Raw backend/system-generated check-out time retained for audit/debug.
+                              example: '17:06'
+                            raw_time_range:
+                              type: string
+                              description: Raw backend/system-generated time range retained for audit/debug.
                               example: '08:04 - 17:06'
                             work_hour:
                               type: string

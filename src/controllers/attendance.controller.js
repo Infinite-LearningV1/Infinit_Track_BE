@@ -241,6 +241,65 @@ const buildPeriodLabel = (period) => {
   }
 };
 
+const roundPercentage = (count, total) => {
+  if (!total) return 0;
+  return Math.round((count / total) * 100);
+};
+
+const formatWorkHoursLabel = (workHours) => {
+  if (!workHours) return '0h';
+  const totalMinutes = Math.round(workHours * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
+const buildModeDistribution = (summary) => {
+  const total = summary.total_wfo + summary.total_wfa + summary.total_wfh;
+
+  return {
+    total,
+    wfo: {
+      key: 'wfo',
+      label: 'WFO',
+      count: summary.total_wfo,
+      percentage: roundPercentage(summary.total_wfo, total)
+    },
+    wfa: {
+      key: 'wfa',
+      label: 'WFA',
+      count: summary.total_wfa,
+      percentage: roundPercentage(summary.total_wfa, total)
+    },
+    wfh: {
+      key: 'wfh',
+      label: 'WFH',
+      count: summary.total_wfh,
+      percentage: roundPercentage(summary.total_wfh, total)
+    }
+  };
+};
+
+const enrichHistorySummaryForReport = (summary) => {
+  const totalPresent = summary.total_ontime + summary.total_late + summary.total_early;
+  const totalAbsent = summary.total_alpha;
+  const totalCountedDays = totalPresent + totalAbsent;
+  const attendanceRate = totalCountedDays > 0 ? Math.round((totalPresent / totalCountedDays) * 100) : null;
+
+  return {
+    ...summary,
+    total_present: totalPresent,
+    total_absent: totalAbsent,
+    total_counted_days: totalCountedDays,
+    total_working_days: null,
+    attendance_rate: attendanceRate,
+    attendance_rate_label: attendanceRate == null ? 'N/A' : `${attendanceRate}%`,
+    attendance_rate_denominator: 'total_counted_days',
+    total_work_hours_label: formatWorkHoursLabel(summary.total_work_hours),
+    mode_distribution: buildModeDistribution(summary)
+  };
+};
+
 const buildPersonalReportQuery = (query = {}) => {
   const safeQuery = { ...query };
   delete safeQuery.user_id;
@@ -490,6 +549,7 @@ export const getAttendanceHistory = async (req, res) => {
     const totalWorkHours = Number.parseFloat(workHourSummary?.[0]?.total_work_hours);
     summary.total_work_hours = Number.isFinite(totalWorkHours) ? Number(totalWorkHours.toFixed(2)) : 0;
 
+    const reportSummary = enrichHistorySummaryForReport(summary);
     const todayDate = getJakartaDateString();
     const transformedData = attendanceData.rows.map((att) => {
       const [dateYear, dateMonth, dateDay] = String(att.attendance_date).split('-').map(Number);
@@ -500,8 +560,11 @@ export const getAttendanceHistory = async (req, res) => {
       const statusContract = deriveStatusContract(att);
       const isAlpha = statusContract.status_key === 'alpha';
       const isActiveSession = Boolean(att.time_in && !att.time_out && att.attendance_date === todayDate);
-      const timeIn = att.time_in ? formatTimeOnly(att.time_in) : null;
-      const timeOut = att.time_out ? formatTimeOnly(att.time_out) : null;
+      const rawTimeIn = att.time_in ? formatTimeOnly(att.time_in) : null;
+      const rawTimeOut = att.time_out ? formatTimeOnly(att.time_out) : null;
+      const rawTimeRange = `${rawTimeIn || '--:--'} - ${rawTimeOut || '--:--'}`;
+      const timeIn = isAlpha ? null : rawTimeIn;
+      const timeOut = isAlpha ? null : rawTimeOut;
 
       const notesStr = att.notes || '';
       const smartMatch = notesStr.match(/\[Smart AC\]\s*pred=([^,]+),\s*used=([^,]+),/);
@@ -541,7 +604,10 @@ export const getAttendanceHistory = async (req, res) => {
         mode_label: modeContract.mode_label,
         time_in: timeIn,
         time_out: timeOut,
-        time_range: `${timeIn || '--:--'} - ${timeOut || '--:--'}`,
+        time_range: isAlpha ? '--:-- - --:--' : rawTimeRange,
+        raw_time_in: rawTimeIn,
+        raw_time_out: rawTimeOut,
+        raw_time_range: rawTimeRange,
         work_hour: isAlpha ? null : formatWorkHour(workHourDisplay),
         work_hour_raw: workHourDisplay,
         status_key: statusContract.status_key,
@@ -567,7 +633,7 @@ export const getAttendanceHistory = async (req, res) => {
           start_date: startDateOnly,
           end_date: endDateOnly
         },
-        summary,
+        summary: reportSummary,
         attendances: transformedData,
         pagination: {
           current_page: pageNum,
