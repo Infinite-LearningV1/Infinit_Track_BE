@@ -357,6 +357,8 @@ describe('backend runtime config contract', () => {
     expect(smokeTest).toContain("const disallowedOrigin = 'https://example.com';");
     expect(smokeTest).toContain('const disallowedOriginRejected = corsHeader !== disallowedOrigin;');
     expect(smokeTest).toContain("const credentialsConfigured = credentialsHeader === 'true';");
+    expect(smokeTest).toContain('X-Client-Type');
+    expect(smokeTest).toContain('allowsClientType');
     expect(smokeTest).toContain('Allow-Credentials');
     expect(smokeTest).not.toContain("corsHeader === '*'");
     expect(productionTest).toContain('Testing API documentation access control');
