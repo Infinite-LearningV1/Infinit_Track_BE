@@ -8,6 +8,59 @@ import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
 import { getJakartaDateString } from '../utils/geofence.js';
 
+const BOOKING_STATUS = Object.freeze({
+  approved: { id: 1, label: 'Approved' },
+  rejected: { id: 2, label: 'Rejected' },
+  pending: { id: 3, label: 'Pending' }
+});
+
+const BOOKING_STATUS_BY_ID = Object.freeze(
+  Object.entries(BOOKING_STATUS).reduce((acc, [key, value]) => {
+    acc[value.id] = { key, label: value.label };
+    return acc;
+  }, {})
+);
+
+const BOOKING_HISTORY_STATUS_FILTERS = Object.freeze({
+  all: null,
+  approved: BOOKING_STATUS.approved.id,
+  rejected: BOOKING_STATUS.rejected.id,
+  pending: BOOKING_STATUS.pending.id
+});
+
+function getBookingStatusPresentation(booking) {
+  const statusFromId = BOOKING_STATUS_BY_ID[Number(booking.status)];
+  const fallbackKey = booking.booking_status?.name_status
+    ? String(booking.booking_status.name_status).toLowerCase()
+    : null;
+  const statusKey = statusFromId?.key || fallbackKey;
+
+  return {
+    status_key: statusKey,
+    status_label: statusFromId?.label || (statusKey ? statusKey.charAt(0).toUpperCase() + statusKey.slice(1) : null)
+  };
+}
+
+function buildBookingHistorySummary(summaryRows) {
+  const summary = {
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0
+  };
+
+  for (const row of summaryRows) {
+    const statusMeta = BOOKING_STATUS_BY_ID[Number(row.status)];
+    if (!statusMeta) continue;
+
+    const count = Number(row.count) || 0;
+    summary[statusMeta.key] = count;
+    summary.total += count;
+  }
+
+  return summary;
+}
+
 /**
  * Fetches place details from Geoapify and calculates its suitability score.
  * If no data is found, returns a default score.
@@ -740,12 +793,23 @@ export const deleteBooking = async (req, res, next) => {
 export const getBookingHistory = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { status, page = 1, limit = 10, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
+    const { status = 'all', page = 1, limit = 10, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
+    const selectedStatus = String(status).toLowerCase();
 
     // Validate pagination parameters
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+    const positiveIntegerPattern = /^[1-9]\d*$/;
+    const pageValue = String(page);
+    const limitValue = String(limit);
+    if (!positiveIntegerPattern.test(pageValue) || !positiveIntegerPattern.test(limitValue)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parameter pagination tidak valid. Page >= 1, limit antara 1-100.'
+      });
+    }
+
+    const pageNum = parseInt(pageValue, 10);
+    const limitNum = parseInt(limitValue, 10);
+    if (limitNum > 100) {
       return res.status(400).json({
         success: false,
         message: 'Parameter pagination tidak valid. Page >= 1, limit antara 1-100.'
@@ -754,23 +818,18 @@ export const getBookingHistory = async (req, res, next) => {
 
     const offset = (pageNum - 1) * limitNum;
 
-    // Build where clause with status filter
+    if (!Object.prototype.hasOwnProperty.call(BOOKING_HISTORY_STATUS_FILTERS, selectedStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status filter tidak valid. Pilihan: all, approved, rejected, pending.'
+      });
+    }
+
+    // Build where clause with status filter. status=all behaves like no status filter.
     const whereClause = { user_id: userId };
-    if (status) {
-      const statusMap = {
-        approved: 1,
-        rejected: 2,
-        pending: 3
-      };
-
-      if (!statusMap[status]) {
-        return res.status(400).json({
-          success: false,
-          message: 'Status filter tidak valid. Pilihan: approved, rejected, pending.'
-        });
-      }
-
-      whereClause.status = statusMap[status];
+    const selectedStatusId = BOOKING_HISTORY_STATUS_FILTERS[selectedStatus];
+    if (selectedStatusId) {
+      whereClause.status = selectedStatusId;
     }
 
     // Validate sorting parameters
@@ -802,6 +861,17 @@ export const getBookingHistory = async (req, res, next) => {
     } else {
       orderClause = [[sort_by, sort_order.toUpperCase()]];
     }
+
+    const summaryRows = await Booking.findAll({
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('booking_id')), 'count']],
+      where: {
+        user_id: userId,
+        status: { [Op.in]: Object.values(BOOKING_STATUS).map(({ id }) => id) }
+      },
+      group: ['status'],
+      raw: true
+    });
+    const summary = buildBookingHistorySummary(summaryRows);
 
     // Query bookings with full relations
     const bookings = await Booking.findAndCountAll({
@@ -842,30 +912,36 @@ export const getBookingHistory = async (req, res, next) => {
     });
 
     // Transform data with consistent structure
-    const transformedBookings = bookings.rows.map((booking) => ({
-      booking_id: booking.booking_id,
-      user_id: booking.user.id_users,
-      user_full_name: booking.user.full_name,
-      user_email: booking.user.email,
-      user_nip_nim: booking.user.nip_nim,
-      user_position_name: booking.user.position ? booking.user.position.position_name : null,
-      user_role_name: booking.user.role ? booking.user.role.role_name : null,
-      schedule_date: booking.schedule_date,
-      status: booking.booking_status.name_status,
-      location: {
-        location_id: booking.location.location_id,
-        latitude: parseFloat(booking.location.latitude),
-        longitude: parseFloat(booking.location.longitude),
-        radius: parseFloat(booking.location.radius),
-        description: booking.location.description
-      },
-      notes: booking.notes,
-      suitability_score: parseFloat(booking.suitability_score) || null,
-      suitability_label: booking.suitability_label,
-      created_at: booking.created_at,
-      processed_at: booking.processed_at,
-      approved_by: booking.approved_by
-    }));
+    const transformedBookings = bookings.rows.map((booking) => {
+      const statusPresentation = getBookingStatusPresentation(booking);
+
+      return {
+        booking_id: booking.booking_id,
+        user_id: booking.user.id_users,
+        user_full_name: booking.user.full_name,
+        user_email: booking.user.email,
+        user_nip_nim: booking.user.nip_nim,
+        user_position_name: booking.user.position ? booking.user.position.position_name : null,
+        user_role_name: booking.user.role ? booking.user.role.role_name : null,
+        schedule_date: booking.schedule_date,
+        status: booking.booking_status.name_status,
+        status_key: statusPresentation.status_key,
+        status_label: statusPresentation.status_label,
+        location: {
+          location_id: booking.location.location_id,
+          latitude: parseFloat(booking.location.latitude),
+          longitude: parseFloat(booking.location.longitude),
+          radius: parseFloat(booking.location.radius),
+          description: booking.location.description
+        },
+        notes: booking.notes,
+        suitability_score: parseFloat(booking.suitability_score) || null,
+        suitability_label: booking.suitability_label,
+        created_at: booking.created_at,
+        processed_at: booking.processed_at,
+        approved_by: booking.approved_by
+      };
+    });
 
     // Calculate pagination info
     const totalPages = Math.ceil(bookings.count / limitNum);
@@ -879,6 +955,7 @@ export const getBookingHistory = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
+        summary,
         bookings: transformedBookings,
         pagination: {
           current_page: pageNum,
@@ -889,7 +966,7 @@ export const getBookingHistory = async (req, res, next) => {
           has_previous_page: pageNum > 1
         },
         filters: {
-          status: status || 'all',
+          status: selectedStatus,
           sort_by: sort_by,
           sort_order: sort_order.toUpperCase()
         }

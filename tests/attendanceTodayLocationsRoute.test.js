@@ -106,6 +106,8 @@ jest.unstable_mockModule('../src/controllers/attendance.controller.js', () => ({
   getEnhancedAutoCheckoutSettings: jest.fn(),
   getTodayLocations: mockGetTodayLocations,
   getGeofenceEvidence: mockGetGeofenceEvidence,
+  previewMyAttendanceReportPdf: jest.fn(),
+  exportMyAttendanceReportPdf: jest.fn(),
   testWeightedPrediction: jest.fn()
 }));
 

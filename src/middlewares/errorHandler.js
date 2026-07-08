@@ -1,7 +1,10 @@
 import logger from '../utils/logger.js';
 import config from '../config/index.js';
 
-const PUBLIC_ERROR_CODES = new Set(['E_OPERATIONAL_SETTINGS_INVALID']);
+const PUBLIC_ERROR_CODES = new Set([
+  'E_OPERATIONAL_SETTINGS_INVALID',
+  'E_INVALID_REFERENCE_STATE'
+]);
 
 export const errorHandler = (err, req, res, _next) => {
   const logPayload = {
@@ -15,6 +18,10 @@ export const errorHandler = (err, req, res, _next) => {
 
   if (err.code === 'E_OPERATIONAL_SETTINGS_INVALID' && Array.isArray(err.details)) {
     logPayload.details = err.details;
+  }
+
+  if (err.code === 'E_INVALID_REFERENCE_STATE' && Array.isArray(err.conflicts)) {
+    logPayload.conflicts = err.conflicts;
   }
 
   logger.error(logPayload);
@@ -62,12 +69,30 @@ export const errorHandler = (err, req, res, _next) => {
         : err.message || 'Internal server error'
   };
 
-  if (PUBLIC_ERROR_CODES.has(err.code)) {
+  if (err.code && (statusCode < 500 || PUBLIC_ERROR_CODES.has(err.code))) {
     response.code = err.code;
   }
 
   if (err.code === 'E_OPERATIONAL_SETTINGS_INVALID' && Array.isArray(err.details)) {
     response.details = err.details;
+  }
+
+  if (err.code === 'E_INVALID_REFERENCE_STATE') {
+    if (err.target_date) {
+      response.target_date = err.target_date;
+    }
+
+    if (err.endpoint_type) {
+      response.endpoint_type = err.endpoint_type;
+    }
+
+    if (Array.isArray(err.conflicts)) {
+      response.conflicts = err.conflicts;
+    }
+
+    if (err.hint) {
+      response.hint = err.hint;
+    }
   }
 
   // Only include stack trace in development

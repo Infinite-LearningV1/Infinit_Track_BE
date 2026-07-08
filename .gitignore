@@ -47,6 +47,10 @@ docs/*
 !docs/openapi.yaml
 !docs/GITHUB_ACTIONS_SETUP.md
 !docs/PRODUCTION_DEPLOYMENT.md
+!docs/specs/
+!docs/specs/*.md
+!docs/plans/
+!docs/plans/*.md
 .blackboxrules
 
 # Research attendance generator outputs

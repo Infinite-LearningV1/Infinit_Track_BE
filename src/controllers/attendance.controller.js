@@ -29,13 +29,22 @@ import {
 import { isAttendanceDuplicateConstraintError } from '../utils/attendanceDuplicateError.js';
 import { buildGeofenceEvidenceSnapshot } from '../utils/geofenceEvidenceSnapshot.js';
 import { buildTodayLocationsSnapshot } from '../utils/todayLocationsSnapshot.js';
+import {
+  deriveStatusTodaySessionState,
+  resolveAttendanceSessionState
+} from '../utils/attendanceSessionState.js';
 import { triggerAutoCheckout, runSmartAutoCheckoutForDate } from '../jobs/autoCheckout.job.js';
 import {
   triggerResolveWfaBookings,
   resolveWfaBookingsForDate
 } from '../jobs/resolveWfaBookings.job.js';
 import { runGeneralAlphaForDate } from '../jobs/createGeneralAlpha.job.js';
+import { buildPersonalAttendanceReportPayload } from '../services/attendanceReport.service.js';
 import logger from '../utils/logger.js';
+import {
+  buildAttendanceReportFileName,
+  renderMyAttendanceReportPdf
+} from '../utils/pdfReportRenderer.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 
 /**
@@ -145,25 +154,161 @@ export const testWeightedPrediction = async (req, res) => {
   }
 };
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const isStrictDateOnly = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+
+const parsePositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const formatLocalDateOnly = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const buildDateLabel = (dateOnly) => {
+  const [year, month, day] = String(dateOnly).split('-').map(Number);
+  if (!year || !month || !day) return String(dateOnly || '');
+  return `${String(day).padStart(2, '0')} ${MONTH_LABELS[month - 1]} ${year}`;
+};
+
+const normalizeHistoryValue = (value) => String(value || '').trim().toLowerCase();
+
+const deriveModeContract = (attendance) => {
+  const categoryName = attendance.attendance_category?.category_name || null;
+  const normalized = normalizeHistoryValue(categoryName);
+
+  if (attendance.category_id === 1 || ['wfo', 'work from office'].includes(normalized)) {
+    return { mode_key: 'wfo', mode_label: 'WFO' };
+  }
+
+  if (attendance.category_id === 2 || ['wfh', 'work from home'].includes(normalized)) {
+    return { mode_key: 'wfh', mode_label: 'WFH' };
+  }
+
+  if (attendance.category_id === 3 || ['wfa', 'work from anywhere'].includes(normalized)) {
+    return { mode_key: 'wfa', mode_label: 'WFA' };
+  }
+
+  return { mode_key: normalized || null, mode_label: categoryName || null };
+};
+
+const deriveStatusContract = (attendance) => {
+  const statusName = attendance.status?.attendance_status_name || null;
+  const normalized = normalizeHistoryValue(statusName);
+
+  if (attendance.status_id === 1 || ['ontime', 'on time', 'tepat waktu'].includes(normalized)) {
+    return { status_key: 'ontime', status_label: 'On Time' };
+  }
+
+  if (attendance.status_id === 2 || ['late', 'terlambat'].includes(normalized)) {
+    return { status_key: 'late', status_label: 'Late' };
+  }
+
+  if (attendance.status_id === 3 || ['alpha', 'alpa', 'absent'].includes(normalized)) {
+    return { status_key: 'alpha', status_label: 'Alpha' };
+  }
+
+  if (attendance.status_id === 4 || ['early', 'lebih awal'].includes(normalized)) {
+    return { status_key: 'early', status_label: 'Early' };
+  }
+
+  return { status_key: normalized || null, status_label: statusName || null };
+};
+
+const buildPeriodLabel = (period) => {
+  switch (period) {
+    case 'daily':
+      return 'Today';
+    case 'weekly':
+      return 'This Week';
+    case 'monthly':
+      return 'This Month';
+    case 'custom':
+      return 'Custom Range';
+    case 'all':
+      return 'All Time';
+    default:
+      return period;
+  }
+};
+
+const buildPersonalReportQuery = (query = {}) => {
+  const safeQuery = { ...query };
+  delete safeQuery.user_id;
+  delete safeQuery.userId;
+  return safeQuery;
+};
+
+const sendMyAttendanceReportPdf = async (req, res, disposition) => {
+  try {
+    const payload = await buildPersonalAttendanceReportPayload({
+      userId: req.user.id,
+      query: buildPersonalReportQuery(req.query)
+    });
+    const pdfBuffer = renderMyAttendanceReportPdf(payload);
+    const fileName = buildAttendanceReportFileName(payload);
+
+    res.status(200);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${disposition}; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(pdfBuffer);
+  } catch (error) {
+    if (error.code === 'E_VALIDATION' || error.statusCode === 400) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        code: error.code || 'E_VALIDATION',
+        message: error.message
+      });
+    }
+
+    logger.error('Error in sendMyAttendanceReportPdf:', error);
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode === 404 ? error.message : 'Server error',
+      error: error.statusCode === 404 ? undefined : error.message
+    });
+  }
+};
+
+export const previewMyAttendanceReportPdf = async (req, res) => {
+  return sendMyAttendanceReportPdf(req, res, 'inline');
+};
+
+export const exportMyAttendanceReportPdf = async (req, res) => {
+  return sendMyAttendanceReportPdf(req, res, 'attachment');
+};
+
 export const getAttendanceHistory = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { period = 'daily', page = 1, limit = 5 } = req.query;
+    const { period = 'daily', start_date: customStartDate, end_date: customEndDate } = req.query;
+    const requestedPageNum = parsePositiveInteger(req.query.page, 1);
+    let pageNum = requestedPageNum;
+    const limitNum = parsePositiveInteger(req.query.limit, 5);
+    let offset = (pageNum - 1) * limitNum;
 
-    // Calculate offset for pagination
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Get current Jakarta time
     const now = new Date();
-    const jakartaOffset = 7 * 60; // UTC+7 in minutes
+    const jakartaOffset = 7 * 60;
     const jakartaTime = new Date(now.getTime() + jakartaOffset * 60000);
 
-    // Determine date range based on period
-    let startDate, endDate;
-    let whereClause = { user_id: userId };
+    let startDate;
+    let endDate;
+    let startDateOnly = null;
+    let endDateOnly = null;
+    const whereClause = { user_id: userId };
+
     switch (period) {
       case 'daily': {
-        // Start and end of today
         startDate = new Date(jakartaTime);
         startDate.setHours(0, 0, 0, 0);
         endDate = new Date(jakartaTime);
@@ -172,9 +317,8 @@ export const getAttendanceHistory = async (req, res) => {
       }
 
       case 'weekly': {
-        // Start of this week (Monday) to end of this week (Sunday)
         const dayOfWeek = jakartaTime.getDay();
-        const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday as 0
+        const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
         startDate = new Date(jakartaTime);
         startDate.setDate(jakartaTime.getDate() + diffToMonday);
@@ -187,32 +331,84 @@ export const getAttendanceHistory = async (req, res) => {
       }
 
       case 'monthly': {
-        // Start and end of current month
         startDate = new Date(jakartaTime.getFullYear(), jakartaTime.getMonth(), 1);
         endDate = new Date(jakartaTime.getFullYear(), jakartaTime.getMonth() + 1, 0);
         endDate.setHours(23, 59, 59, 999);
         break;
       }
 
+      case 'custom': {
+        if (!isStrictDateOnly(customStartDate) || !isStrictDateOnly(customEndDate)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom'
+          });
+        }
+
+        if (customStartDate > customEndDate) {
+          return res.status(400).json({
+            success: false,
+            message: 'Parameter start_date tidak boleh lebih besar dari end_date'
+          });
+        }
+
+        startDateOnly = customStartDate;
+        endDateOnly = customEndDate;
+        break;
+      }
+
       case 'all':
-        // No date filter
         break;
 
       default:
         return res.status(400).json({
           success: false,
-          message: 'Period parameter tidak valid. Gunakan: daily, weekly, monthly, atau all'
+          message: 'Period parameter tidak valid. Gunakan: daily, weekly, monthly, custom, atau all'
         });
-    } // Add date filter if not 'all'
+    }
+
     if (period !== 'all') {
+      if (period !== 'custom') {
+        startDateOnly = formatLocalDateOnly(startDate);
+        endDateOnly = formatLocalDateOnly(endDate);
+      }
+
       whereClause.attendance_date = {
-        [Op.between]: [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]
+        [Op.between]: [startDateOnly, endDateOnly]
       };
     }
 
-    // Run queries in parallel for efficiency
-    const [summaryByStatus, summaryByCategory, attendanceData] = await Promise.all([
-      // Query 1: Summary by status
+    const nonAlphaWhereClause = {
+      ...whereClause,
+      status_id: { [Op.ne]: 3 }
+    };
+
+    const buildAttendanceListQuery = () => ({
+      where: whereClause,
+      include: [
+        {
+          model: AttendanceCategory,
+          as: 'attendance_category',
+          attributes: ['category_name']
+        },
+        {
+          model: AttendanceStatus,
+          as: 'status',
+          attributes: ['attendance_status_name']
+        },
+        {
+          model: Location,
+          as: 'location',
+          attributes: ['description'],
+          required: false
+        }
+      ],
+      order: [['attendance_date', 'DESC']],
+      limit: limitNum,
+      offset
+    });
+
+    const [summaryByStatus, summaryByCategory, workHourSummary, firstAttendancePage] = await Promise.all([
       Attendance.findAll({
         where: whereClause,
         attributes: ['status_id', [sequelize.fn('COUNT', sequelize.col('status_id')), 'count']],
@@ -220,7 +416,6 @@ export const getAttendanceHistory = async (req, res) => {
         raw: true
       }),
 
-      // Query 2: Summary by category
       Attendance.findAll({
         where: whereClause,
         attributes: ['category_id', [sequelize.fn('COUNT', sequelize.col('category_id')), 'count']],
@@ -228,40 +423,35 @@ export const getAttendanceHistory = async (req, res) => {
         raw: true
       }),
 
-      // Query 3: Detailed attendance list with pagination
-      Attendance.findAndCountAll({
-        where: whereClause,
-        include: [
-          {
-            model: AttendanceCategory,
-            as: 'attendance_category',
-            attributes: ['category_name']
-          },
-          {
-            model: AttendanceStatus,
-            as: 'status',
-            attributes: ['attendance_status_name']
-          },
-          {
-            model: Location,
-            as: 'location',
-            attributes: ['description'],
-            required: false
-          }
-        ],
-        order: [['attendance_date', 'DESC']],
-        limit: parseInt(limit),
-        offset: offset
-      })
-    ]); // Process summary data with updated status mapping
+      Attendance.findAll({
+        where: nonAlphaWhereClause,
+        attributes: [[sequelize.fn('SUM', sequelize.col('work_hour')), 'total_work_hours']],
+        raw: true
+      }),
+
+      Attendance.findAndCountAll(buildAttendanceListQuery())
+    ]);
+
+    const totalPages = Math.ceil(firstAttendancePage.count / limitNum);
+    let attendanceData = firstAttendancePage;
+
+    if (firstAttendancePage.count > 0 && firstAttendancePage.rows.length === 0 && pageNum > totalPages) {
+      pageNum = totalPages;
+      offset = (pageNum - 1) * limitNum;
+      attendanceData = await Attendance.findAndCountAll(buildAttendanceListQuery());
+    }
+
     const summary = {
       total_ontime: 0,
       total_late: 0,
       total_early: 0,
       total_alpha: 0,
       total_wfo: 0,
-      total_wfa: 0
-    }; // Map status counts with dynamic status logic: 1=ontime, 2=late, 4=early, 3=alpha
+      total_wfa: 0,
+      total_wfh: 0,
+      total_work_hours: 0
+    };
+
     summaryByStatus.forEach((item) => {
       const count = parseInt(item.count);
 
@@ -281,7 +471,6 @@ export const getAttendanceHistory = async (req, res) => {
       }
     });
 
-    // Map category counts (assuming: 1=WFO, 3=WFA)
     summaryByCategory.forEach((item) => {
       const count = parseInt(item.count);
 
@@ -289,47 +478,41 @@ export const getAttendanceHistory = async (req, res) => {
         case 1:
           summary.total_wfo = count;
           break;
+        case 2:
+          summary.total_wfh = count;
+          break;
         case 3:
           summary.total_wfa = count;
           break;
       }
-    }); // Transform attendance data
+    });
+
+    const totalWorkHours = Number.parseFloat(workHourSummary?.[0]?.total_work_hours);
+    summary.total_work_hours = Number.isFinite(totalWorkHours) ? Number(totalWorkHours.toFixed(2)) : 0;
+
+    const todayDate = getJakartaDateString();
     const transformedData = attendanceData.rows.map((att) => {
-      // Parse attendance date
-      const attendanceDate = new Date(att.attendance_date);
+      const [dateYear, dateMonth, dateDay] = String(att.attendance_date).split('-').map(Number);
+      const day = String(dateDay).padStart(2, '0');
+      const month = MONTH_LABELS[dateMonth - 1];
+      const monthYear = `${month} ${dateYear}`;
+      const modeContract = deriveModeContract(att);
+      const statusContract = deriveStatusContract(att);
+      const isAlpha = statusContract.status_key === 'alpha';
+      const isActiveSession = Boolean(att.time_in && !att.time_out && att.attendance_date === todayDate);
+      const timeIn = att.time_in ? formatTimeOnly(att.time_in) : null;
+      const timeOut = att.time_out ? formatTimeOnly(att.time_out) : null;
 
-      // Format date components
-      const day = attendanceDate.getDate().toString().padStart(2, '0');
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec'
-      ];
-      const month = months[attendanceDate.getMonth()];
-      const year = attendanceDate.getFullYear();
-      const monthYear = `${month} ${year}`;
-
-      // Extract PredOut from notes if present for history display
       const notesStr = att.notes || '';
       const smartMatch = notesStr.match(/\[Smart AC\]\s*pred=([^,]+),\s*used=([^,]+),/);
       const fallbackMatch = notesStr.match(/\[Fallback AC\]\s*used=([^,]+),/);
       const predOutStr = smartMatch ? smartMatch[1] : fallbackMatch ? fallbackMatch[1] : null;
-      // Derive work hour display when DB value is 0 or invalid
       let workHourDisplay = att.work_hour;
       try {
         const rawIn = att.time_in ? new Date(att.time_in) : null;
         const rawOut = att.time_out ? new Date(att.time_out) : null;
         const outBeforeIn = rawIn && rawOut ? rawOut.getTime() < rawIn.getTime() : false;
-        if (workHourDisplay == null || workHourDisplay <= 0 || outBeforeIn) {
+        if (!isAlpha && (workHourDisplay == null || workHourDisplay <= 0 || outBeforeIn)) {
           if (predOutStr && rawIn) {
             const usedDate = new Date(`${att.attendance_date}T${predOutStr}:00+07:00`);
             workHourDisplay = calculateWorkHour(rawIn, usedDate);
@@ -341,15 +524,31 @@ export const getAttendanceHistory = async (req, res) => {
         // keep original workHourDisplay
       }
 
+      const displayBadge = isActiveSession
+        ? { display_badge_key: 'active', display_badge_label: 'Active Session' }
+        : {
+            display_badge_key: statusContract.status_key,
+            display_badge_label: statusContract.status_label
+          };
+
       return {
         id_attendance: att.id_attendance,
         attendance_date: att.attendance_date,
         date: day,
-        monthYear: monthYear,
-        time_in: formatTimeOnly(att.time_in),
-        time_out: formatTimeOnly(att.time_out),
-        work_hour: formatWorkHour(workHourDisplay),
+        monthYear,
+        date_label: buildDateLabel(att.attendance_date),
+        mode_key: modeContract.mode_key,
+        mode_label: modeContract.mode_label,
+        time_in: timeIn,
+        time_out: timeOut,
+        time_range: `${timeIn || '--:--'} - ${timeOut || '--:--'}`,
+        work_hour: isAlpha ? null : formatWorkHour(workHourDisplay),
         work_hour_raw: workHourDisplay,
+        status_key: statusContract.status_key,
+        status_label: statusContract.status_label,
+        display_badge_key: displayBadge.display_badge_key,
+        display_badge_label: displayBadge.display_badge_label,
+        location_label: att.location ? att.location.description : null,
         category: att.attendance_category ? att.attendance_category.category_name : null,
         status: att.status ? att.status.attendance_status_name : null,
         location: att.location ? att.location.description : null,
@@ -357,21 +556,28 @@ export const getAttendanceHistory = async (req, res) => {
       };
     });
 
-    // Calculate pagination info
-    const totalPages = Math.ceil(attendanceData.count / parseInt(limit));
+    const pageWasClamped = requestedPageNum !== pageNum;
 
     res.status(200).json({
       success: true,
       data: {
+        period: {
+          type: period,
+          label: buildPeriodLabel(period),
+          start_date: startDateOnly,
+          end_date: endDateOnly
+        },
         summary,
         attendances: transformedData,
         pagination: {
-          current_page: parseInt(page),
+          current_page: pageNum,
+          requested_page: requestedPageNum,
+          page_was_clamped: pageWasClamped,
           total_pages: totalPages,
           total_items: attendanceData.count,
-          items_per_page: parseInt(limit),
-          has_next_page: parseInt(page) < totalPages,
-          has_prev_page: parseInt(page) > 1
+          items_per_page: limitNum,
+          has_next_page: pageNum < totalPages,
+          has_prev_page: pageNum > 1
         }
       },
       message: 'Riwayat absensi berhasil diambil'
@@ -831,6 +1037,24 @@ export const debugCheckInTime = async (req, res) => {
   }
 };
 
+const toIsoStringOrNull = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const calculateWorkDurationSeconds = ({ timeIn, timeOut, effectiveNow }) => {
+  if (!timeIn) return null;
+
+  const start = new Date(timeIn).getTime();
+  const end = new Date(timeOut || effectiveNow).getTime();
+
+  if (isNaN(start) || isNaN(end)) return null;
+
+  return Math.max(0, Math.floor((end - start) / 1000));
+};
+
 export const getAttendanceStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -840,13 +1064,16 @@ export const getAttendanceStatus = async (req, res, next) => {
     let effectiveNow = null;
     const nowQuery = req.query?.now;
     const nowHeader = req.headers['x-client-now'];
+    const normalizeToJakartaBusinessTime = (value) => {
+      const parsed = new Date(value);
+      if (isNaN(parsed.getTime())) return null;
+      return new Date(parsed.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    };
     if (nowQuery) {
-      const parsed = new Date(nowQuery);
-      if (!isNaN(parsed.getTime())) effectiveNow = parsed;
+      effectiveNow = normalizeToJakartaBusinessTime(nowQuery);
     }
     if (!effectiveNow && nowHeader) {
-      const parsed = new Date(Array.isArray(nowHeader) ? nowHeader[0] : nowHeader);
-      if (!isNaN(parsed.getTime())) effectiveNow = parsed;
+      effectiveNow = normalizeToJakartaBusinessTime(Array.isArray(nowHeader) ? nowHeader[0] : nowHeader);
     }
     if (!effectiveNow) {
       const now = new Date();
@@ -943,14 +1170,17 @@ export const getAttendanceStatus = async (req, res, next) => {
         category: currentAttendance.location.attendance_category.category_name
       };
     } else if (todayBooking) {
-      active_mode = 'Work From Anywhere';
+      const bookingCategoryName =
+        todayBooking.location?.attendance_category?.category_name || 'Work From Anywhere';
+
+      active_mode = bookingCategoryName;
       active_location = {
         location_id: todayBooking.location.location_id,
         latitude: parseFloat(todayBooking.location.latitude),
         longitude: parseFloat(todayBooking.location.longitude),
         radius: todayBooking.location.radius,
         description: todayBooking.location.description,
-        category: todayBooking.location.attendance_category.category_name
+        category: bookingCategoryName
       };
     } else {
       // Get WFO location from database
@@ -998,7 +1228,7 @@ export const getAttendanceStatus = async (req, res, next) => {
 
     // Tentukan can_check_in
     // For WFA mode (booking approved today), ignore holiday/weekend gating; use time window only
-    const isWfaMode = active_mode === 'Work From Anywhere';
+    const isWfaMode = Boolean(todayBooking);
     const can_check_in =
       !currentAttendance &&
       currentTimeMinutes >= checkinStartMinutes &&
@@ -1006,7 +1236,27 @@ export const getAttendanceStatus = async (req, res, next) => {
       (isWfaMode || !isHolidayOrWeekend || holidayCheckinEnabled);
 
     // Tentukan can_check_out
-    const can_check_out = currentAttendance && !currentAttendance.time_out; // Bentuk respons
+    const can_check_out = currentAttendance && !currentAttendance.time_out;
+    const { stateKey, activeAttendanceId } = deriveStatusTodaySessionState({
+      currentAttendance,
+      canCheckIn: can_check_in
+    });
+    const { AttendanceSessionState: AttendanceSessionStateModel } = await import('../models/index.js');
+    const attendanceSessionState = await resolveAttendanceSessionState({
+      AttendanceSessionStateModel,
+      stateKey
+    });
+    const checkedInAtIso = currentAttendance ? toIsoStringOrNull(currentAttendance.time_in) : null;
+    const checkedOutAtIso = currentAttendance?.time_out ? toIsoStringOrNull(currentAttendance.time_out) : null;
+    const workDurationSeconds = currentAttendance
+      ? calculateWorkDurationSeconds({
+          timeIn: currentAttendance.time_in,
+          timeOut: currentAttendance.time_out,
+          effectiveNow
+        })
+      : null;
+
+    // Bentuk respons
     const response = {
       success: true,
       data: {
@@ -1017,6 +1267,9 @@ export const getAttendanceStatus = async (req, res, next) => {
           currentAttendance && currentAttendance.time_out
             ? formatTimeOnly(currentAttendance.time_out)
             : null,
+        checked_in_at_iso: checkedInAtIso,
+        checked_out_at_iso: checkedOutAtIso,
+        work_duration_seconds: workDurationSeconds,
         active_mode,
         active_location,
         today_date: todayDate,
@@ -1027,7 +1280,12 @@ export const getAttendanceStatus = async (req, res, next) => {
           start_time: checkinStartTime,
           end_time: checkinEndTime
         },
-        checkout_auto_time: checkoutAutoTime
+        checkout_auto_time: checkoutAutoTime,
+        attendance_session_state: attendanceSessionState,
+        active_attendance_id: activeAttendanceId
+      },
+      meta: {
+        cache_ttl_seconds: 300
       }
     };
 

@@ -89,6 +89,21 @@ describe('client-critical OpenAPI contract', () => {
         type: 'string',
         nullable: true
       },
+      checked_in_at_iso: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true
+      },
+      checked_out_at_iso: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true
+      },
+      work_duration_seconds: {
+        type: 'integer',
+        nullable: true,
+        minimum: 0
+      },
       active_mode: { type: 'string' },
       active_location: {
         type: 'object',
@@ -99,8 +114,28 @@ describe('client-critical OpenAPI contract', () => {
       holiday_checkin_enabled: { type: 'boolean' },
       current_time: { type: 'string' },
       checkin_window: { type: 'object' },
-      checkout_auto_time: { type: 'string' }
+      checkout_auto_time: { type: 'string' },
+      attendance_session_state: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          key: { type: 'string' },
+          label: { type: 'string' }
+        }
+      },
+      active_attendance_id: {
+        type: 'integer',
+        nullable: true
+      }
     });
+
+    expect(statusSchema.properties.meta).toMatchObject({
+      type: 'object',
+      properties: {
+        cache_ttl_seconds: { type: 'integer' }
+      }
+    });
+
     expect(dataSchema.properties).not.toHaveProperty('has_checked_in');
     expect(dataSchema.properties).not.toHaveProperty('has_checked_out');
     expect(dataSchema.properties).not.toHaveProperty('attendance');

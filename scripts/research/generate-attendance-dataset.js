@@ -356,7 +356,9 @@ export async function applyResearchAttendancePlan({
     await models.LocationEvent.bulkCreate(
       plan.plannedLocationEventRows.map((row) => ({
         ...row,
-        event_timestamp: `${row.event_date} ${row.event_type === 'ENTER' ? '08:00:00' : '17:00:00'}`
+        event_timestamp:
+          row.event_timestamp ||
+          `${row.event_date} ${row.event_type === 'ENTER' ? '08:00:00' : '17:00:00'}`
       })),
       { transaction }
     );

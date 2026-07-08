@@ -27,6 +27,15 @@ The backend uses a single official release path:
 - production deploy is automatic from `master`.
 - all required evidence is green before merge into `master`.
 
+Before `develop -> master` promotion:
+- run the promotion checklist MVP
+- require status-code proof for all endpoints represented in `docs/openapi.yaml`
+- block promotion if any endpoint lacks proof
+- review the Claude verdict
+- operator approves or rejects promotion
+
+If the checklist passes and the operator approves, promotion to `master` may proceed and existing automation may run.
+
 ## Master GitHub Gate
 
 GitHub enforces PR review + `build` for `master`.

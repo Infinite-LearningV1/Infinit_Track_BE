@@ -1785,31 +1785,198 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/attendance/history/personal/pdf:
+    get:
+      tags:
+        - Attendance
+      summary: Preview personal attendance history PDF
+      description: Backend-generated official My Attendance Report PDF for Android in-app preview. The report is scoped to the authenticated user from the bearer token; arbitrary user_id query values are not accepted for this personal contract.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, custom]
+            default: monthly
+          description: Report period. Defaults to the current month when omitted.
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-01'
+          description: Required when period=custom. Must use YYYY-MM-DD.
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-31'
+          description: Required when period=custom. Must use YYYY-MM-DD and be greater than or equal to start_date.
+        - in: query
+          name: timezone
+          schema:
+            type: string
+            default: Asia/Jakarta
+            example: Asia/Makassar
+          description: Optional IANA timezone used for period boundary selection. Timestamp display remains backend-normalized.
+      responses:
+        '200':
+          description: Personal attendance PDF preview generated successfully
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: inline; filename="infinite-track-attendance-report-2026-05.pdf"
+              description: Inline disposition for Android in-app preview.
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+              description: PDF responses are not cacheable.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid period or custom date input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/attendance/history/export.pdf:
+    get:
+      tags:
+        - Attendance
+      summary: Download personal attendance history PDF
+      description: Backend-generated official My Attendance Report PDF for Android download/share/export. Uses the same backend report payload and PDF renderer as the preview endpoint; only Content-Disposition differs.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, custom]
+            default: monthly
+          description: Report period. Defaults to the current month when omitted.
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-01'
+          description: Required when period=custom. Must use YYYY-MM-DD.
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-31'
+          description: Required when period=custom. Must use YYYY-MM-DD and be greater than or equal to start_date.
+        - in: query
+          name: timezone
+          schema:
+            type: string
+            default: Asia/Jakarta
+            example: Asia/Makassar
+          description: Optional IANA timezone used for period boundary selection. Timestamp display remains backend-normalized.
+      responses:
+        '200':
+          description: Personal attendance PDF export generated successfully
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="infinite-track-attendance-report-2026-05.pdf"
+              description: Attachment disposition for Android download/share/export.
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+              description: PDF responses are not cacheable.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid period or custom date input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: E_VALIDATION
+                  message:
+                    type: string
+                    example: Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/attendance/history:
     get:
       tags:
         - Attendance
       summary: Get user attendance history
-      description: Retrieve attendance history for the current user
+      description: Retrieve authenticated user's attendance history for Recent Attendance and Attendance Timeline UI. Active Session is a computed display badge only and is not stored in attendance_statuses.
       parameters:
         - in: query
-          name: month
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, all, custom]
+            default: daily
+          description: Date window to retrieve. Use custom with start_date and end_date.
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-01'
+          description: Required when period=custom. Must use YYYY-MM-DD.
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+            example: '2026-05-31'
+          description: Required when period=custom. Must use YYYY-MM-DD and be greater than or equal to start_date.
+        - in: query
+          name: page
           schema:
             type: integer
             minimum: 1
-            maximum: 12
-          description: Filter by month (1-12)
-        - in: query
-          name: year
-          schema:
-            type: integer
-          description: Filter by year
+            default: 1
+          description: Page number for paginated attendance rows.
         - in: query
           name: limit
           schema:
             type: integer
-            default: 50
-          description: Number of records to return
+            minimum: 1
+            default: 5
+          description: Number of records to return.
       responses:
         '200':
           description: Attendance history retrieved successfully
@@ -1822,9 +1989,193 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Attendance'
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            example: custom
+                          label:
+                            type: string
+                            example: Custom Range
+                          start_date:
+                            type: string
+                            nullable: true
+                            example: '2026-05-01'
+                          end_date:
+                            type: string
+                            nullable: true
+                            example: '2026-05-31'
+                      summary:
+                        type: object
+                        properties:
+                          total_ontime:
+                            type: integer
+                            example: 8
+                          total_late:
+                            type: integer
+                            example: 2
+                          total_early:
+                            type: integer
+                            example: 1
+                          total_alpha:
+                            type: integer
+                            example: 0
+                          total_wfo:
+                            type: integer
+                            example: 6
+                          total_wfa:
+                            type: integer
+                            example: 3
+                          total_wfh:
+                            type: integer
+                            example: 2
+                          total_work_hours:
+                            type: number
+                            format: float
+                            example: 88.5
+                      attendances:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id_attendance:
+                              type: integer
+                              example: 123
+                            attendance_date:
+                              type: string
+                              format: date
+                              example: '2026-05-03'
+                            date:
+                              type: string
+                              description: Legacy day-of-month display field retained for backward compatibility.
+                              example: '03'
+                            monthYear:
+                              type: string
+                              description: Legacy month-year display field retained for backward compatibility.
+                              example: May 2026
+                            date_label:
+                              type: string
+                              example: 03 May 2026
+                            mode_key:
+                              type: string
+                              nullable: true
+                              enum: [wfo, wfh, wfa]
+                              example: wfo
+                            mode_label:
+                              type: string
+                              nullable: true
+                              example: WFO
+                            time_in:
+                              type: string
+                              nullable: true
+                              example: '08:04'
+                            time_out:
+                              type: string
+                              nullable: true
+                              example: '17:06'
+                            time_range:
+                              type: string
+                              example: '08:04 - 17:06'
+                            work_hour:
+                              type: string
+                              nullable: true
+                              description: Formatted work hour display. Null for alpha/absent rows to avoid misleading duration display.
+                              example: '09:02'
+                            work_hour_raw:
+                              type: number
+                              nullable: true
+                              format: float
+                              example: 9.03
+                            status_key:
+                              type: string
+                              nullable: true
+                              enum: [ontime, late, early, alpha]
+                              example: ontime
+                            status_label:
+                              type: string
+                              nullable: true
+                              example: On Time
+                            display_badge_key:
+                              type: string
+                              nullable: true
+                              enum: [active, ontime, late, early, alpha]
+                              example: active
+                            display_badge_label:
+                              type: string
+                              nullable: true
+                              example: Active Session
+                            location_label:
+                              type: string
+                              nullable: true
+                              example: Kantor Utama
+                            category:
+                              type: string
+                              nullable: true
+                              description: Legacy category label retained for backward compatibility.
+                              example: Work From Office
+                            status:
+                              type: string
+                              nullable: true
+                              description: Legacy final status label retained for backward compatibility.
+                              example: ontime
+                            location:
+                              type: string
+                              nullable: true
+                              description: Legacy location label retained for backward compatibility.
+                              example: Kantor Utama
+                            notes:
+                              type: string
+                              nullable: true
+                              example: Manual attendance
+                      pagination:
+                        type: object
+                        properties:
+                          current_page:
+                            type: integer
+                            description: Effective page returned. If the requested page exceeds total_pages and records exist, this is clamped to the last available page.
+                            example: 1
+                          requested_page:
+                            type: integer
+                            description: Original requested page after positive-integer normalization.
+                            example: 120
+                          page_was_clamped:
+                            type: boolean
+                            description: True when the requested page exceeded total_pages and the response was served from the last available page.
+                            example: true
+                          total_pages:
+                            type: integer
+                            example: 4
+                          total_items:
+                            type: integer
+                            example: 20
+                          items_per_page:
+                            type: integer
+                            example: 5
+                          has_next_page:
+                            type: boolean
+                            example: true
+                          has_prev_page:
+                            type: boolean
+                            example: false
+                  message:
+                    type: string
+                    example: Riwayat absensi berhasil diambil
+        '400':
+          description: Invalid period or custom date input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Parameter start_date dan end_date wajib valid dengan format YYYY-MM-DD untuk period custom
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1860,6 +2211,21 @@ paths:
                       checked_out_at:
                         type: string
                         nullable: true
+                      checked_in_at_iso:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: ISO timestamp for check-in, intended for duration calculations.
+                      checked_out_at_iso:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: ISO timestamp for check-out, null while the session is active.
+                      work_duration_seconds:
+                        type: integer
+                        nullable: true
+                        minimum: 0
+                        description: Derived elapsed work duration in seconds. Active sessions use current_time as the end point.
                       active_mode:
                         type: string
                       active_location:
@@ -1877,6 +2243,28 @@ paths:
                         type: object
                       checkout_auto_time:
                         type: string
+                      attendance_session_state:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            example: 2
+                          key:
+                            type: string
+                            example: active
+                          label:
+                            type: string
+                            example: Active Session
+                      active_attendance_id:
+                        type: integer
+                        nullable: true
+                        example: 123
+                  meta:
+                    type: object
+                    properties:
+                      cache_ttl_seconds:
+                        type: integer
+                        example: 300
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1964,6 +2352,33 @@ paths:
                 confirm:
                   type: string
                   example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+                seed_suffix:
+                  type: string
+                  maxLength: 80
+                  example: 'research-batch-001'
+                existing_strategy:
+                  type: string
+                  enum:
+                    - skip
+                    - replace
+                  default: skip
+                  example: skip
+                discipline_mix:
+                  type: object
+                  description: Optional deterministic discipline distribution for generated rows.
+                  properties:
+                    ontime:
+                      type: number
+                      example: 75
+                    late:
+                      type: number
+                      example: 12
+                    early:
+                      type: number
+                      example: 8
+                    alpha:
+                      type: number
+                      example: 5
       responses:
         '200':
           description: Research attendance daily trigger processed successfully
@@ -1987,7 +2402,10 @@ paths:
                     example: '2026-07-01'
                   seed:
                     type: string
-                    example: '2026-07-01:daily'
+                    example: '2026-07-01:daily:research-batch-001'
+                  existing_strategy:
+                    type: string
+                    example: skip
                   policy:
                     type: object
                   population:
@@ -1997,6 +2415,9 @@ paths:
                     type: object
                     nullable: true
                   mode_summary:
+                    type: object
+                    nullable: true
+                  discipline_summary:
                     type: object
                     nullable: true
                   warnings:
@@ -2010,7 +2431,13 @@ paths:
                   planned_writes:
                     type: object
                     nullable: true
+                  would_replace:
+                    type: object
+                    nullable: true
                   applied_writes:
+                    type: object
+                    nullable: true
+                  replaced:
                     type: object
                     nullable: true
                   skipped_existing:
@@ -2019,16 +2446,53 @@ paths:
                   skipped_conflict:
                     type: integer
                     example: 0
+              examples:
+                dryRun:
+                  value:
+                    success: true
+                    endpoint_type: daily
+                    mode: dry-run
+                    target_date: '2026-07-01'
+                    seed: '2026-07-01:daily:research-batch-001'
+                    existing_strategy: skip
+                    discipline_summary:
+                      ontime: 12
+                      late: 2
+                      early: 1
+                      alpha: 1
+                    planned_writes:
+                      attendance: 16
+                      bookings: 1
+                      location_events: 30
+                    would_replace:
+                      attendance: 0
+                      location_events: 0
         '400':
-          description: Invalid trigger request payload or confirmation guard failure
+          description: Invalid trigger request payload, discipline mix, seed suffix, or confirmation guard failure
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Feature disabled, non-working day blocked, or no eligible users
+          description: Feature disabled, non-working day blocked, no eligible users, or invalid reference conflict
+          content:
+            application/json:
+              examples:
+                invalidReference:
+                  value:
+                    success: false
+                    code: E_INVALID_REFERENCE_STATE
+                    message: Research attendance trigger memiliki conflict reference.
+                    target_date: '2026-07-02'
+                    endpoint_type: daily
+                    conflicts:
+                      - type: invalid_reference
+                        user_id: 62
+                        target_date: '2026-07-02'
+                        mode: WFA
+                    hint: Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.
         '500':
-          description: Invalid reference state or trigger execution failure
+          description: Unexpected trigger execution failure
 
   /api/attendance/research-trigger/full-day:
     post:
@@ -2063,6 +2527,33 @@ paths:
                 confirm:
                   type: string
                   example: 'I_UNDERSTAND_THIS_WRITES_ATTENDANCE'
+                seed_suffix:
+                  type: string
+                  maxLength: 80
+                  example: 'research-batch-001'
+                existing_strategy:
+                  type: string
+                  enum:
+                    - skip
+                    - replace
+                  default: skip
+                  example: skip
+                discipline_mix:
+                  type: object
+                  description: Optional deterministic discipline distribution for generated rows.
+                  properties:
+                    ontime:
+                      type: number
+                      example: 75
+                    late:
+                      type: number
+                      example: 12
+                    early:
+                      type: number
+                      example: 8
+                    alpha:
+                      type: number
+                      example: 5
       responses:
         '200':
           description: Research attendance full-day trigger processed successfully
@@ -2086,7 +2577,10 @@ paths:
                     example: '2026-07-01'
                   seed:
                     type: string
-                    example: '2026-07-01:full-day'
+                    example: '2026-07-01:full-day:research-batch-001'
+                  existing_strategy:
+                    type: string
+                    example: replace
                   policy:
                     type: object
                   population:
@@ -2096,6 +2590,9 @@ paths:
                     type: object
                     nullable: true
                   mode_summary:
+                    type: object
+                    nullable: true
+                  discipline_summary:
                     type: object
                     nullable: true
                   warnings:
@@ -2109,7 +2606,13 @@ paths:
                   planned_writes:
                     type: object
                     nullable: true
+                  would_replace:
+                    type: object
+                    nullable: true
                   applied_writes:
+                    type: object
+                    nullable: true
+                  replaced:
                     type: object
                     nullable: true
                   skipped_existing:
@@ -2118,16 +2621,53 @@ paths:
                   skipped_conflict:
                     type: integer
                     example: 0
+              examples:
+                apply:
+                  value:
+                    success: true
+                    endpoint_type: full-day
+                    mode: apply
+                    target_date: '2026-07-01'
+                    seed: '2026-07-01:full-day:research-batch-001'
+                    existing_strategy: replace
+                    discipline_summary:
+                      ontime: 39
+                      late: 6
+                      early: 4
+                      alpha: 3
+                    applied_writes:
+                      attendance: 52
+                      bookings: 2
+                      location_events: 98
+                    replaced:
+                      attendance: 12
+                      location_events: 24
         '400':
-          description: Invalid trigger request payload or confirmation guard failure
+          description: Invalid trigger request payload, discipline mix, seed suffix, or confirmation guard failure
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Feature disabled, non-working day blocked, or no eligible users
+          description: Feature disabled, non-working day blocked, no eligible users, or invalid reference conflict
+          content:
+            application/json:
+              examples:
+                invalidReference:
+                  value:
+                    success: false
+                    code: E_INVALID_REFERENCE_STATE
+                    message: Research attendance trigger memiliki conflict reference.
+                    target_date: '2026-07-02'
+                    endpoint_type: full-day
+                    conflicts:
+                      - type: invalid_reference
+                        user_id: 62
+                        target_date: '2026-07-02'
+                        mode: WFA
+                    hint: Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.
         '500':
-          description: Invalid reference state or trigger execution failure
+          description: Unexpected trigger execution failure
 
   /api/attendance/{id}:
     delete:
@@ -2635,9 +3175,10 @@ paths:
           name: status
           schema:
             type: string
-            enum: [pending, approved, rejected]
-          description: Filter bookings by status
-          example: 'approved'
+            enum: [all, pending, approved, rejected]
+            default: all
+          description: Filter bookings by status. Use all or omit the parameter to return all statuses in bookings[].
+          example: 'all'
         - in: query
           name: page
           schema:
@@ -2685,6 +3226,8 @@ paths:
                   data:
                     type: object
                     properties:
+                      summary:
+                        $ref: '#/components/schemas/BookingHistorySummary'
                       bookings:
                         type: array
                         items:
@@ -2696,7 +3239,8 @@ paths:
                         properties:
                           status:
                             type: string
-                            example: 'approved'
+                            enum: [all, pending, approved, rejected]
+                            example: 'all'
                           sort_by:
                             type: string
                             example: 'created_at'
@@ -5783,6 +6327,27 @@ components:
           format: date-time
           example: '2025-07-08T14:30:00.000Z'
 
+    BookingHistorySummary:
+      type: object
+      description: User-scoped WFA booking/request summary across all statuses. This summary is independent from the active status filter applied to bookings[].
+      properties:
+        total:
+          type: integer
+          example: 8
+          description: Total WFA booking/request records for the authenticated user across pending, approved, and rejected statuses
+        pending:
+          type: integer
+          example: 2
+          description: Pending WFA booking/request records for the authenticated user
+        approved:
+          type: integer
+          example: 5
+          description: Approved WFA booking/request records for the authenticated user
+        rejected:
+          type: integer
+          example: 1
+          description: Rejected WFA booking/request records for the authenticated user
+
     BookingHistoryItem:
       type: object
       description: Comprehensive booking history item with user details, location info, and status tracking
@@ -5828,7 +6393,17 @@ components:
           type: string
           enum: [pending, approved, rejected]
           example: 'approved'
-          description: Current booking status
+          description: Current booking status from the booking status table
+        status_key:
+          type: string
+          enum: [pending, approved, rejected]
+          example: 'approved'
+          description: Stable normalized status key for client filtering/display logic
+        status_label:
+          type: string
+          enum: [Pending, Approved, Rejected]
+          example: 'Approved'
+          description: Human-readable status label for display
         location:
           type: object
           description: WFA location details
