@@ -192,6 +192,15 @@ describe('backend runtime config contract', () => {
     expect(() => validateCorsOrigin()).not.toThrow();
   });
 
+  test('accepts multiple explicit production CORS origins for credentialed requests', async () => {
+    const { config, validateCorsOrigin } = await loadProductionCorsValidation(
+      'https://app.example.com, https://admin.example.com'
+    );
+
+    expect(config.cors.origin).toEqual(['https://app.example.com', 'https://admin.example.com']);
+    expect(() => validateCorsOrigin()).not.toThrow();
+  });
+
   test('reads DB_PORT and SSL settings into sequelize-cli config for managed database migrations', () => {
     process.env.DB_PORT = '25060';
     process.env.DB_SSL = 'true';
