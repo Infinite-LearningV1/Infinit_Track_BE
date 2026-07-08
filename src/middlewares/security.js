@@ -173,12 +173,14 @@ export const validateCorsOrigin = () => {
     return;
   }
 
-  if (!origin || origin === '*') {
+  const origins = Array.isArray(origin) ? origin : [origin];
+
+  if (origins.length === 0 || origins.some((value) => !value || value === '*')) {
     throw new Error(
       'CORS_ORIGIN must be set explicitly in production; wildcard or empty origins are not allowed.'
     );
   }
 
-  console.log(`✓ CORS configured for: ${origin}`);
+  console.log(`✓ CORS configured for: ${origins.join(', ')}`);
 };
 
