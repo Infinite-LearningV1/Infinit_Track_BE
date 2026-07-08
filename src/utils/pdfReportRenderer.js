@@ -1,10 +1,29 @@
 const PAGE_WIDTH = 595;
 const PAGE_HEIGHT = 842;
-const LEFT_MARGIN = 48;
-const TOP_MARGIN = 56;
+const LEFT_MARGIN = 40;
+const TOP_MARGIN = 42;
 const BOTTOM_MARGIN = 56;
+const CONTENT_WIDTH = PAGE_WIDTH - LEFT_MARGIN * 2;
 const LINE_HEIGHT = 15;
 const MAX_LINE_CHARS = 92;
+
+const COLORS = {
+  purple: [0.541, 0.239, 1],
+  purpleSoft: [0.965, 0.94, 1],
+  yellow: [1, 0.804, 0.161],
+  yellowSoft: [1, 0.976, 0.894],
+  cyan: [0.22, 0.976, 0.961],
+  cyanSoft: [0.9, 1, 0.996],
+  red: [1, 0.42, 0.42],
+  redSoft: [1, 0.93, 0.945],
+  text: [0.184, 0.145, 0.188],
+  muted: [0.42, 0.38, 0.46],
+  line: [0.86, 0.83, 0.9],
+  page: [0.985, 0.982, 0.99],
+  white: [1, 1, 1]
+};
+
+const color = (rgb) => rgb.join(' ');
 
 const escapePdfText = (value) => {
   return String(value ?? '')
@@ -39,65 +58,64 @@ const wrapText = (value, maxChars = MAX_LINE_CHARS) => {
   return lines.length > 0 ? lines : ['—'];
 };
 
-const makeTextLine = (text, x, y, size = 10) => {
-  return `BT /F1 ${size} Tf ${x} ${y} Td (${escapePdfText(text)}) Tj ET`;
+const makeTextLine = (text, x, y, size = 10, rgb = COLORS.text) => {
+  return `BT /F1 ${size} Tf ${color(rgb)} rg ${x} ${y} Td (${escapePdfText(text)}) Tj ET`;
 };
+
+const makeRect = (x, y, width, height, fill = COLORS.white, stroke = COLORS.line, strokeWidth = 0.6) => {
+  return `q ${color(fill)} rg ${x} ${y} ${width} ${height} re f Q\nq ${strokeWidth} w ${color(stroke)} RG ${x} ${y} ${width} ${height} re S Q`;
+};
+
+const makeFillRect = (x, y, width, height, fill) => `q ${color(fill)} rg ${x} ${y} ${width} ${height} re f Q`;
 
 const currentPage = (pages) => pages[pages.length - 1];
 
+const createPage = () => ({
+  lines: [makeFillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, COLORS.page)],
+  cursorY: PAGE_HEIGHT - TOP_MARGIN
+});
+
 const ensurePageSpace = (pages, requiredHeight = LINE_HEIGHT) => {
   if (currentPage(pages).cursorY - requiredHeight < BOTTOM_MARGIN) {
-    pages.push({ lines: [], cursorY: PAGE_HEIGHT - TOP_MARGIN });
+    pages.push(createPage());
   }
 };
 
-const addWrappedLine = (pages, text, options = {}) => {
-  const size = options.size || 10;
+const addText = (pages, text, x, y, options = {}) => {
+  currentPage(pages).lines.push(makeTextLine(text, x, y, options.size || 10, options.color || COLORS.text));
+};
+
+const addWrappedText = (pages, text, x, y, options = {}) => {
   const lineHeight = options.lineHeight || LINE_HEIGHT;
-  const indent = options.indent || 0;
-  const maxChars = options.maxChars || MAX_LINE_CHARS;
-
-  for (const line of wrapText(text, maxChars)) {
-    ensurePageSpace(pages, lineHeight);
-    const page = currentPage(pages);
-    page.lines.push(makeTextLine(line, LEFT_MARGIN + indent, page.cursorY, size));
-    page.cursorY -= lineHeight;
-  }
-};
-
-const addGap = (pages, gap = 8) => {
-  currentPage(pages).cursorY -= gap;
-};
-
-const addRule = (pages) => {
-  addWrappedLine(pages, '────────────────────────────────────────────────────────────────────────────', {
-    size: 8,
-    lineHeight: 10,
-    maxChars: 100
+  const lines = wrapText(text, options.maxChars || MAX_LINE_CHARS);
+  lines.forEach((line, index) => {
+    addText(pages, line, x, y - index * lineHeight, options);
   });
+  return y - lines.length * lineHeight;
+};
+
+const addCard = (pages, x, y, width, height, options = {}) => {
+  currentPage(pages).lines.push(
+    makeRect(x, y, width, height, options.fill || COLORS.white, options.stroke || COLORS.line, options.strokeWidth || 0.6)
+  );
+};
+
+const addBadge = (pages, x, y, label, options = {}) => {
+  const width = options.width || 86;
+  const height = options.height || 22;
+  addCard(pages, x, y, width, height, {
+    fill: options.fill || COLORS.purpleSoft,
+    stroke: options.stroke || COLORS.purple,
+    strokeWidth: 0.7
+  });
+  addText(pages, label, x + 12, y + 7, { size: options.size || 9, color: options.color || COLORS.purple });
 };
 
 const addSectionTitle = (pages, title) => {
-  addGap(pages, 6);
-  addWrappedLine(pages, title, { size: 13, lineHeight: 18 });
-};
-
-const addLabelValue = (pages, label, value, options = {}) => {
-  addWrappedLine(pages, `${label}: ${value ?? '—'}`, {
-    size: options.size || 10,
-    lineHeight: options.lineHeight || LINE_HEIGHT,
-    indent: options.indent || 0,
-    maxChars: options.maxChars || MAX_LINE_CHARS
-  });
-};
-
-const addMetric = (pages, label, value, helper) => {
-  addWrappedLine(pages, `${label}: ${value ?? '—'}${helper ? ` — ${helper}` : ''}`, {
-    size: 10,
-    lineHeight: 14,
-    indent: 8,
-    maxChars: 100
-  });
+  ensurePageSpace(pages, 28);
+  const page = currentPage(pages);
+  addText(pages, title, LEFT_MARGIN, page.cursorY, { size: 13, color: COLORS.text });
+  page.cursorY -= 24;
 };
 
 const formatDateLabel = (value) => {
@@ -113,86 +131,194 @@ const formatDistributionRows = (distribution = {}) => {
     .map(([key, item]) => {
       const percentage = item.percentage == null ? 'N/A' : `${item.percentage}%`;
       const note = item.note ? ` — ${item.note}` : '';
-      return `${item.label || key}: ${item.count ?? 0} (${percentage})${note}`;
+      return {
+        key,
+        label: item.label || key,
+        count: item.count ?? 0,
+        percentage,
+        note
+      };
     });
 };
 
 const addHeader = (pages, payload) => {
-  addWrappedLine(pages, 'INFINITE TRACK', { size: 17, lineHeight: 20 });
-  addWrappedLine(pages, 'Personal Attendance Report', { size: 15, lineHeight: 19 });
-  addWrappedLine(pages, 'PDF Ready • Personal report', { size: 10, lineHeight: 14 });
-  addRule(pages);
+  const page = currentPage(pages);
+  const cardX = LEFT_MARGIN;
+  const cardY = PAGE_HEIGHT - 248;
+  const cardW = CONTENT_WIDTH;
+  const cardH = 200;
 
-  addWrappedLine(pages, payload.user.full_name || 'User name unavailable', { size: 13, lineHeight: 17 });
-  addWrappedLine(
+  addCard(pages, cardX, cardY, cardW, cardH, { fill: COLORS.white, stroke: COLORS.line, strokeWidth: 0.8 });
+  currentPage(pages).lines.push(makeFillRect(cardX, cardY + cardH - 48, cardW, 48, COLORS.purpleSoft));
+
+  addText(pages, '⬢ INFINITE', cardX + 24, cardY + cardH - 31, { size: 15, color: COLORS.text });
+  addText(pages, 'TRACK', cardX + 100, cardY + cardH - 31, { size: 15, color: COLORS.purple });
+  addText(pages, 'Personal Attendance Report', cardX + 24, cardY + cardH - 72, { size: 16, color: COLORS.text });
+  addBadge(pages, cardX + cardW - 116, cardY + cardH - 38, 'PDF Ready', { width: 88 });
+  addText(pages, 'Personal report', cardX + cardW - 112, cardY + cardH - 65, { size: 9, color: COLORS.muted });
+
+  addCard(pages, cardX + 24, cardY + 82, 56, 56, { fill: COLORS.purpleSoft, stroke: COLORS.purpleSoft, strokeWidth: 0.1 });
+  addText(pages, '●', cardX + 44, cardY + 115, { size: 20, color: COLORS.purple });
+  addText(pages, '●', cardX + 38, cardY + 94, { size: 28, color: COLORS.purple });
+
+  addText(pages, payload.user.full_name || 'User name unavailable', cardX + 96, cardY + 122, { size: 13, color: COLORS.text });
+  addText(
     pages,
     [payload.user.nip_nim, payload.user.role].filter(Boolean).join(' • ') || 'NIP/NIM or role unavailable',
-    { size: 10, lineHeight: 14 }
+    cardX + 96,
+    cardY + 103,
+    { size: 10, color: COLORS.muted }
   );
-  addWrappedLine(
+  addText(
     pages,
     [payload.user.position, payload.user.division].filter(Boolean).join(' • ') || 'Position or division unavailable',
-    { size: 10, lineHeight: 14 }
+    cardX + 96,
+    cardY + 86,
+    { size: 9, color: COLORS.muted }
   );
-  addGap(pages, 6);
 
-  addLabelValue(pages, 'Period', payload.period.display_label);
-  addLabelValue(pages, 'Generated on', formatDateLabel(payload.report_metadata.generated_at));
-  addLabelValue(pages, 'Generated by', payload.report_metadata.generated_by || 'Infinite Track Backend');
-  addLabelValue(pages, 'Data source', 'Backend attendance records');
-  addRule(pages);
+  const metaY = cardY + 38;
+  addText(pages, 'Period', cardX + 28, metaY + 24, { size: 8, color: COLORS.muted });
+  addText(pages, payload.period.display_label, cardX + 28, metaY + 10, { size: 10, color: COLORS.text });
+  addText(pages, 'Generated on', cardX + 28, metaY - 12, { size: 8, color: COLORS.muted });
+  addText(pages, formatDateLabel(payload.report_metadata.generated_at), cardX + 28, metaY - 26, { size: 10, color: COLORS.text });
+
+  addText(pages, 'Generated by', cardX + 285, metaY + 24, { size: 8, color: COLORS.muted });
+  addText(pages, payload.report_metadata.generated_by || 'Infinite Track Backend', cardX + 285, metaY + 10, {
+    size: 10,
+    color: COLORS.text
+  });
+  addText(pages, 'Data source', cardX + 285, metaY - 12, { size: 8, color: COLORS.muted });
+  addText(pages, 'Backend attendance records', cardX + 285, metaY - 26, { size: 10, color: COLORS.text });
+
+  page.cursorY = cardY - 28;
+};
+
+const addMetricCard = (pages, x, y, width, label, value, helper, palette) => {
+  addCard(pages, x, y, width, 70, { fill: palette.fill, stroke: palette.stroke, strokeWidth: 0.8 });
+  addText(pages, label, x + 16, y + 48, { size: 9, color: COLORS.text });
+  addText(pages, value ?? '—', x + 16, y + 27, { size: 18, color: COLORS.text });
+  if (helper) addWrappedText(pages, helper, x + 16, y + 13, { size: 8, color: COLORS.muted, lineHeight: 10, maxChars: 24 });
 };
 
 const addSummary = (pages, summary) => {
   addSectionTitle(pages, 'Report Summary');
-  addMetric(pages, 'Attendance Rate', summary.attendance_rate_label, 'Overall attendance');
-  addMetric(pages, 'On Time Days', `${summary.on_time_days ?? 0} days`, 'Days with on-time check-in');
-  addMetric(pages, 'Late Days', `${summary.late_days ?? summary.late ?? 0} days`, 'Days with late check-in');
-  addMetric(pages, 'Alpha Days', `${summary.alpha_days ?? summary.alpha ?? 0} days`, 'Days without valid attendance');
-  addMetric(pages, 'Counted Days', `${summary.total_counted_days ?? 0} days`, 'Present + alpha days');
-  addMetric(pages, 'Total Work Hours', summary.total_work_hours_label || summary.total_work_hours, 'Total productive work hours');
-  addMetric(pages, 'Expected Working Days', summary.expected_working_days_label || summary.expected_working_days || 'Unavailable');
+  const page = currentPage(pages);
+  const gap = 10;
+  const cardW = (CONTENT_WIDTH - gap * 2) / 3;
+  const y1 = page.cursorY - 70;
+  const y2 = y1 - 82;
+  const x1 = LEFT_MARGIN;
+  const x2 = LEFT_MARGIN + cardW + gap;
+  const x3 = LEFT_MARGIN + (cardW + gap) * 2;
+
+  addMetricCard(pages, x1, y1, cardW, 'Attendance Rate', summary.attendance_rate_label, 'Overall attendance', {
+    fill: COLORS.cyanSoft,
+    stroke: COLORS.cyan
+  });
+  addMetricCard(pages, x2, y1, cardW, 'On Time Days', `${summary.on_time_days ?? 0} days`, 'On-time check-in', {
+    fill: COLORS.cyanSoft,
+    stroke: COLORS.cyan
+  });
+  addMetricCard(pages, x3, y1, cardW, 'Late Days', `${summary.late_days ?? summary.late ?? 0} days`, 'Late check-in', {
+    fill: COLORS.yellowSoft,
+    stroke: COLORS.yellow
+  });
+  addMetricCard(pages, x1, y2, cardW, 'Alpha Days', `${summary.alpha_days ?? summary.alpha ?? 0} days`, 'No valid attendance', {
+    fill: COLORS.redSoft,
+    stroke: COLORS.red
+  });
+  addMetricCard(pages, x2, y2, cardW, 'Counted Days', `${summary.total_counted_days ?? 0} days`, 'Present + alpha days', {
+    fill: COLORS.purpleSoft,
+    stroke: COLORS.purple
+  });
+  addMetricCard(pages, x3, y2, cardW, 'Total Work Hours', summary.total_work_hours_label || `${summary.total_work_hours ?? 0}h`, 'Productive work hours', {
+    fill: COLORS.cyanSoft,
+    stroke: COLORS.cyan
+  });
+
+  page.cursorY = y2 - 30;
+};
+
+const addDistributionCard = (pages, x, y, width, height, title, rows) => {
+  addCard(pages, x, y, width, height, { fill: COLORS.white, stroke: COLORS.line, strokeWidth: 0.8 });
+  addText(pages, title, x + 18, y + height - 24, { size: 11, color: COLORS.text });
+  rows.slice(0, 5).forEach((row, index) => {
+    const rowY = y + height - 48 - index * 18;
+    addText(pages, '●', x + 18, rowY, { size: 10, color: index === 0 ? COLORS.cyan : index === 1 ? COLORS.yellow : COLORS.red });
+    addText(pages, `${row.label}`, x + 34, rowY, { size: 9, color: COLORS.muted });
+    addText(pages, `${row.count} (${row.percentage})`, x + width - 82, rowY, { size: 9, color: COLORS.text });
+    if (row.note) addWrappedText(pages, row.note.replace(/^ — /, ''), x + 34, rowY - 11, { size: 7, color: COLORS.muted, maxChars: 34 });
+  });
 };
 
 const addDistributions = (pages, payload) => {
   addSectionTitle(pages, 'Your Statistics');
-  addWrappedLine(pages, 'Attendance Status Distribution', { size: 11, lineHeight: 15, indent: 4 });
-  formatDistributionRows(payload.status_distribution).forEach((line) => addWrappedLine(pages, line, { indent: 12, lineHeight: 13 }));
-  addGap(pages, 4);
-  addWrappedLine(pages, 'Work Mode Distribution', { size: 11, lineHeight: 15, indent: 4 });
-  formatDistributionRows(payload.mode_distribution).forEach((line) => addWrappedLine(pages, line, { indent: 12, lineHeight: 13 }));
+  const page = currentPage(pages);
+  const gap = 12;
+  const cardW = (CONTENT_WIDTH - gap) / 2;
+  const cardH = 112;
+  const y = page.cursorY - cardH;
+
+  addDistributionCard(pages, LEFT_MARGIN, y, cardW, cardH, 'Attendance Status Distribution', formatDistributionRows(payload.status_distribution));
+  addDistributionCard(
+    pages,
+    LEFT_MARGIN + cardW + gap,
+    y,
+    cardW,
+    cardH,
+    'Work Mode Distribution',
+    formatDistributionRows(payload.mode_distribution)
+  );
+
+  page.cursorY = y - 30;
 };
 
 const addTimeline = (pages, payload) => {
   addSectionTitle(pages, 'Monthly Attendance History');
-  addWrappedLine(pages, 'Date | Check In | Check Out | Work Hours | Status | Mode | Location', {
+  const page = currentPage(pages);
+  addText(pages, 'Date | Check In | Check Out | Work Hours | Status | Mode | Location', LEFT_MARGIN + 12, page.cursorY, {
     size: 9,
-    lineHeight: 13,
-    maxChars: 110
+    color: COLORS.muted
   });
-  addRule(pages);
+  page.cursorY -= 12;
 
   if (payload.empty_state.is_empty) {
-    addWrappedLine(pages, payload.empty_state.message, { indent: 8 });
+    addCard(pages, LEFT_MARGIN, page.cursorY - 34, CONTENT_WIDTH, 44, { fill: COLORS.white, stroke: COLORS.line });
+    addText(pages, payload.empty_state.message, LEFT_MARGIN + 14, page.cursorY - 13, { size: 10, color: COLORS.muted });
+    page.cursorY -= 56;
     return;
   }
 
   payload.timeline.forEach((row) => {
-    addWrappedLine(
-      pages,
-      `${row.attendance_date} | ${row.time_in || '--:--'} | ${row.time_out || '--:--'} | ${row.work_hour || '—'} | ${
-        row.status_label || '—'
-      } | ${row.mode_label || '—'} | ${row.location_label || 'Location unavailable'}`,
-      { size: 9, lineHeight: 13, maxChars: 112 }
-    );
+    ensurePageSpace(pages, 48);
+    const rowPage = currentPage(pages);
+    const y = rowPage.cursorY - 38;
+    addCard(pages, LEFT_MARGIN, y, CONTENT_WIDTH, 42, { fill: COLORS.white, stroke: COLORS.line });
+    addText(pages, row.attendance_date, LEFT_MARGIN + 12, y + 25, { size: 9, color: COLORS.text });
+    addText(pages, row.time_in || '--:--', LEFT_MARGIN + 92, y + 25, { size: 10, color: COLORS.text });
+    addText(pages, row.time_out || '--:--', LEFT_MARGIN + 160, y + 25, { size: 10, color: COLORS.text });
+    addText(pages, row.work_hour || '—', LEFT_MARGIN + 230, y + 25, { size: 10, color: COLORS.text });
+    addText(pages, row.status_label || '—', LEFT_MARGIN + 310, y + 25, {
+      size: 9,
+      color: row.status_key === 'late' ? COLORS.yellow : row.status_key === 'alpha' ? COLORS.red : COLORS.cyan
+    });
+    addText(pages, row.mode_label || '—', LEFT_MARGIN + 390, y + 25, { size: 9, color: COLORS.purple });
+    addWrappedText(pages, row.location_label || 'Location unavailable', LEFT_MARGIN + 445, y + 25, {
+      size: 8,
+      color: COLORS.muted,
+      maxChars: 18,
+      lineHeight: 9
+    });
+    rowPage.cursorY = y - 8;
   });
 };
 
 const addFooters = (pages, payload) => {
   pages.forEach((page, index) => {
-    page.lines.push(makeTextLine('Generated by Infinite Track', LEFT_MARGIN, 34, 8));
-    page.lines.push(makeTextLine(`Generated timestamp: ${payload.report_metadata.generated_at}`, LEFT_MARGIN, 23, 8));
-    page.lines.push(makeTextLine(`Page ${index + 1} of ${pages.length}`, PAGE_WIDTH - 105, 23, 8));
+    page.lines.push(makeTextLine('Generated by Infinite Track', LEFT_MARGIN, 34, 8, COLORS.muted));
+    page.lines.push(makeTextLine(`Generated timestamp: ${payload.report_metadata.generated_at}`, LEFT_MARGIN, 23, 8, COLORS.muted));
+    page.lines.push(makeTextLine(`Page ${index + 1} of ${pages.length}`, PAGE_WIDTH - 105, 23, 8, COLORS.muted));
   });
 };
 
@@ -245,7 +371,7 @@ export const buildAttendanceReportFileName = (payload) => {
 };
 
 export const renderMyAttendanceReportPdf = (payload) => {
-  const pages = [{ lines: [], cursorY: PAGE_HEIGHT - TOP_MARGIN }];
+  const pages = [createPage()];
 
   addHeader(pages, payload);
   addSummary(pages, payload.summary);
