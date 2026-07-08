@@ -192,6 +192,15 @@ describe('backend runtime config contract', () => {
     expect(() => validateCorsOrigin()).not.toThrow();
   });
 
+  test('accepts multiple explicit production CORS origins for credentialed requests', async () => {
+    const { config, validateCorsOrigin } = await loadProductionCorsValidation(
+      'https://app.example.com, https://admin.example.com'
+    );
+
+    expect(config.cors.origin).toEqual(['https://app.example.com', 'https://admin.example.com']);
+    expect(() => validateCorsOrigin()).not.toThrow();
+  });
+
   test('reads DB_PORT and SSL settings into sequelize-cli config for managed database migrations', () => {
     process.env.DB_PORT = '25060';
     process.env.DB_SSL = 'true';
@@ -357,6 +366,8 @@ describe('backend runtime config contract', () => {
     expect(smokeTest).toContain("const disallowedOrigin = 'https://example.com';");
     expect(smokeTest).toContain('const disallowedOriginRejected = corsHeader !== disallowedOrigin;');
     expect(smokeTest).toContain("const credentialsConfigured = credentialsHeader === 'true';");
+    expect(smokeTest).toContain('X-Client-Type');
+    expect(smokeTest).toContain('allowsClientType');
     expect(smokeTest).toContain('Allow-Credentials');
     expect(smokeTest).not.toContain("corsHeader === '*'");
     expect(productionTest).toContain('Testing API documentation access control');
