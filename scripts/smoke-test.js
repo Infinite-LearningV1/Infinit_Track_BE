@@ -199,7 +199,7 @@ async function testCORS() {
       headers: {
         Origin: disallowedOrigin,
         'Access-Control-Request-Method': 'POST',
-        'Access-Control-Request-Headers': 'Content-Type'
+        'Access-Control-Request-Headers': 'Content-Type,X-Client-Type'
       }
     });
 
@@ -213,17 +213,19 @@ async function testCORS() {
       ?.split(',')
       .map((method) => method.trim().toUpperCase())
       .includes('POST');
-    const allowsContentType = allowedHeaders
+    const normalizedAllowedHeaders = allowedHeaders
       ?.split(',')
-      .map((header) => header.trim().toLowerCase())
-      .includes('content-type');
+      .map((header) => header.trim().toLowerCase());
+    const allowsContentType = normalizedAllowedHeaders?.includes('content-type');
+    const allowsClientType = normalizedAllowedHeaders?.includes('x-client-type');
 
     if (
       [200, 204].includes(response.status) &&
       disallowedOriginRejected &&
       credentialsConfigured &&
       allowsPost &&
-      allowsContentType
+      allowsContentType &&
+      allowsClientType
     ) {
       logTest(
         'CORS Headers',
