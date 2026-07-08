@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import * as Models from '../models/index.js';
 import { calculateWorkHour, formatTimeOnly, formatWorkHour } from '../utils/workHourFormatter.js';
 
-const { Attendance, AttendanceCategory, AttendanceStatus, Location, Position, Role, User } = Models;
+const { Attendance, AttendanceCategory, AttendanceStatus, Division, Location, Position, Role, User } = Models;
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DEFAULT_TIMEZONE = 'Asia/Jakarta';
@@ -217,13 +217,35 @@ const buildTimelineRow = (attendance) => {
   };
 };
 
+const formatWorkHoursLabel = (workHours) => {
+  const numericWorkHours = Number(workHours);
+  if (!Number.isFinite(numericWorkHours) || numericWorkHours <= 0) return '0h';
+
+  const totalMinutes = Math.round(numericWorkHours * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
 const buildSummary = (timeline) => {
   const summary = {
+    attendance_rate: null,
     attendance_rate_percent: null,
-    attendance_rate_note: 'Unavailable: expected working day denominator is not verified for this report.',
+    attendance_rate_label: 'N/A',
+    attendance_rate_denominator: 'total_counted_days',
+    attendance_rate_note: 'No counted attendance days are available for this report period.',
     expected_working_days: null,
+    expected_working_days_label: 'Unavailable',
+    expected_working_days_note: 'Official expected working day denominator is not verified for this report.',
     attended_days: 0,
+    total_present: 0,
+    total_absent: 0,
+    total_counted_days: 0,
     total_work_hours: 0,
+    total_work_hours_label: '0h',
+    on_time_days: 0,
+    late_days: 0,
+    alpha_days: 0,
     late: 0,
     alpha: 0,
     status_counters: {
@@ -238,12 +260,17 @@ const buildSummary = (timeline) => {
   for (const row of timeline) {
     if (row.status_key === 'alpha') {
       summary.alpha += 1;
+      summary.alpha_days += 1;
       summary.status_counters.alpha += 1;
       continue;
     }
 
     summary.attended_days += 1;
-    if (row.status_key === 'late') summary.late += 1;
+    if (row.status_key === 'late') {
+      summary.late += 1;
+      summary.late_days += 1;
+    }
+    if (row.status_key === 'ontime') summary.on_time_days += 1;
     if (summary.status_counters[row.status_key] == null) summary.status_counters.other += 1;
     else summary.status_counters[row.status_key] += 1;
 
@@ -252,8 +279,67 @@ const buildSummary = (timeline) => {
     }
   }
 
+  summary.total_present = summary.attended_days;
+  summary.total_absent = summary.alpha_days;
+  summary.total_counted_days = summary.total_present + summary.total_absent;
+
+  if (summary.total_counted_days > 0) {
+    const attendanceRate = Math.round((summary.total_present / summary.total_counted_days) * 100);
+    summary.attendance_rate = attendanceRate;
+    summary.attendance_rate_percent = attendanceRate;
+    summary.attendance_rate_label = `${attendanceRate}%`;
+    summary.attendance_rate_note = 'Based on counted attendance days in this report.';
+  }
+
   summary.total_work_hours = Number(summary.total_work_hours.toFixed(2));
+  summary.total_work_hours_label = formatWorkHoursLabel(summary.total_work_hours);
   return summary;
+};
+
+const roundPercentage = (count, total) => (total > 0 ? Math.round((count / total) * 100) : 0);
+
+const buildStatusDistribution = (summary) => {
+  const total = summary.total_counted_days;
+  const distribution = {
+    on_time: {
+      key: 'on_time',
+      label: 'On Time',
+      count: summary.on_time_days,
+      percentage: roundPercentage(summary.on_time_days, total)
+    },
+    late: {
+      key: 'late',
+      label: 'Late',
+      count: summary.late_days,
+      percentage: roundPercentage(summary.late_days, total)
+    },
+    alpha: {
+      key: 'alpha',
+      label: 'Alpha',
+      count: summary.alpha_days,
+      percentage: roundPercentage(summary.alpha_days, total)
+    }
+  };
+
+  if (summary.status_counters.early > 0) {
+    distribution.early = {
+      key: 'early',
+      label: 'Early',
+      count: summary.status_counters.early,
+      percentage: roundPercentage(summary.status_counters.early, total)
+    };
+  }
+
+  if (summary.status_counters.other > 0) {
+    distribution.other = {
+      key: 'other',
+      label: 'Other',
+      count: summary.status_counters.other,
+      percentage: roundPercentage(summary.status_counters.other, total)
+    };
+  }
+
+  return distribution;
 };
 
 const buildModeDistribution = (timeline) => {
@@ -288,14 +374,19 @@ const buildModeDistribution = (timeline) => {
 
 export const buildPersonalAttendanceReportPayload = async ({ userId, query = {}, now = new Date() }) => {
   const period = buildPersonalAttendanceReportPeriod(query, now);
+  const userIncludes = [
+    { model: Role, as: 'role', attributes: ['role_name'], required: false },
+    { model: Position, as: 'position', attributes: ['position_name'], required: false }
+  ];
+
+  if (Division) {
+    userIncludes.push({ model: Division, as: 'division', attributes: ['division_name'], required: false });
+  }
 
   const [user, attendanceRows] = await Promise.all([
     User.findByPk(userId, {
       attributes: ['id_users', 'full_name', 'nip_nim'],
-      include: [
-        { model: Role, as: 'role', attributes: ['role_name'], required: false },
-        { model: Position, as: 'position', attributes: ['position_name'], required: false }
-      ]
+      include: userIncludes
     }),
     Attendance.findAll({
       where: {
@@ -324,6 +415,7 @@ export const buildPersonalAttendanceReportPayload = async ({ userId, query = {},
   }
 
   const timeline = attendanceRows.map(buildTimelineRow);
+  const summary = buildSummary(timeline);
   const generatedAt = now.toISOString();
 
   return {
@@ -338,11 +430,14 @@ export const buildPersonalAttendanceReportPayload = async ({ userId, query = {},
     user: {
       id: user.id_users,
       full_name: user.full_name,
+      nip_nim: user.nip_nim || null,
       role: user.role?.role_name || null,
-      position: user.position?.position_name || null
+      position: user.position?.position_name || null,
+      division: user.division?.division_name || null
     },
     period,
-    summary: buildSummary(timeline),
+    summary,
+    status_distribution: buildStatusDistribution(summary),
     mode_distribution: buildModeDistribution(timeline),
     timeline,
     empty_state: {
