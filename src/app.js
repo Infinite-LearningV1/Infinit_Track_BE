@@ -43,7 +43,7 @@ app.use(
     origin: config.cors.origin,
     credentials: config.cors.credentials,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Client-Type'],
     exposedHeaders: ['X-Request-ID'],
     maxAge: 86400 // 24 hours
   })
