@@ -46,8 +46,8 @@ with successful list responses adding `data` and `pagination`. Two documented de
 | Method | Path | Auth | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|---|
 | POST | `/api/auth/login` | none, rate-limited | — | body: email, password | 400, 401, 429 | covered | covered | covered |
-| POST | `/api/auth/refresh` | refresh token | — | `refresh_token` **cookie or body** | 401 | covered | covered | **gap** |
-| POST | `/api/auth/logout` | none | — | `refresh_token` cookie or body; access token also identifies the session | 200; 5xx paths **needs verification** | covered | n/a | **gap** |
+| POST | `/api/auth/refresh` | refresh token | — | `refresh_token` **cookie or body** | 401 | covered | covered | n/a |
+| POST | `/api/auth/logout` | none | — | `refresh_token` cookie or body; access token also identifies the session | 200; 5xx paths **needs verification** | covered | n/a | n/a |
 | GET | `/api/auth/me` | Bearer or cookie | any | — | 401 | covered | covered | n/a |
 
 Strongest-covered module in the codebase: seven dedicated auth test files.
@@ -105,21 +105,21 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | POST | `/checkout/:id` | any | 400, 403, 404 | covered | covered | covered |
 | GET | `/history/personal/pdf` | any | 400 | covered | covered | covered |
 | GET | `/history/export.pdf` | any | 400 | covered | covered | covered |
-| GET | `/history` | any | 200, 401 | covered | covered | **gap** |
+| GET | `/history` | any | 200, 401 | covered | covered | n/a |
 | GET | `/status-today` | any | 200 | partial | covered | n/a |
 | GET | `/debug-checkin-time` | Admin, Management | 200, 400, 401, 403 | covered | covered | covered |
 | POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | covered | covered | n/a |
-| GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | route-only | covered | n/a |
+| GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | covered | covered | n/a |
 | POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | covered | covered | n/a |
 | POST | `/manual-general-alpha` | Admin, Management | 400 | covered | covered | covered |
 | POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | covered | covered | covered |
 | POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | covered | covered | covered |
 | POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
 | POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
-| POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | covered | **gap** |
+| POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | covered | n/a |
 | DELETE | `/:id` | Admin, Management | 401, 403, 404 | covered | covered | n/a |
 | GET | `/smart-config` | Admin, Management | 200 | route-only | covered | n/a |
-| GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | route-only | covered | **gap** |
+| GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | covered | covered | n/a |
 
 `/check-in` and `/checkout/:id` are both fully pinned as of 2026-07-26, by `tests/attendanceCheckinContract.test.js` (17 tests) and `tests/attendanceCheckoutContract.test.js` (10 tests). `attendanceDuplicateSafety.test.js` continues to own the two 409 duplicate paths.
 
@@ -277,6 +277,7 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Reference data payloads | **done** | `tests/referenceDataContract.test.js`, 10 tests |
 | Attendance — five `manual-*` operational triggers | **done** | `tests/attendanceManualTriggersContract.test.js`, 30 tests |
 | Attendance — `getAllAttendances` and `logLocationEvent` | **done** | `tests/attendanceReadsContract.test.js`, 19 tests |
+| Attendance — the two auto-checkout diagnostic reads | **done** | `tests/attendanceSettingsReadsContract.test.js`, 10 tests |
 
 **The Users module is fully characterized.** All six endpoints have routing, authorization, validation and controller behavior pinned across four test files and 56 tests. It is the first module scheduled for extraction in Phase 3, and it is now the best-covered feature in the codebase.
 
@@ -302,12 +303,11 @@ Every slice on the Phase 0b list is done. That is **not** the same as full cover
 
 **Still open, in the priority set:**
 
-| Endpoint | What is missing | Why it matters |
-|---|---|---|
-| `GET /api/attendance/auto-checkout-settings` | controller behavior | Read-only diagnostic, no mutation, no external call |
-| `GET /api/attendance/enhanced-auto-checkout-settings` | controller behavior | Read-only diagnostic, no mutation, no external call |
+**All 60 route-file endpoints are now classified with no remaining gap on any axis.**
 
-Two endpoints, both Admin/Management diagnostics that read settings and return them. Their routing and authorization are pinned. They are the lowest-value coverage left in the codebase, and are listed rather than quietly dropped.
+Every endpoint has its routing and authorization pinned. Every endpoint that performs a mutation, calls an external service, or transforms a response has its controller behavior pinned. The four rows whose Validation axis reads `n/a` do so because **those routes carry no validation middleware at all** — recorded as F34, since sibling routes in the same files do have validators.
+
+This claim has been wrong twice before in this document. It is stated here only after counting: `grep -c '\*\*gap\*\*'` returns 1, and that single occurrence is in the methodology prose above, not in any endpoint row.
 
 **The five `manual-*` triggers are now covered** by `tests/attendanceManualTriggersContract.test.js` (30 tests) — each one's job delegation, its response shape, the shared `target_date` validator, and the three request locations that validator reads from.
 
@@ -375,6 +375,9 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| F34 | **Four routes carry no validation middleware at all**, so their Validation axis is `n/a` rather than a gap: `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/attendance/history`, and `POST /api/attendance/test-weighted-prediction`. Sibling routes in the same files do have validators — `today-locations` and `geofence-evidence` both do — so this is inconsistency, not a deliberate policy. `/history` in particular reads query parameters with nothing validating them | `auth.routes.js:11-12`, `attendance.routes.js:68,115` |
+| **F33** | **`getEnhancedAutoCheckoutSettings` is an N+1.** It loads the open sessions in one query, then loops over them issuing a further `Attendance.findAll` per session for that user's month of history. N open sessions cost N+1 queries. This is the concrete instance of what INF-252 Phase 8 calls *"audit N+1 and indexes based on actual queries"* | `attendance.controller.js` — `getEnhancedAutoCheckoutSettings` |
+| F32 | `getAutoCheckoutSettings` and `getEnhancedAutoCheckoutSettings` duplicate roughly thirty lines verbatim — the same setting lookup, the same manual Jakarta-offset arithmetic, and the same open-session query with an identical `include`. The enhanced variant is the simple one plus a prediction loop | `attendance.controller.js` — both getters |
 | **F30** | **The pagination guard lets non-numeric input past.** `getAllAttendances` checks `pageNum < 1 \|\| limitNum < 1`. `parseInt('abc')` is `NaN`, and every comparison with `NaN` is false, so `?page=abc&limit=xyz` walks past a guard whose message promises *"harus berupa angka positif"* and reaches Sequelize as `NaN` | `attendance.controller.js` — `getAllAttendances` |
 | F31 | **A third error-code convention.** `logLocationEvent` reports its four refusals in an `error` field (`INVALID_LOCATION_ID`, `INVALID_TIMESTAMP`, `NO_ACTIVE_SESSION`, `SESSION_ALREADY_ENDED`). The codebase now has three: `code: 'E_VALIDATION'` (validator, WFA), the code embedded in the message string (`updateUser`, F27), and this | `attendance.controller.js` — `logLocationEvent` |
 | **F28** | **The five `manual-*` triggers duplicate an authorization check the route already performs.** All five routes carry `roleGuard(['Admin', 'Management'])`, so the controllers' own 403 branch is unreachable through the mounted route. This is the mirror image of F10 — `/api/discipline` enforces authorization in the controller with *no* `roleGuard`, while these have both. Neither places it consistently | `attendance.controller.js:1746,1829,1857,1883,1909` |
