@@ -375,6 +375,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F42** | **The two Jakarta helpers in `geofence.js` have contradictory contracts.** `getJakartaTime()` returns a Date whose **local getters** hold Jakarta wall-clock values; `toJakartaTime(d)` returns one whose **UTC reading** does. A caller must know which it holds. `minutesSinceMidnightWIB` in `autoCheckout.job.js` calls `toJakartaTime(d).getHours()` — mixing the two — so it is correct only on a **UTC** host, and therefore wrong in production, which sets `TZ=Asia/Jakarta`. **Needs verification:** whether the downstream FAHP prediction is materially affected, since all historical values shift by the same constant | `src/utils/geofence.js:11-53`, `src/jobs/autoCheckout.job.js:173-175` |
+| F43 | `formatUTCToJakartaTime` performs **no conversion** despite its name. It reads the local getters and assumes Sequelize already returned WIB values | `src/utils/geofence.js:61-79` |
 | **F41** | **The missed-checkout flagger's deadline depends on the server's timezone.** `autoCheckout.job.js` computes "now in Jakarta" as `new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))`. The first call produces a Jakarta wall-clock string; the second re-parses it as **machine-local** time, displacing the instant by `jakartaOffset − machineOffset`. It is correct in production **only because `server.js` sets `TZ=Asia/Jakarta`**. On a container with the usual UTC default the job believes it is 7 hours later than it is, and would close every open attendance session around 11:30 Jakarta time | `src/jobs/autoCheckout.job.js` — `runMissedCheckoutFlagger` |
 | F40 | The flagger's per-record error handler logs `attendance.attendance_id`. The model's primary key is `id_attendance`, so a failed record is reported as `undefined` — the one log line that should identify which row failed identifies nothing | `src/jobs/autoCheckout.job.js` — `runMissedCheckoutFlagger` catch block |
 | **F39** | **The two paginated list surfaces use different key names for the same concepts.** `GET /api/attendance` returns `total_records` and `records_per_page`; `GET /api/summary/reports` returns `total_items` and `items_per_page`. A client consuming both must handle both spellings. `GET /api/users` has no pagination at all (F20), so the codebase has three list surfaces and three contracts | `attendance.controller.js` — `getAllAttendances`; `summaryReport.service.js:405-412` |
@@ -414,6 +416,25 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 `checkIn` shows the codebase already knows the right shape — it tracks `transactionFinished` and only rolls back when the transaction is still open. Two of its three sibling mutations were never updated to match.
 
 Both are pinned by tests that assert the current, broken outcome, so a fix makes them fail deliberately.
+
+### F42 — the timezone family has a common root
+
+`src/utils/geofence.js` and `src/utils/workHourFormatter.js` are the two computational cores of attendance: the first decides whether a check-in is allowed at all, the second decides the hours recorded.
+
+**Each was mocked by seventeen test files and imported for real by none.** Every attendance test asserts behavior downstream of these functions while replacing them with stubs, so nothing verified the arithmetic they all depend on — until `tests/geofenceWorkHourContract.test.js` (38 tests).
+
+The Haversine distance and the work-hour arithmetic turn out to be sound. The Jakarta helpers do not agree with each other:
+
+| Helper | Correct reading | Wrong reading |
+|---|---|---|
+| `getJakartaTime()` | local getters (`.getHours()`) | `.getTime()`, `.toISOString()` |
+| `toJakartaTime(d)` | `.toISOString()` | local getters |
+
+A caller has to know which contract it is holding, and nothing in the signatures says so. `minutesSinceMidnightWIB` in `autoCheckout.job.js` mixes them — `toJakartaTime(d).getHours()` — which is correct only on a UTC host.
+
+**This is the common root of F17, F41 and F42.** Three separate defects, all from hand-rolled timezone conversion around helpers whose contracts were never written down or tested. Phase 2's `shared/` layer is the place to settle on one representation.
+
+`formatUTCToJakartaTime` is a fourth instance: despite the name it performs **no conversion at all**, assuming Sequelize already returned WIB (F43).
 
 ### F41 — a scheduled mutation that is correct only by accident
 
