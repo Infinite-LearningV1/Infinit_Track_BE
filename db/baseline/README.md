@@ -37,9 +37,10 @@ empty database
 
 ## Producing the dump
 
-Run against an environment whose schema you trust. **Structure only — never include data.**
+**Two commands, not one.** The second is not optional — see the box below.
 
 ```bash
+# 1. Structure for every table. No rows.
 mysqldump \
   --no-data \
   --skip-add-drop-table \
@@ -48,21 +49,47 @@ mysqldump \
   --set-gtid-purged=OFF \
   -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p "$DB_NAME" \
   > db/baseline/schema.sql
+
+# 2. The migration ledger's ROWS, appended. This is the part that makes it work.
+mysqldump \
+  --no-create-info \
+  --skip-comments \
+  --skip-extended-insert \
+  --set-gtid-purged=OFF \
+  -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p "$DB_NAME" sequelizemeta \
+  >> db/baseline/schema.sql
 ```
+
+> ### Why the ledger has to come with it
+>
+> **None of the nine migrations guards against changes that already exist.** They call `addColumn` and `createTable` directly, with no `describeTable` check and no `IF NOT EXISTS`.
+>
+> A structure-only dump copies `sequelizemeta`'s *table* but not its *rows*. On restore, `sequelize-cli` sees an empty ledger, concludes nothing has been applied, and re-runs all nine against a schema that already contains every one of their changes.
+>
+> Verified against a disposable MySQL 8.0 container on 2026-07-27:
+>
+> ```text
+> empty sequelizemeta   → ERROR: Duplicate column name 'storage_provider'
+> ledger carrying 9 rows → ✓ Migrations completed successfully
+> ```
+>
+> Carrying the ledger is what tells the CLI those migrations are already applied. Recorded as F48.
 
 Flag by flag, because each one matters:
 
 | Flag | Why |
 |---|---|
-| `--no-data` | This is a schema artifact. **Never commit production rows.** |
+| `--no-data` | The schema dump carries **no production rows**. The only data in this file is the migration ledger, added by the second command |
 | `--skip-add-drop-table` | The target database is empty; `DROP TABLE` statements only add risk if someone runs this against the wrong host |
 | `--skip-comments` | Removes the dump timestamp and server version, so re-dumping an unchanged schema produces an identical file and the diff stays reviewable |
 | `--single-transaction` | Consistent read without locking the source |
 | `--set-gtid-purged=OFF` | Keeps replication metadata out of the file |
+| `--skip-extended-insert` | One `INSERT` per ledger row, so a migration appearing or disappearing is a one-line diff |
 
 ### Before committing it, check
 
-- [ ] **No `INSERT` statements.** `grep -c INSERT db/baseline/schema.sql` must print `0`.
+- [ ] **The only `INSERT` statements target `sequelizemeta`.** `grep INSERT db/baseline/schema.sql | grep -v sequelizemeta` must print nothing.
+- [ ] **The ledger is present and complete.** `grep -c "INSERT INTO \`sequelizemeta\`" db/baseline/schema.sql` should match the number of files in `src/models/migrations/`.
 - [ ] **No credentials, hostnames, or `DEFINER=` clauses** naming a real user. Strip any `DEFINER=` with `sed -i 's/DEFINER=[^ ]* //g'`.
 - [ ] The table list matches what the models expect — at minimum `users`, `attendance`, `bookings`, `locations`, `photos`, `roles`, `programs`, `positions`, `divisions`, `settings`, `auth_sessions`.
 - [ ] It came from an environment you would be willing to reproduce, not from a developer laptop that has drifted.
