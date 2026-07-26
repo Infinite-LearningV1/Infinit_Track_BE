@@ -117,7 +117,7 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
 | POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
 | POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | covered | **gap** |
-| DELETE | `/:id` | Admin, Management | 401, 403, 404 | route-only | covered | **gap** |
+| DELETE | `/:id` | Admin, Management | 401, 403, 404 | covered | covered | n/a |
 | GET | `/smart-config` | Admin, Management | 200 | route-only | covered | n/a |
 | GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | route-only | covered | **gap** |
 
@@ -262,8 +262,8 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | WFA — 3 endpoints, controller behavior | **done** | `tests/wfaControllerContract.test.js`, 22 tests |
 | **Authorization matrix — every remaining route file** | **done** | `tests/routeAuthorizationMatrix.test.js`, 87 tests |
 | Users — read and delete payloads | **done** | `tests/usersPayloadContract.test.js`, 16 tests |
+| `DELETE /api/attendance/:id` — controller behavior | **done** | `tests/attendanceDeleteContract.test.js`, 7 tests |
 | Users — `createUser` / `updateUser` | open | Spaces uploads plus transaction orchestration |
-| `DELETE /api/attendance/:id` — controller behavior | open | destructive; routing and authorization pinned |
 
 **The authorization axis is now closed for the entire API.** Every one of the 60 route-file endpoints has its middleware chain pinned: `/api/users` by `usersRouteContract`, `/api/attendance` by `attendanceRouteContract`, `/api/bookings` by `bookingsReadinessContract`, and the remaining seven route files by `routeAuthorizationMatrix`.
 
@@ -280,9 +280,10 @@ That closes the RBAC axis for the whole module, including all nine operational t
 Remaining gaps, in order — all are **controller response bodies**, since routing and authorization are fully pinned:
 
 1. `createUser` and `updateUser` — the two Users mutations, both involving Spaces uploads and transactions.
-2. `DELETE /api/attendance/:id` — destructive, and the only remaining untested attendance mutation.
-3. `/api/discipline` response payloads for three of four endpoints.
-4. Reference-data dropdown payloads — lowest risk in the codebase.
+2. `/api/discipline` response payloads for three of four endpoints.
+3. Reference-data dropdown payloads — lowest risk in the codebase.
+
+**Every attendance mutation is now pinned.** `check-in`, `checkout`, and `delete` were the three ways final attendance state changes through the API; all three have characterization coverage, and each one surfaced a defect while being characterized (F14, F16, F24).
 
 ---
 
@@ -308,11 +309,29 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F24** | **`DELETE /api/attendance/:id` hard-deletes authoritative state, unlogged.** The `Attendance` model declares neither `paranoid` nor a `deleted_at` column, so `destroy()` is an irreversible row deletion. The handler opens no transaction, writes no audit log, applies no ownership or finalized-state guard, and treats a completed record with booked work hours exactly like an open one | `src/controllers/attendance.controller.js:1555-1583`, `src/models/attendance.model.js:84-85` |
 | **F20** | **`GET /api/users` has no pagination.** It returns every non-deleted user in a single response, with no `limit` or `offset`. The endpoint accepts `search`, `sortBy` and `sortOrder` only — `page` and `limit` are ignored if sent. This is the scalability problem [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and) exists to address, and Phase 2's allowlisted list-query foundation is where it gets fixed | `src/controllers/user.controller.js:95-140` |
 | F21 | `getUserById` returns 404 with `code: 'E_NOT_FOUND'`; `deleteUser` returns 404 for the same condition **without** any code. Two shapes for one meaning, within one module | `user.controller.js:786-790` vs `:481-485` |
 | F22 | `getUserById` excludes soft-deleted rows inside the query (`findOne` with `deleted_at: null`), while `deleteUser` fetches by primary key and inspects `deleted_at` afterwards. Two approaches to the same concern in one file; the extracted repository should settle on one | `user.controller.js:735-739` vs `:479-493` |
 | F23 | `DELETE /api/users/:id` is **not idempotent from the client's view**: deleting an already soft-deleted user returns 404 rather than confirming the desired end state | `user.controller.js:488-493` |
 | **F19** | **Six controller exports are unreachable** — no route mounts them and no module imports them. One of them, `booking.getMyBookings`, shares its purpose with a use case INF-252 Phase 4 plans to extract | see the audit below |
+
+### F24 — the delete asymmetry
+
+The codebase soft-deletes users and hard-deletes attendance:
+
+| | `User` | `Attendance` |
+|---|---|---|
+| Model | `paranoid: true`, `deletedAt: 'deleted_at'` | no `paranoid`, no `deleted_at` column |
+| `destroy()` | sets `deleted_at`, row recoverable | **irreversible `DELETE`** |
+| Audit log | `logger.info('User {id} soft deleted ... by user {actor}')` | **none** |
+| Transaction | n/a | **none**, unlike `checkIn` and `checkOut` |
+
+Attendance is the record the backend is authoritative for. Deleting one is the most consequential single action in the API, and it is the only mutation that leaves no application-level trace of who performed it.
+
+Whether attendance *should* be soft-deletable is a product decision — there may be a deliberate reason not to keep tombstones in a table that jobs scan nightly. The audit-log gap is harder to defend on those grounds. Both are recorded, neither changed.
+
+`tests/attendanceDeleteContract.test.js` pins current behavior, including the three absences: no transaction, no log, no finalized-state guard.
 
 ### F19 — unreachable controller exports
 
