@@ -23,6 +23,30 @@ describe('modular MVC layer rules', () => {
     expect(messages.some((m) => m.ruleId === 'no-restricted-imports')).toBe(true);
   });
 
+  /**
+   * INF-256. The rule advertises "controllers must not touch the ORM", but
+   * src/config/database.js exports the configured Sequelize instance -- which
+   * is exactly how the attendance, booking and auth controllers obtain
+   * transactions today. Without this pattern a migrated controller could open
+   * transactions and run raw queries while `npm run lint` stayed green, which
+   * is worse than having no rule because it invites trust.
+   */
+  it('rejects database-config imports inside a module controller', async () => {
+    const messages = await lintAs(
+      'src/modules/users/user.controller.js',
+      "import sequelize from '../../config/database.js';\nexport const listUsers = () => sequelize;\n"
+    );
+    expect(messages.some((m) => m.ruleId === 'no-restricted-imports')).toBe(true);
+  });
+
+  it('still allows a module service to reach the database config for transactions', async () => {
+    const messages = await lintAs(
+      'src/modules/users/user.service.js',
+      "import sequelize from '../../config/database.js';\nexport const listUsers = () => sequelize;\n"
+    );
+    expect(messages.some((m) => m.ruleId === 'no-restricted-imports')).toBe(false);
+  });
+
   it('rejects express imports inside a module service', async () => {
     const messages = await lintAs(
       'src/modules/users/user.service.js',

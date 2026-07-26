@@ -51,3 +51,61 @@ describe('AppError taxonomy', () => {
     expect(new ValidationError('invalid', details).details).toBe(details);
   });
 });
+
+/**
+ * INF-256. Users already exposes E_VALIDATION_NIP_EXISTS and
+ * E_VALIDATION_EMAIL_EXISTS. Migrating those paths to ValidationError without
+ * an override would silently rewrite a client-visible code to E_VALIDATION --
+ * a contract change with no test to catch it, since nothing asserts those
+ * codes today.
+ */
+describe('endpoint-specific code overrides', () => {
+  it('keeps the subclass default when no override is given', () => {
+    expect(new ValidationError('invalid').code).toBe('E_VALIDATION');
+  });
+
+  it('accepts a more specific code without changing the status', () => {
+    const err = new ValidationError('NIP/NIM sudah digunakan', undefined, {
+      code: 'E_VALIDATION_NIP_EXISTS'
+    });
+
+    expect(err.code).toBe('E_VALIDATION_NIP_EXISTS');
+    expect(err.status).toBe(400);
+    expect(err).toBeInstanceOf(ValidationError);
+  });
+
+  it('carries details and an override together', () => {
+    const details = [{ field: 'email', issue: 'taken' }];
+    const err = new ValidationError('Email sudah digunakan', details, {
+      code: 'E_VALIDATION_EMAIL_EXISTS'
+    });
+
+    expect(err.code).toBe('E_VALIDATION_EMAIL_EXISTS');
+    expect(err.details).toBe(details);
+  });
+
+  it.each([
+    [UnauthorizedError, 401, 'E_SESSION_EXPIRED'],
+    [ForbiddenError, 403, 'E_ROLE_FORBIDDEN'],
+    [NotFoundError, 404, 'E_USER_NOT_FOUND'],
+    [ConflictError, 409, 'E_ALREADY_CHECKED_IN']
+  ])('applies to every subclass, keeping status %#', (Klass, status, code) => {
+    const err = new Klass('message', undefined, { code });
+
+    expect(err.code).toBe(code);
+    expect(err.status).toBe(status);
+  });
+
+  it('ignores an empty options object', () => {
+    expect(new NotFoundError('nope', undefined, {}).code).toBe('E_NOT_FOUND');
+  });
+
+  /**
+   * The status is what defines the subclass, so it is deliberately NOT
+   * overridable. Use AppError directly if a different status is needed.
+   */
+  it('does not let the status be overridden', () => {
+    const err = new NotFoundError('nope', undefined, { code: 'E_X', status: 500 });
+    expect(err.status).toBe(404);
+  });
+});
