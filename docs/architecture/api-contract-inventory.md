@@ -68,7 +68,7 @@ The body form is what mobile clients use. Recording only the cookie would let an
 |---|---|---|---|---|---|---|---|
 | GET | `/api/users` | Admin, Management | query: `search`, `sortBy`, `sortOrder` — **no pagination** | 401, 403 | covered | covered | n/a |
 | GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 `E_NOT_FOUND` | covered | covered | n/a |
-| POST | `/api/users` | Admin, Management | multipart + body | 400, 401, 403 | route-only | covered | covered |
+| POST | `/api/users` | Admin, Management | multipart + body | 400 `E_UPLOAD`/`E_VALIDATION_EMAIL_EXISTS`/`E_VALIDATION_NIP_EXISTS`, 401, 403 | covered | covered | covered |
 | POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
 | PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | route-only | covered | covered |
 | DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 (no code) | covered | covered | n/a |
@@ -263,7 +263,8 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | **Authorization matrix — every remaining route file** | **done** | `tests/routeAuthorizationMatrix.test.js`, 87 tests |
 | Users — read and delete payloads | **done** | `tests/usersPayloadContract.test.js`, 16 tests |
 | `DELETE /api/attendance/:id` — controller behavior | **done** | `tests/attendanceDeleteContract.test.js`, 7 tests |
-| Users — `createUser` / `updateUser` | open | Spaces uploads plus transaction orchestration |
+| Users — `createUser` | **done** | `tests/usersCreateContract.test.js`, 11 tests |
+| Users — `updateUser` | open | the last Users mutation |
 
 **The authorization axis is now closed for the entire API.** Every one of the 60 route-file endpoints has its middleware chain pinned: `/api/users` by `usersRouteContract`, `/api/attendance` by `attendanceRouteContract`, `/api/bookings` by `bookingsReadinessContract`, and the remaining seven route files by `routeAuthorizationMatrix`.
 
@@ -279,7 +280,7 @@ That closes the RBAC axis for the whole module, including all nine operational t
 
 Remaining gaps, in order — all are **controller response bodies**, since routing and authorization are fully pinned:
 
-1. `createUser` and `updateUser` — the two Users mutations, both involving Spaces uploads and transactions.
+1. `updateUser` — the last Users mutation.
 2. `/api/discipline` response payloads for three of four endpoints.
 3. Reference-data dropdown payloads — lowest risk in the codebase.
 
@@ -309,12 +310,29 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F25** | **`createUser` repeats the F14 post-commit pattern, with a worse blast radius.** The commit is at line 632, but the refetch, mapping and response all remain inside the same `try`. A post-commit throw reaches a `catch` that unconditionally deletes the uploaded Spaces object **and** rolls back an already-committed transaction. Net result: the user exists in the database, its photo has been deleted from object storage, `next(error)` never runs, and the caller receives no response | `src/controllers/user.controller.js:632-726` |
 | **F24** | **`DELETE /api/attendance/:id` hard-deletes authoritative state, unlogged.** The `Attendance` model declares neither `paranoid` nor a `deleted_at` column, so `destroy()` is an irreversible row deletion. The handler opens no transaction, writes no audit log, applies no ownership or finalized-state guard, and treats a completed record with booked work hours exactly like an open one | `src/controllers/attendance.controller.js:1555-1583`, `src/models/attendance.model.js:84-85` |
 | **F20** | **`GET /api/users` has no pagination.** It returns every non-deleted user in a single response, with no `limit` or `offset`. The endpoint accepts `search`, `sortBy` and `sortOrder` only — `page` and `limit` are ignored if sent. This is the scalability problem [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and) exists to address, and Phase 2's allowlisted list-query foundation is where it gets fixed | `src/controllers/user.controller.js:95-140` |
 | F21 | `getUserById` returns 404 with `code: 'E_NOT_FOUND'`; `deleteUser` returns 404 for the same condition **without** any code. Two shapes for one meaning, within one module | `user.controller.js:786-790` vs `:481-485` |
 | F22 | `getUserById` excludes soft-deleted rows inside the query (`findOne` with `deleted_at: null`), while `deleteUser` fetches by primary key and inspects `deleted_at` afterwards. Two approaches to the same concern in one file; the extracted repository should settle on one | `user.controller.js:735-739` vs `:479-493` |
 | F23 | `DELETE /api/users/:id` is **not idempotent from the client's view**: deleting an already soft-deleted user returns 404 rather than confirming the desired end state | `user.controller.js:488-493` |
 | **F19** | **Six controller exports are unreachable** — no route mounts them and no module imports them. One of them, `booking.getMyBookings`, shares its purpose with a use case INF-252 Phase 4 plans to extract | see the audit below |
+
+### F25 — the post-commit pattern is not a one-off
+
+`checkOut` (F14) and `createUser` (F25) share the same shape: `commit()` happens, then more work runs **inside the same `try`**, and the `catch` treats any later failure as if the transaction were still open.
+
+| | `checkOut` (F14) | `createUser` (F25) |
+|---|---|---|
+| Post-commit work inside `try` | refetch, format, respond | refetch, map, respond |
+| `catch` does | `rollback()` | `deleteSpacesObject()` **then** `rollback()` |
+| Consequence | rollback throws, `next(error)` never runs, no response | same — **plus the committed user's photo is deleted from Spaces** |
+
+`createUser` is worse because its compensation is not idempotent with respect to commit state. The Spaces cleanup is correct for a *failed* create and actively destructive for a *successful* one, and nothing distinguishes the two.
+
+`checkIn` shows the codebase already knows the right shape — it tracks `transactionFinished` and only rolls back when the transaction is still open. Two of its three sibling mutations were never updated to match.
+
+Both are pinned by tests that assert the current, broken outcome, so a fix makes them fail deliberately.
 
 ### F24 — the delete asymmetry
 
