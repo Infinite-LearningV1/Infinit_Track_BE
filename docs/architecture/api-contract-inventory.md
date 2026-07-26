@@ -375,6 +375,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F41** | **The missed-checkout flagger's deadline depends on the server's timezone.** `autoCheckout.job.js` computes "now in Jakarta" as `new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }))`. The first call produces a Jakarta wall-clock string; the second re-parses it as **machine-local** time, displacing the instant by `jakartaOffset − machineOffset`. It is correct in production **only because `server.js` sets `TZ=Asia/Jakarta`**. On a container with the usual UTC default the job believes it is 7 hours later than it is, and would close every open attendance session around 11:30 Jakarta time | `src/jobs/autoCheckout.job.js` — `runMissedCheckoutFlagger` |
+| F40 | The flagger's per-record error handler logs `attendance.attendance_id`. The model's primary key is `id_attendance`, so a failed record is reported as `undefined` — the one log line that should identify which row failed identifies nothing | `src/jobs/autoCheckout.job.js` — `runMissedCheckoutFlagger` catch block |
 | **F39** | **The two paginated list surfaces use different key names for the same concepts.** `GET /api/attendance` returns `total_records` and `records_per_page`; `GET /api/summary/reports` returns `total_items` and `items_per_page`. A client consuming both must handle both spellings. `GET /api/users` has no pagination at all (F20), so the codebase has three list surfaces and three contracts | `attendance.controller.js` — `getAllAttendances`; `summaryReport.service.js:405-412` |
 | **F37** | **`applySearch` silently discards earlier predicates — latent.** It decides whether to preserve existing conditions with `Object.keys(queryOptions.where).length > 0`, but stores its own predicate under the **symbol** key `Op.or`, and `Object.keys` does not enumerate symbols. A second call therefore concludes the where clause is empty and **replaces** it. **Not triggered today**: both call sites invoke it exactly once per query, and `applyMultipleSearch` is unused. It becomes live the moment anything composes two search predicates — which is precisely what Phase 2's query object does | `src/utils/searchHelper.js:38-59` |
 | F38 | `applyMultipleSearch` is exported from `searchHelper.js` and used nowhere in `src/`. It is also the only caller pattern that would trigger F37 | `src/utils/searchHelper.js:71-91` |
@@ -412,6 +414,38 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 `checkIn` shows the codebase already knows the right shape — it tracks `transactionFinished` and only rolls back when the transaction is still open. Two of its three sibling mutations were never updated to match.
 
 Both are pinned by tests that assert the current, broken outcome, so a fix makes them fail deliberately.
+
+### F41 — a scheduled mutation that is correct only by accident
+
+`autoCheckout.job.js` is the largest of the three background jobs, runs every 30 minutes, and **closes attendance sessions automatically**. Its two siblings each have a dedicated idempotency test; this one had none. `autoCheckout.test.js` imports only `fuzzyAhpEngine` and exercises the FAHP scoring helper — no test imported the job itself until `tests/autoCheckoutJobContract.test.js`.
+
+The conversion:
+
+```js
+const now = new Date();
+const jakartaTimeString = now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' });
+const jakartaTime = new Date(jakartaTimeString);   // re-parsed as machine-local
+```
+
+Measured on the development machine (`Asia/Makassar`, UTC+8):
+
+```text
+true instant      2026-07-28T12:00:00.000Z   (19:00 Jakarta)
+job believes      2026-07-28T11:00:00.000Z   (one hour behind)
+deadline          2026-07-28T11:50:00.000Z
+job fires?        no
+reality?          the deadline passed ten minutes ago
+```
+
+| Host TZ | Displacement | Effect |
+|---|---|---|
+| `Asia/Jakarta` | 0 | correct |
+| UTC+8 | −1h | fires an hour late |
+| **UTC** (common container default) | **+7h** | **fires ~7 hours early — closes everyone's attendance around 11:30 Jakarta** |
+
+Production is safe *today* because `server.js` sets `TZ=Asia/Jakarta`. The job is correct by accident of an environment variable, not because the conversion is right — and CI runs Node with no TZ set, so any future live-SQL test of this job would behave differently from production.
+
+Pinned by three pure-arithmetic assertions that hold on any machine, so the finding does not depend on where the suite runs.
 
 ### F37 — the trap Phase 2 walks into
 
