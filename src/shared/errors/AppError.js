@@ -23,32 +23,46 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * Every subclass accepts an optional `{ code }` override.
+ *
+ * Existing endpoints already expose codes more specific than the subclass
+ * default -- Users returns E_VALIDATION_NIP_EXISTS and
+ * E_VALIDATION_EMAIL_EXISTS. Migrating those paths without an override would
+ * silently rewrite a client-visible code, so the override exists to keep the
+ * taxonomy usable without changing a contract on the way in.
+ *
+ * The status is deliberately NOT overridable: it is what defines the subclass.
+ * Construct AppError directly when a different status is needed.
+ */
+const resolveCode = (defaultCode, options) => options?.code ?? defaultCode;
+
 export class ValidationError extends AppError {
-  constructor(message, details) {
-    super(message, { code: 'E_VALIDATION', status: 400, details });
+  constructor(message, details, options) {
+    super(message, { code: resolveCode('E_VALIDATION', options), status: 400, details });
   }
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message, details) {
-    super(message, { code: 'E_UNAUTHORIZED', status: 401, details });
+  constructor(message, details, options) {
+    super(message, { code: resolveCode('E_UNAUTHORIZED', options), status: 401, details });
   }
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message, details) {
-    super(message, { code: 'E_FORBIDDEN', status: 403, details });
+  constructor(message, details, options) {
+    super(message, { code: resolveCode('E_FORBIDDEN', options), status: 403, details });
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(message, details) {
-    super(message, { code: 'E_NOT_FOUND', status: 404, details });
+  constructor(message, details, options) {
+    super(message, { code: resolveCode('E_NOT_FOUND', options), status: 404, details });
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message, details) {
-    super(message, { code: 'E_CONFLICT', status: 409, details });
+  constructor(message, details, options) {
+    super(message, { code: resolveCode('E_CONFLICT', options), status: 409, details });
   }
 }

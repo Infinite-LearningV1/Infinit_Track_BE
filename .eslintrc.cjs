@@ -32,6 +32,15 @@ module.exports = {
 							{
 								group: ['**/models', '**/models/*'],
 								message: 'Controllers must not import models. Go through a service.'
+							},
+							{
+								// config/database.js exports the configured Sequelize instance,
+								// which is how legacy controllers obtain transactions. Without
+								// this the "controllers must not touch the ORM" guarantee has a
+								// hole wide enough to drive a transaction through.
+								group: ['**/config/database', '**/config/database.js'],
+								message:
+									'Controllers must not reach the ORM through the database config. Transactions belong to the service.'
 							}
 						]
 					}

@@ -128,9 +128,11 @@ No shims. No parallel `/v2` prefixes. At no point do two live implementations of
 
 | Rule | Enforcement |
 |---|---|
-| Controllers must not touch the ORM | `src/modules/*/*.controller.js` may not import `sequelize` or `**/models` |
+| Controllers must not touch the ORM | `src/modules/*/*.controller.js` may not import `sequelize`, `**/models`, or `**/config/database` |
 | Services must not know about HTTP | `src/modules/*/*.service.js` may not import `express`; `req`/`res`/`next` are denied identifiers |
 | Repositories must not answer HTTP | `src/modules/*/*.repository.js` may not import `express` |
+
+`**/config/database` is on the controller list deliberately. It exports the configured Sequelize instance, and it is how the attendance, booking and auth controllers obtain transactions today. Without it the "controllers must not touch the ORM" guarantee had a hole a migrated controller could open transactions through while `npm run lint` stayed green — worse than no rule, because it invites trust. Services are still allowed to import it: transaction boundaries belong to them.
 
 A violation fails `npm run lint`. The rules do not apply to legacy folders, so they can land before any migration and never block unrelated work.
 
