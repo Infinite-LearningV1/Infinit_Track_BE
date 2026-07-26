@@ -56,16 +56,24 @@ Strongest-covered module in the codebase: seven dedicated auth test files.
 
 | Method | Path | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|
-| GET | `/api/users` | Admin, Management | query: page, limit, search | 401, 403 | **gap** | **gap** | **gap** |
-| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 | **gap** | **gap** | **gap** |
-| POST | `/api/users` | Admin, Management | multipart + body | 400, 401, 403 | **gap** | **gap** | **gap** |
-| POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | **gap** | covered |
-| PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | **gap** | **gap** | **gap** |
-| DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 | **gap** | **gap** | **gap** |
+| GET | `/api/users` | Admin, Management | query: page, limit, search | 401, 403 | route-only | covered | n/a |
+| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 | route-only | covered | n/a |
+| POST | `/api/users` | Admin, Management | multipart + body | 400, 401, 403 | route-only | covered | covered |
+| POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
+| PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | route-only | covered | covered |
+| DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 | route-only | covered | n/a |
 
-> **Five of six Users endpoints have zero behavioral coverage.** The only references to `/api/users` in the suite come from `configContract.test.js`, which asserts documentation, not behavior. `uploadUserPhoto` is the sole exception, covered by `uploadUserPhotoController.test.js`.
->
-> This is the single largest coverage hole in the codebase, and Users is the first module scheduled for migration (Phase 3). Phase 0b must close it before any extraction.
+**Updated 2026-07-26 — `tests/usersRouteContract.test.js` added (14 tests).**
+
+Before it, five of six Users endpoints had zero behavioral coverage; the only `/api/users` references came from `configContract.test.js`, which asserts documentation. What is now pinned:
+
+- every route resolves to its intended controller function;
+- Admin reaches all six endpoints, Management reaches five and is refused `DELETE` with 403, a plain User is refused all six;
+- unauthenticated requests are rejected before the controller runs;
+- the create-payload rules, including that **`latitude` and `longitude` are required and may not be 0** — the required-WFH-location rule that INF-251 depends on;
+- update treats every field as optional, and its 400 envelope is `{ success: false, code: 'E_VALIDATION', message, errors[] }`.
+
+**Still open for Users:** `route-only` above means the middleware chain and routing are pinned but the **controller's own response body is not** — pagination metadata, the mapped user shape, and 404 handling for a missing `:id` remain uncovered. Closing that requires model-level mocking rather than controller mocking, and is the remaining Phase 0b work for this module.
 
 ## 3. `/api/attendance` — 23 endpoints
 
@@ -188,6 +196,8 @@ Covered by `healthReadiness.test.js`.
 
 Priority modules only — Users, Bookings (incl. WFA), Attendance — 37 endpoints:
 
+Baseline as measured on 2026-07-26, before any Phase 0b work:
+
 | Module | Endpoints | Fully covered | Partial | No behavioral coverage |
 |---|---|---|---|---|
 | Users | 6 | 0 | 1 | 5 |
@@ -196,15 +206,24 @@ Priority modules only — Users, Bookings (incl. WFA), Attendance — 37 endpoin
 | Attendance | 23 | 5 | 4 | 14 |
 | **Total** | **37** | **10** | **7** | **20** |
 
-**20 of 37 priority endpoints have no behavioral test at all.** Bookings needs no backfill. Users and Attendance carry essentially the entire cost.
+**20 of 37 priority endpoints had no behavioral test at all.** Bookings needs no backfill. Users and Attendance carry essentially the entire cost.
 
-Highest-risk gaps, in order — these mutate final state or are first in the migration queue:
+### Progress
+
+| Slice | Status | Evidence |
+|---|---|---|
+| Users — route, RBAC, validation | **done** | `tests/usersRouteContract.test.js`, 14 tests |
+| Users — controller response bodies | open | needs model-level mocking |
+| WFA — 3 endpoints | open | — |
+| Attendance — 14 uncovered endpoints | open | split one PR per concern; `checkout/:id` first |
+
+Remaining highest-risk gaps, in order:
 
 1. `POST /api/attendance/checkout/:id` — final-state mutation, no test whatsoever.
-2. `GET`, `POST`, `PATCH`, `DELETE /api/users*` — five endpoints, first module to migrate.
-3. `DELETE /api/attendance/:id` — destructive, Admin/Management, untested.
-4. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
-5. The seven `manual-*` and `research-trigger` operational endpoints that write attendance state.
+2. `DELETE /api/attendance/:id` — destructive, Admin/Management, untested.
+3. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
+4. The seven `manual-*` and `research-trigger` operational endpoints that write attendance state.
+5. Users controller response bodies, per the note in section 2.
 
 ---
 
