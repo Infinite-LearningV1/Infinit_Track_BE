@@ -70,7 +70,7 @@ The body form is what mobile clients use. Recording only the cookie would let an
 | GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 `E_NOT_FOUND` | covered | covered | n/a |
 | POST | `/api/users` | Admin, Management | multipart + body | 400 `E_UPLOAD`/`E_VALIDATION_EMAIL_EXISTS`/`E_VALIDATION_NIP_EXISTS`, 401, 403 | covered | covered | covered |
 | POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
-| PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | route-only | covered | covered |
+| PATCH | `/api/users/:id` | Admin, Management | body, all fields optional; `email` is ignored | 400 (**no `code` field** — see F27), 404 | covered | covered | covered |
 | DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 (no code) | covered | covered | n/a |
 
 **Request-shape correction.** An earlier version of this table recorded `GET /api/users` as accepting `page` and `limit`. It does not. It accepts `search`, `sortBy` (default `created_at`) and `sortOrder` (default `DESC`), and returns every non-deleted user in one response — see F20.
@@ -264,7 +264,11 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Users — read and delete payloads | **done** | `tests/usersPayloadContract.test.js`, 16 tests |
 | `DELETE /api/attendance/:id` — controller behavior | **done** | `tests/attendanceDeleteContract.test.js`, 7 tests |
 | Users — `createUser` | **done** | `tests/usersCreateContract.test.js`, 11 tests |
-| Users — `updateUser` | open | the last Users mutation |
+| Users — `updateUser` | **done** | `tests/usersUpdateContract.test.js`, 15 tests |
+
+**The Users module is fully characterized.** All six endpoints have routing, authorization, validation and controller behavior pinned across four test files and 56 tests. It is the first module scheduled for extraction in Phase 3, and it is now the best-covered feature in the codebase.
+
+Characterizing it produced eight findings — F8, F19, F20, F21, F22, F23, F25 and F27 — none of them fixed, all recorded.
 
 **The authorization axis is now closed for the entire API.** Every one of the 60 route-file endpoints has its middleware chain pinned: `/api/users` by `usersRouteContract`, `/api/attendance` by `attendanceRouteContract`, `/api/bookings` by `bookingsReadinessContract`, and the remaining seven route files by `routeAuthorizationMatrix`.
 
@@ -280,9 +284,10 @@ That closes the RBAC axis for the whole module, including all nine operational t
 
 Remaining gaps, in order — all are **controller response bodies**, since routing and authorization are fully pinned:
 
-1. `updateUser` — the last Users mutation.
-2. `/api/discipline` response payloads for three of four endpoints.
-3. Reference-data dropdown payloads — lowest risk in the codebase.
+1. `/api/discipline` response payloads for three of four endpoints.
+2. Reference-data dropdown payloads — lowest risk in the codebase.
+
+Both are read-only endpoints with no mutations and no external integrations. **Every mutation in the API is now characterized.**
 
 **Every attendance mutation is now pinned.** `check-in`, `checkout`, and `delete` were the three ways final attendance state changes through the API; all three have characterization coverage, and each one surfaced a defect while being characterized (F14, F16, F24).
 
@@ -310,6 +315,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F26** | **`updateUser` writes two tables with no transaction.** It updates the user row and then the WFH location as independent operations. A failure between them leaves the user half-updated with nothing to roll it back. `createUser` wraps its three writes in one transaction; this one opens none at all | `src/controllers/user.controller.js:292-472` |
+| **F27** | **The same NIP conflict has two response shapes.** `createUser` returns `{ success: false, code: 'E_VALIDATION_NIP_EXISTS', message: 'NIP/NIM sudah digunakan' }`. `updateUser` returns `{ success: false, message: 'E_VALIDATION_NIP_EXISTS: NIP/NIM already exists' }` — **no `code` field**, the code smuggled into the message string, and a different language | `user.controller.js:560-566` vs `:331-335` |
 | **F25** | **`createUser` repeats the F14 post-commit pattern, with a worse blast radius.** The commit is at line 632, but the refetch, mapping and response all remain inside the same `try`. A post-commit throw reaches a `catch` that unconditionally deletes the uploaded Spaces object **and** rolls back an already-committed transaction. Net result: the user exists in the database, its photo has been deleted from object storage, `next(error)` never runs, and the caller receives no response | `src/controllers/user.controller.js:632-726` |
 | **F24** | **`DELETE /api/attendance/:id` hard-deletes authoritative state, unlogged.** The `Attendance` model declares neither `paranoid` nor a `deleted_at` column, so `destroy()` is an irreversible row deletion. The handler opens no transaction, writes no audit log, applies no ownership or finalized-state guard, and treats a completed record with booked work hours exactly like an open one | `src/controllers/attendance.controller.js:1555-1583`, `src/models/attendance.model.js:84-85` |
 | **F20** | **`GET /api/users` has no pagination.** It returns every non-deleted user in a single response, with no `limit` or `offset`. The endpoint accepts `search`, `sortBy` and `sortOrder` only — `page` and `limit` are ignored if sent. This is the scalability problem [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and) exists to address, and Phase 2's allowlisted list-query foundation is where it gets fixed | `src/controllers/user.controller.js:95-140` |
