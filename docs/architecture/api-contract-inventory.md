@@ -183,10 +183,12 @@ Also pinned: the search radius comes from the `wfa.recommendation.search_radius`
 
 | Method | Path | Authorization | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| GET | `/api/discipline/user/:userId` | in controller | 403, 404 | **gap** | covered | **gap** |
+| GET | `/api/discipline/user/:userId` | in controller | 403, 404 | covered | covered | covered |
 | GET | `/api/discipline/all` | in controller | 403 | covered | covered | n/a |
-| GET | `/api/discipline/config` | in controller | 403 | **gap** | covered | n/a |
-| POST | `/api/discipline/test-ahp` | `roleGuard` | 400, 403 | **gap** | covered | **gap** |
+| GET | `/api/discipline/config` | in controller | 403 | covered | covered | n/a |
+| POST | `/api/discipline/test-ahp` | `roleGuard` | 400, 403 | covered | covered | covered |
+
+`tests/disciplinePayloadContract.test.js` pins the in-controller authorization that F10 describes: a plain User is refused another user's index but served their own, Admin and Management reach any of them, and `getAllDisciplineIndices` and `getDisciplineConfig` refuse a plain User from inside the handler. The FAHP engine is mocked, so the assertions cover access rules and payload shape, never the algorithm.
 
 The RBAC column here means the **route-layer** contract is pinned, which for three of these four routes means proving they have *no* `roleGuard` and that a plain User reaches the handler. `tests/routeAuthorizationMatrix.test.js` asserts exactly that, so finding F10 is now executable rather than prose: authorization is enforced correctly, but in two different places depending on the route.
 
@@ -217,12 +219,16 @@ What is genuinely missing is narrower: the 401 and 403 cases in that file are as
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| GET | `/api/roles` | Admin, Management | 401, 403 | **gap** | covered | n/a |
-| GET | `/api/programs` | Admin, Management | 401, 403 | **gap** | covered | n/a |
-| GET | `/api/positions` | Admin, Management | 401, 403 | **gap** | covered | **gap** |
-| GET | `/api/divisions` | Admin, Management | 401, 403 | **gap** | covered | n/a |
+| GET | `/api/roles` | Admin, Management | 401, 403 | covered | covered | n/a |
+| GET | `/api/programs` | Admin, Management | 401, 403 | covered | covered | n/a |
+| GET | `/api/positions` | Admin, Management | 401, 403 | covered | covered | covered |
+| GET | `/api/divisions` | Admin, Management | 401, 403 | covered | covered | n/a |
 
-Authorization is pinned by `tests/routeAuthorizationMatrix.test.js`. The controllers' own response bodies are still uncovered — these are low-risk read-only dropdown endpoints, which is why they remain outside the Phase 0b priority set.
+Authorization is pinned by `tests/routeAuthorizationMatrix.test.js`, payloads by `tests/referenceDataContract.test.js`.
+
+These four are the most uniform controllers in the codebase: each selects an explicit attribute list, orders ascending, and answers with the same `{ success, data, message }` envelope. **The attribute lists are the response contract** — a migration that widened them would silently start leaking columns, so the tests assert them exactly. `getPositions` additionally pins its optional `program_id` filter and the single-column `program` association.
+
+Minor: the doc comments in `referenceData.controller.js` describe the paths as `/api/reference-data/*`, but the router mounts them at `/api/*`. Comment drift only — the tests and the router agree.
 
 ## 11. Health — 2 endpoints
 
@@ -265,6 +271,8 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | `DELETE /api/attendance/:id` — controller behavior | **done** | `tests/attendanceDeleteContract.test.js`, 7 tests |
 | Users — `createUser` | **done** | `tests/usersCreateContract.test.js`, 11 tests |
 | Users — `updateUser` | **done** | `tests/usersUpdateContract.test.js`, 15 tests |
+| Discipline payloads | **done** | `tests/disciplinePayloadContract.test.js`, 15 tests |
+| Reference data payloads | **done** | `tests/referenceDataContract.test.js`, 10 tests |
 
 **The Users module is fully characterized.** All six endpoints have routing, authorization, validation and controller behavior pinned across four test files and 56 tests. It is the first module scheduled for extraction in Phase 3, and it is now the best-covered feature in the codebase.
 
@@ -282,12 +290,60 @@ That closes the RBAC axis for the whole module, including all nine operational t
 
 **Both attendance final-state mutations are now fully pinned.** `check-in` and `checkout` were the two highest-risk endpoints in the codebase; characterizing them surfaced F14, F15, F16 and F17.
 
-Remaining gaps, in order — all are **controller response bodies**, since routing and authorization are fully pinned:
+## Phase 0b — planned slices complete, real gaps remain
 
-1. `/api/discipline` response payloads for three of four endpoints.
-2. Reference-data dropdown payloads — lowest risk in the codebase.
+Every slice on the Phase 0b list is done. That is **not** the same as full coverage, and the distinction matters:
 
-Both are read-only endpoints with no mutations and no external integrations. **Every mutation in the API is now characterized.**
+**Fully characterized:** the Users module end to end, `check-in`, `checkout`, `deleteAttendance`, the three WFA endpoints, discipline, reference data, and the authorization matrix for all 60 route-file endpoints.
+
+**Still open, in the priority set:**
+
+| Endpoint | What is missing | Why it matters |
+|---|---|---|
+| `GET /api/attendance` | controller behavior — the admin list with search and sorting | The busiest admin read; its query shape moves in Phase 2 |
+| `POST /api/attendance/location-event` | controller behavior and validation | Writes `LocationEvent`, feeds geofence evidence |
+| `POST /manual-auto-checkout` | controller behavior | **Triggers a job that mutates final attendance state** |
+| `POST /manual-resolve-wfa-bookings` | controller behavior | **Same** |
+| `POST /manual-general-alpha` | controller behavior | **Same** |
+| `POST /manual-resolve-wfa-for-date` | controller behavior | **Same** |
+| `POST /manual-smart-auto-checkout` | controller behavior | **Same** |
+| `GET /api/summary/reports/pdf` and `/excel` | RBAC assertions | Route-level only today |
+
+The five `manual-*` triggers are the notable ones. Their routing and authorization are pinned, but **what they do once called is not** — and each invokes a background job that writes attendance. An earlier draft of this section claimed "every mutation in the API is characterized"; that was wrong, and these are why.
+
+| Slice | Tests |
+|---|---|
+| Users — routing, RBAC, validation | 14 |
+| Users — read and delete payloads | 16 |
+| Users — `createUser` | 11 |
+| Users — `updateUser` | 15 |
+| Attendance — authorization matrix, 23 endpoints | 55 |
+| Attendance — `checkIn` | 17 |
+| Attendance — `checkOut` | 10 |
+| Attendance — `deleteAttendance` | 7 |
+| WFA — 3 endpoints incl. Geoapify contract | 22 |
+| Authorization matrix — 7 remaining route files | 87 |
+| Discipline payloads | 15 |
+| Reference data payloads | 10 |
+| Controller export reachability guard | 3 |
+
+The suite went from **579 tests at `5ce2f69`** to **896**, with no production behavior changed at any point.
+
+### What characterization actually bought
+
+Seventeen findings, F7 through F27. Six became their own Linear issues. The ones that would have been carried silently into new modules:
+
+- **[INF-255](https://linear.app/infinite-track-palu/issue/INF-255/backend-post-commit-failures-roll-back-committed-transactions-checkout)** — post-commit rollback in `checkOut` **and** `createUser`; the second destroys a committed user's photo.
+- **[INF-258](https://linear.app/infinite-track-palu/issue/INF-258/backend-attendance-deletion-is-irreversible-and-unlogged)** — attendance is hard-deleted, unlogged, untransacted.
+- **[INF-257](https://linear.app/infinite-track-palu/issue/INF-257/backendproduct-the-early-check-in-status-is-unreachable-decide-gate-or)** — the `EARLY` status is unreachable.
+- **F19** — `booking.getMyBookings` is dead code, yet Phase 4 lists `ListMyBookings` as a use case to extract.
+- **F26 / F27** — `updateUser` has no transaction, and reports a NIP conflict in a different shape from `createUser`.
+
+### What the coverage still cannot do
+
+All 896 tests mock Sequelize. They prove what the code *intends*, not that the database behaves accordingly. Three of the most serious findings — F14, F25, F26 — are about transaction behavior, which is precisely what a mock cannot verify.
+
+**[INF-254](https://linear.app/infinite-track-palu/issue/INF-254/backendinfra-database-schema-cannot-be-built-from-the-repository) still blocks the only kind of test that could.** Phase 2 onwards moves queries into repositories and query objects, and no test in this suite would catch a change in the SQL that results.
 
 **Every attendance mutation is now pinned.** `check-in`, `checkout`, and `delete` were the three ways final attendance state changes through the API; all three have characterization coverage, and each one surfaced a defect while being characterized (F14, F16, F24).
 
