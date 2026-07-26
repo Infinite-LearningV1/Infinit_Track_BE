@@ -137,11 +137,32 @@ Best-covered feature module. `bookingsReadinessContract.test.js` asserts 200, 20
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| GET | `/api/wfa/recommendations` | any | 401 | route-only | **gap** | **gap** |
-| GET | `/api/wfa/ahp-config` | any | 401 | route-only | **gap** | **gap** |
-| POST | `/api/wfa/test-ahp` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
+| GET | `/api/wfa/recommendations` | any | 400 `E_VALIDATION`, 401, 408 `E_TIMEOUT`, 429 `E_RATE_LIMIT`, 500 `E_CONFIG`/`E_API_KEY`, 503 `E_SERVICE_UNAVAILABLE`/`E_EXTERNAL_SERVER` | covered | **gap** | covered |
+| GET | `/api/wfa/ahp-config` | any | 401 | covered | **gap** | n/a |
+| POST | `/api/wfa/test-ahp` | Admin, Management | 400, 401, 403 | covered | **gap** | covered |
 
 `wfaRouteExposure.test.js` asserts 404 for paths that must **not** be exposed. That is exposure control, not behavioral coverage. The `analysisFuzzyAhpWfa*` tests cover `/api/analysis/fuzzy-ahp/wfa`, a different endpoint.
+
+**Updated 2026-07-26 — `tests/wfaControllerContract.test.js` added (22 tests).** Controller behavior is now pinned; **RBAC remains a gap** because these tests exercise controllers directly and no route-level contract test exists for `/api/wfa`, unlike `/api/users` and `/api/attendance`.
+
+The FAHP engine is mocked throughout. FAHP theory is locked, so the tests assert the controller's orchestration and error contract, never the algorithm's numbers — which is also the boundary Phase 4 will cut along.
+
+### The Geoapify integration contract
+
+`getWfaRecommendations` carries the richest external-integration error mapping in the codebase, and it is now fully pinned:
+
+| Failure | Response |
+|---|---|
+| `ECONNABORTED` / `ETIMEDOUT` | 408 `E_TIMEOUT`, **after 3 attempts** |
+| `ENOTFOUND` / `ECONNREFUSED` | 503 `E_SERVICE_UNAVAILABLE`, no retry |
+| HTTP 401 / 403 | 500 `E_API_KEY` |
+| HTTP 429 | 429 `E_RATE_LIMIT` |
+| HTTP ≥ 500 | 503 `E_EXTERNAL_SERVER` |
+| anything else | `next(error)` |
+
+**Retry behavior:** timeouts are retried twice with a progressive delay of 1s then 2s — three attempts and roughly three seconds before the client sees a 408. Non-timeout failures are not retried. This is the only retry logic in the HTTP layer, and Phase 4 must carry it across when the Geoapify adapter is extracted rather than quietly dropping it.
+
+Also pinned: the search radius comes from the `wfa.recommendation.search_radius` setting and falls back to 5000 when absent, and a missing `GEOAPIFY_API_KEY` produces 500 `E_CONFIG` **before** any outbound call.
 
 ## 6. `/api/summary` — 4 endpoints
 
@@ -230,8 +251,9 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Attendance — routing and authorization matrix, all 23 endpoints | **done** | `tests/attendanceRouteContract.test.js`, 55 tests |
 | Attendance — `checkout` controller behavior | **done** | `tests/attendanceCheckoutContract.test.js`, 10 tests |
 | Attendance — `check-in` controller behavior | **done** | `tests/attendanceCheckinContract.test.js`, 17 tests |
+| WFA — 3 endpoints, controller behavior | **done** | `tests/wfaControllerContract.test.js`, 22 tests |
 | Users — controller response bodies | open | needs model-level mocking |
-| WFA — 3 endpoints | open | — |
+| WFA — route-level RBAC | open | no route contract test for `/api/wfa` yet |
 
 **Attendance authorization is now fully pinned.** All 23 endpoints are asserted: the 7 self-service routes reach their controller for a plain User; the 15 privileged routes return 403 for a plain User and 200 for Admin and Management; the lazy-loaded `test-weighted-prediction` trigger is confirmed Admin/Management-only; and unauthenticated requests are refused on both classes of route.
 
@@ -244,9 +266,9 @@ That closes the RBAC axis for the whole module, including all nine operational t
 Remaining highest-risk gaps, in order:
 
 1. Users controller response bodies, per the note in section 2.
-2. WFA's three endpoints, which still have only route-exposure coverage.
+2. `DELETE /api/attendance/:id` — destructive, routing and authorization pinned, controller behavior not.
 3. `PATCH /api/settings/operational` — PATCH-specific authorization only; happy path and validation are already covered.
-4. `DELETE /api/attendance/:id` — destructive, routing and authorization pinned, controller behavior not.
+4. Route-level RBAC for `/api/wfa` — controller behavior is pinned, but no route contract test exists for that prefix.
 
 ---
 
@@ -271,6 +293,7 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | **F14** | **`checkOut` rolls back an already-committed transaction.** The commit happens at line 1519, but lines 1522-1548 remain inside the same `try`. Any throw after the commit — the post-commit refetch returning `null` is the realistic one — sends control to the `catch`, which calls `transaction.rollback()` on a finished transaction. Sequelize throws, so `next(error)` is never reached and the request ends in an unhandled rejection with no response to the client | `src/controllers/attendance.controller.js:1519-1552` |
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
+| F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
 | F17 | `checkIn` derives the weekend/holiday decision from a raw `new Date()` at line 683, while the two lines above it use the explicit Jakarta helpers `getJakartaTime()` and `getJakartaDateString()`. It is correct in production only because `TZ=Asia/Jakarta` is set process-wide in `server.js`; the calendar gate silently depends on process configuration rather than on the timezone contract used by the surrounding code | `src/controllers/attendance.controller.js:682-684,736-737` |
 
 ### F16 — why it matters
