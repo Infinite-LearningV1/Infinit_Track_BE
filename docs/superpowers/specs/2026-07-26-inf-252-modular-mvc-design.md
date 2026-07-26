@@ -83,6 +83,8 @@ These are contract observations for the Phase 0 inventory. Fixing them is out of
 | F5 | Error `code` is exposed only when status < 500 **or** the code is in `PUBLIC_ERROR_CODES`; `E_INVALID_REFERENCE_STATE` has its fields copied one by one | `src/middlewares/errorHandler.js:72-96` |
 | F6 | CI pins Node 18; this worktree runs Node v24.16.0 | `.github/workflows/ci.yml:10` |
 
+Phase 0a surfaced five further findings, F7–F11, recorded in [api-contract-inventory.md](../../architecture/api-contract-inventory.md#known-contract-inconsistencies). **F7 is the most serious and is not merely architectural:** 13 controller responses across 7 files return `error: error.message` directly instead of calling `next(err)`, bypassing the production 500-masking in `errorHandler.js:66-70`. That is an information-disclosure risk in production, invisible to the current tests because they run with `env: 'test'`. It needs its own issue, not absorption into a migration PR.
+
 ---
 
 ## 2. Decisions
