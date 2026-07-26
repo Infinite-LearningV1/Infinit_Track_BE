@@ -122,75 +122,126 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+// Sort whitelist (INF-250): client keys map to real columns; anything else
+// falls back to the default instead of reaching the ORDER BY clause.
+const USER_LIST_SORT_COLUMNS = {
+  full_name: 'full_name',
+  email: 'email',
+  nip_nim: 'nip_nim',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+// Escape LIKE wildcards so a search for "50%" matches literally (F3).
+const escapeLikePattern = (term) => term.replace(/[\\%_]/g, (char) => `\\${char}`);
+
 export const getAllUsers = async (req, res, next) => {
   try {
-    // Get query parameters for search and sorting
-    const search = req.query.search;
-    const sortBy = req.query.sortBy || 'created_at';
-    const sortOrder = req.query.sortOrder || 'DESC';
+    const { search, role, program, division, position } = req.query;
+    const locationStatus = req.query.location_status;
 
-    // Build where clause for filtering
-    let whereClause = {
+    // INF-250 phase A: pagination is opt-in. Without page/limit the legacy
+    // full-array response is preserved so the current Web FE keeps working.
+    const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+    const page = Number.isInteger(Number(req.query.page)) && Number(req.query.page) >= 1 ? Number(req.query.page) : 1;
+    const limit =
+      Number.isInteger(Number(req.query.limit)) && Number(req.query.limit) >= 1
+        ? Math.min(Number(req.query.limit), 100)
+        : 20;
+
+    const whereClause = {
       deleted_at: null
     };
 
-    // Add search functionality
-    if (search) {
+    if (role !== undefined) whereClause.id_roles = role;
+    if (program !== undefined) whereClause.id_programs = program;
+    if (division !== undefined) whereClause.id_divisions = division;
+    if (position !== undefined) whereClause.id_position = position;
+
+    if (locationStatus === 'configured') {
+      whereClause['$wfh_location.location_id$'] = { [Op.not]: null };
+    } else if (locationStatus === 'integrity_error') {
+      whereClause['$wfh_location.location_id$'] = { [Op.is]: null };
+    }
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const likePattern = `%${escapeLikePattern(search.trim())}%`;
       whereClause[Op.or] = [
-        { full_name: { [Op.like]: `%${search}%` } },
-        { nip_nim: { [Op.like]: `%${search}%` } }
+        { full_name: { [Op.like]: likePattern } },
+        { nip_nim: { [Op.like]: likePattern } },
+        { email: { [Op.like]: likePattern } }
       ];
     }
 
-    // Query users with all required associations
-    const users = await User.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: Role,
-          as: 'role',
-          attributes: ['role_name']
-        },
-        {
-          model: Program,
-          as: 'program',
-          attributes: ['program_name']
-        },
-        {
-          model: Position,
-          as: 'position',
-          attributes: ['position_name']
-        },
-        {
-          model: Division,
-          as: 'division',
-          attributes: ['division_name'],
-          required: false
-        },
-        {
-          model: Photo,
-          as: 'photo_file',
-          attributes: ['photo_url', 'photo_updated_at'],
-          required: false
-        },
-        {
-          model: Location,
-          as: 'wfh_location',
-          where: { id_attendance_categories: 2 },
-          include: [
-            {
-              model: AttendanceCategory,
-              as: 'attendance_category',
-              attributes: ['category_name']
-            }
-          ],
-          // Left join: an active user without a WFH location is a
-          // data-integrity violation that must stay visible, not vanish.
-          required: false
-        }
-      ],
-      order: [[sortBy, sortOrder.toUpperCase()]]
-    });
+    const include = [
+      {
+        model: Role,
+        as: 'role',
+        attributes: ['role_name']
+      },
+      {
+        model: Program,
+        as: 'program',
+        attributes: ['program_name']
+      },
+      {
+        model: Position,
+        as: 'position',
+        attributes: ['position_name']
+      },
+      {
+        model: Division,
+        as: 'division',
+        attributes: ['division_name'],
+        required: false
+      },
+      {
+        model: Photo,
+        as: 'photo_file',
+        attributes: ['photo_url', 'photo_updated_at'],
+        required: false
+      },
+      {
+        model: Location,
+        as: 'wfh_location',
+        where: { id_attendance_categories: 2 },
+        include: [
+          {
+            model: AttendanceCategory,
+            as: 'attendance_category',
+            attributes: ['category_name']
+          }
+        ],
+        // Left join: an active user without a WFH location is a
+        // data-integrity violation that must stay visible, not vanish.
+        required: false
+      }
+    ];
+
+    const sortBy = USER_LIST_SORT_COLUMNS[req.query.sortBy] ?? 'created_at';
+    const sortOrder = String(req.query.sortOrder ?? 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const order = [[sortBy, sortOrder]];
+
+    let users;
+    let pagination = null;
+
+    if (paginated) {
+      const { rows, count } = await User.findAndCountAll({
+        where: whereClause,
+        include,
+        order,
+        limit,
+        offset: (page - 1) * limit,
+        // distinct keeps the count honest if a join ever duplicates rows;
+        // subQuery false lets the $wfh_location$ filter work alongside limit.
+        distinct: true,
+        subQuery: false
+      });
+      users = rows;
+      pagination = { page, limit, total: count, totalPages: Math.ceil(count / limit) };
+    } else {
+      users = await User.findAll({ where: whereClause, include, order });
+    }
 
     const transformedUsers = users.map(toUserListProjection);
 
@@ -209,6 +260,7 @@ export const getAllUsers = async (req, res, next) => {
     res.json({
       success: true,
       data: transformedUsers,
+      ...(pagination ? { pagination } : {}),
       message: 'Users fetched successfully'
     });
   } catch (error) {

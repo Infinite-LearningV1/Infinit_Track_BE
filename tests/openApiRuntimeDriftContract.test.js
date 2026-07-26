@@ -52,36 +52,47 @@ describe('GET /api/users — documented contract versus runtime', () => {
   });
 
   /**
-   * F35 resolved (INF-251/INF-261). usersPayloadContract.test.js pins the
-   * runtime as accepting search, sortBy and sortOrder, with no pagination
-   * whatsoever (F20) — and the spec now says exactly that.
+   * F35 resolved (INF-251/INF-261), then INF-262 implemented the INF-250
+   * server-driven matrix. The spec documents exactly the parameters the
+   * controller now reads — and still not the phantom role_id/division_id
+   * spellings from the pre-audit spec.
    */
-  it.each([['page'], ['limit'], ['role_id'], ['division_id']])(
-    'no longer documents the "%s" query parameter the controller ignores',
+  it.each([['role_id'], ['division_id']])(
+    'still does not document the phantom "%s" parameter',
     (param) => {
       expect(block).not.toContain(`name: ${param}`);
     }
   );
 
-  it.each([['search'], ['sortBy'], ['sortOrder']])(
-    'documents the "%s" query parameter the controller reads',
-    (param) => {
-      expect(block).toContain(`name: ${param}`);
-    }
-  );
+  it.each([
+    ['page'],
+    ['limit'],
+    ['search'],
+    ['role'],
+    ['program'],
+    ['division'],
+    ['position'],
+    ['location_status'],
+    ['sortBy'],
+    ['sortOrder']
+  ])('documents the "%s" query parameter the controller reads (INF-250 matrix)', (param) => {
+    expect(block).toContain(`name: ${param}`);
+  });
 
-  it('describes search as covering full name and NIP/NIM, matching the controller', () => {
-    expect(block).toMatch(/Search by full name or NIP\/NIM/);
+  it('describes search as covering full name, NIP/NIM, and email, matching the controller', () => {
+    expect(block).toMatch(/Search by full name, NIP\/NIM, or email/);
   });
 
   /**
-   * The runtime answers { success, data: [...], message } and the spec now
-   * documents that envelope with the slim UserListItem projection.
+   * The runtime answers { success, data: [...], message }, plus a canonical
+   * pagination sibling in opt-in paginated mode (INF-262). The spec documents
+   * that envelope with the slim UserListItem projection.
    */
-  it('documents data as an array of UserListItem with no pagination wrapper', () => {
+  it('documents data as an array of UserListItem with the canonical pagination sibling', () => {
     expect(block).toContain("$ref: '#/components/schemas/UserListItem'");
     expect(block).not.toContain('users:');
-    expect(block).not.toContain('pagination:');
+    expect(block).toContain('pagination:');
+    expect(block).toContain('totalPages:');
   });
 
   it('documents the message field the controller always returns', () => {
@@ -128,22 +139,24 @@ describe('GET /api/attendance — documented contract versus runtime', () => {
 
 describe('the two list endpoints disagree with each other', () => {
   /**
-   * The runtime shapes differ between the two admin lists -- attendance
-   * paginates, users does not (F20). Since INF-251/INF-261 the users spec
-   * matches its runtime; the attendance spec is still the drifted shape.
-   * Phase 2's list-query foundation (INF-250) still has to unify the two
-   * runtime contracts themselves.
+   * Both admin lists now paginate, but the envelopes are spelled differently:
+   * users adopted the INF-250 canonical spelling (page/limit/total/totalPages,
+   * F20 closed by INF-262) while attendance still uses total_records /
+   * records_per_page (F39). Migrating attendance to the canonical spelling is
+   * follow-up scope; until then this pin keeps the difference visible.
    */
-  it('users is documented without pagination while attendance still documents it', () => {
+  it('users documents the canonical envelope while attendance keeps the legacy spelling', () => {
     const users = operationBlock('/api/users', 'get');
     const attendance = operationBlock('/api/attendance', 'get');
 
-    expect(users).not.toContain('pagination:');
-    expect(users).not.toContain('name: page');
-    expect(users).not.toContain('name: limit');
+    expect(users).toContain('totalPages:');
+    expect(users).toContain('name: page');
+    expect(users).toContain('name: limit');
+    expect(users).not.toContain('total_records');
 
     expect(attendance).toContain('pagination:');
     expect(attendance).toContain('name: page');
     expect(attendance).toContain('name: limit');
+    expect(attendance).not.toContain('totalPages:');
   });
 });

@@ -183,7 +183,7 @@ describe('getAllUsers payload', () => {
     );
   });
 
-  it('searches full_name and nip_nim only', async () => {
+  it('searches full_name, nip_nim, and email (INF-250 decision)', async () => {
     const { getAllUsers, userFindAll } = await loadUsers({ findAll: [] });
 
     await getAllUsers({ query: { search: 'nadia' }, user: { id: 1 } }, buildRes(), jest.fn());
@@ -193,9 +193,9 @@ describe('getAllUsers payload', () => {
       .map((sym) => where[sym])
       .find(Array.isArray);
 
-    expect(orClause).toHaveLength(2);
+    expect(orClause).toHaveLength(3);
     const searchedFields = orClause.map((clause) => Object.keys(clause)[0]);
-    expect(searchedFields).toEqual(['full_name', 'nip_nim']);
+    expect(searchedFields).toEqual(['full_name', 'nip_nim', 'email']);
   });
 
   it('returns an empty data array rather than 404 when nothing matches', async () => {
@@ -209,17 +209,50 @@ describe('getAllUsers payload', () => {
   });
 
   /**
-   * There is no pagination. getAllUsers returns every non-deleted user in one
-   * response. Recorded as F20 -- it is also what INF-250 exists to address.
+   * F20 CLOSED by INF-262 (INF-250 decision): pagination is opt-in. Without
+   * page/limit the legacy full-array behavior is preserved (phase A of the
+   * migration plan); with them, the query paginates through findAndCountAll.
+   * The paginated mode's own contract lives in usersListPaginationContract.
    */
-  it('applies no limit or offset', async () => {
+  it('applies no limit or offset in legacy mode, and paginates when asked', async () => {
     const { getAllUsers, userFindAll } = await loadUsers({ findAll: [] });
 
-    await getAllUsers({ query: { page: '2', limit: '10' }, user: { id: 1 } }, buildRes(), jest.fn());
+    await getAllUsers({ query: {}, user: { id: 1 } }, buildRes(), jest.fn());
 
     const options = userFindAll.mock.calls[0][0];
     expect(options.limit).toBeUndefined();
     expect(options.offset).toBeUndefined();
+
+    const findAndCountAll = jest.fn().mockResolvedValue({ rows: [], count: 0 });
+    jest.resetModules();
+    jest.unstable_mockModule('../src/models/index.js', () => ({
+      User: { findAll: jest.fn(), findAndCountAll, findByPk: jest.fn(), findOne: jest.fn() },
+      Role: {},
+      Program: {},
+      Position: {},
+      Division: {},
+      Photo: {},
+      Location: {},
+      AttendanceCategory: {},
+      sequelize: {}
+    }));
+    jest.unstable_mockModule('../src/utils/logger.js', () => ({
+      default: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }
+    }));
+    jest.unstable_mockModule('../src/config/spaces.js', () => ({
+      buildUserProfilePhotoKey: jest.fn(),
+      uploadBufferToSpaces: jest.fn(),
+      deleteSpacesObject: jest.fn()
+    }));
+    const { getAllUsers: getAllUsersPaginated } = await import(
+      '../src/controllers/user.controller.js'
+    );
+
+    await getAllUsersPaginated({ query: { page: 2, limit: 10 }, user: { id: 1 } }, buildRes(), jest.fn());
+
+    expect(findAndCountAll).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 10, offset: 10 })
+    );
   });
 
   it('forwards a query failure to the error handler', async () => {

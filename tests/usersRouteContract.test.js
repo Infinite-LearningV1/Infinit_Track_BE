@@ -64,6 +64,7 @@ const buildApp = async ({ role = 'Admin', verifyTokenImpl } = {}) => {
   jest.unstable_mockModule('../src/middlewares/validator.js', () => ({
     validateCreateUser: [(req, res, next) => next()],
     validateUpdateUser: [(req, res, next) => next()],
+    validateListUsers: [(req, res, next) => next()],
     validate: (req, res, next) => next(),
     upload: { single: () => (req, res, next) => next() }
   }));
