@@ -81,29 +81,29 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| POST | `/location-event` | any | 400 | **gap** | **gap** | **gap** |
-| GET | `/` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
+| POST | `/location-event` | any | 400 | route-only | covered | **gap** |
+| GET | `/` | Admin, Management | 401, 403 | route-only | covered | **gap** |
 | GET | `/today-locations` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/geofence-evidence` | Admin, Management | 400, 401, 403 | covered | covered | covered |
-| POST | `/check-in` | any | 400, 409 | partial | **gap** | **gap** |
-| POST | `/checkout/:id` | any | 400, 404 | **gap** | **gap** | **gap** |
-| GET | `/history/personal/pdf` | any | 400 | covered | **gap** | covered |
-| GET | `/history/export.pdf` | any | 400 | covered | **gap** | covered |
+| POST | `/check-in` | any | 400, 409 | partial | covered | **gap** |
+| POST | `/checkout/:id` | any | 400, 404 | route-only | covered | **gap** |
+| GET | `/history/personal/pdf` | any | 400 | covered | covered | covered |
+| GET | `/history/export.pdf` | any | 400 | covered | covered | covered |
 | GET | `/history` | any | 200, 401 | covered | covered | **gap** |
 | GET | `/status-today` | any | 200 | partial | **gap** | n/a |
 | GET | `/debug-checkin-time` | Admin, Management | 200, 400, 401, 403 | covered | covered | covered |
-| POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| POST | `/manual-general-alpha` | Admin, Management | 400 | **gap** | **gap** | **gap** |
-| POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | **gap** | **gap** | **gap** |
-| POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | **gap** | **gap** | **gap** |
-| POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | **gap** | covered |
-| POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | **gap** | covered |
-| POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | **gap** | **gap** |
-| DELETE | `/:id` | Admin, Management | 401, 403, 404 | **gap** | **gap** | **gap** |
-| GET | `/smart-config` | Admin, Management | 200 | **gap** | **gap** | n/a |
-| GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | **gap** | **gap** | **gap** |
+| POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | route-only | covered | **gap** |
+| GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | route-only | covered | n/a |
+| POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | route-only | covered | **gap** |
+| POST | `/manual-general-alpha` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
+| POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
+| POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | covered | **gap** |
+| DELETE | `/:id` | Admin, Management | 401, 403, 404 | route-only | covered | **gap** |
+| GET | `/smart-config` | Admin, Management | 200 | route-only | covered | n/a |
+| GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | route-only | covered | **gap** |
 
 `partial` for `/check-in` means `attendanceDuplicateSafety.test.js` exercises `checkIn` at controller level, but only for duplicate-safety behavior — not the general success path. `/checkout/:id` has **no dedicated test at all**, despite being a final-state mutation.
 
@@ -213,17 +213,22 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Slice | Status | Evidence |
 |---|---|---|
 | Users — route, RBAC, validation | **done** | `tests/usersRouteContract.test.js`, 14 tests |
+| Attendance — routing and authorization matrix, all 23 endpoints | **done** | `tests/attendanceRouteContract.test.js`, 55 tests |
 | Users — controller response bodies | open | needs model-level mocking |
+| Attendance — `check-in` / `checkout` controller behavior | open | highest remaining risk |
 | WFA — 3 endpoints | open | — |
-| Attendance — 14 uncovered endpoints | open | split one PR per concern; `checkout/:id` first |
+
+**Attendance authorization is now fully pinned.** All 23 endpoints are asserted: the 7 self-service routes reach their controller for a plain User; the 15 privileged routes return 403 for a plain User and 200 for Admin and Management; the lazy-loaded `test-weighted-prediction` trigger is confirmed Admin/Management-only; and unauthenticated requests are refused on both classes of route.
+
+That closes the RBAC axis for the whole module, including all nine operational triggers that mutate final attendance state — the property most at risk of silent drift during extraction.
 
 Remaining highest-risk gaps, in order:
 
-1. `POST /api/attendance/checkout/:id` — final-state mutation, no test whatsoever.
-2. `DELETE /api/attendance/:id` — destructive, Admin/Management, untested.
+1. `POST /api/attendance/checkout/:id` — final-state mutation. Routing and authorization are pinned; **controller behavior is not**.
+2. `POST /api/attendance/check-in` — only duplicate-safety behavior is covered, by `attendanceDuplicateSafety.test.js`.
 3. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
-4. The seven `manual-*` and `research-trigger` operational endpoints that write attendance state.
-5. Users controller response bodies, per the note in section 2.
+4. Users controller response bodies, per the note in section 2.
+5. WFA's three endpoints, which still have only route-exposure coverage.
 
 ---
 
