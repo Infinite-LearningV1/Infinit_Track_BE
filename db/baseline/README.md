@@ -117,6 +117,21 @@ All three steps must succeed. If `npm run migrate` still fails, the dump is miss
 
 > Port 3307 is used deliberately: 3306 is usually taken by a local MySQL, and pointing this at a real development database would run migrations against it.
 
+## The procedure has been rehearsed end to end
+
+Run on 2026-07-27 against a disposable MySQL 8.0 container, using a schema built from the Sequelize models as a stand-in for the production dump:
+
+| Step | Result |
+|---|---|
+| Restore a complete schema | 17 tables |
+| `sequelizemeta` present, carrying all 9 migration names | 9 rows |
+| `npm run migrate` | ✓ **Migrations completed successfully** |
+| `npm run test:integration` | ✓ **4 tests passed** |
+
+**Everything downstream of the dump works.** The integration harness, the `test` environment key, the migrate step and the suite have all now run green together. The one thing the rehearsal could not stand in for is the dump's *provenance* — whether the committed schema matches production.
+
+One nuance the rehearsal exposed, which matters only if you build a schema some other way: **`sequelizemeta` is not a Sequelize model.** `sync()` does not create it; `sequelize-cli` does, on first migrate. A production dump carries both its structure and — with the second command above — its rows, so this is not a concern for the documented path.
+
 ## Once the dump exists
 
 Two things follow, neither of which should land before it:
