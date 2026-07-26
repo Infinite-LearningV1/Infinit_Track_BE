@@ -159,7 +159,7 @@ Sequelize Entity → Mapper → Service Result → Controller → HTTP Response
 
 ### 3.4 Machine-enforced layer contract (D7)
 
-Added to `eslint.config.js`, scoped to `src/modules/**` so legacy code is unaffected:
+Added to **`.eslintrc.cjs`** as `overrides` entries, scoped to `src/modules/**` so legacy code is unaffected. The repository runs ESLint 8 with the legacy eslintrc format; a flat `eslint.config.js` would not be read at all, so naming it here would have left the layer contract silently unenforced:
 
 | Rule | Enforcement |
 |---|---|

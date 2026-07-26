@@ -48,7 +48,18 @@ src/server.js          TZ=Asia/Jakarta, DB auth, cron start, listen
 | `wfa.routes.js` | 3 |
 | `settings.routes.js` | 2 |
 | `contribution.routes.js` | 0 (fully commented out) |
-| **Total** | **60** |
+| **Route-file subtotal** | **60** |
+
+Plus two endpoints registered directly on the root router in `src/routes/index.js`:
+
+| Endpoint | |
+|---|---|
+| `GET /livez` | process liveness |
+| `GET /health` | dependency readiness |
+| **Health subtotal** | **2** |
+| **Total mounted endpoints** | **62** |
+
+**Read the denominators carefully.** Elsewhere in these documents, "60" always means the route-file subtotal, and the migration-scope figure "37 of 60" counts priority-module endpoints against it. Health endpoints are deliberately outside migration scope — they have no feature module — but they are part of the 62 mounted routes. Caught in review of PR #96, where the mixed denominators read as an inconsistency.
 
 ---
 
@@ -86,9 +97,16 @@ Every route: `verifyToken` then `roleGuard`.
 
 **Models touched:** `User`, `Photo`, `Role`, `Program`, `Position`, `Division`, `AttendanceCategory`, `Location`, plus a direct `sequelize` import for transactions
 **Jobs writing the same tables:** `createGeneralAlpha.job.js` reads `User` and `Role`
-**External services:** Cloudinary (`src/config/cloudinary.js`)
+**External services:**
 
-`user.controller.js` is the only controller importing `sequelize` directly — it owns its own transaction orchestration inline.
+| Service | Role | Evidence |
+|---|---|---|
+| **DigitalOcean Spaces** | **Primary** photo storage — upload and cleanup | `src/config/spaces.js`, imported at `user.controller.js:16` as `buildUserProfilePhotoKey`, `uploadBufferToSpaces`, `deleteSpacesObject`; used at lines 218-223 and 276-278 |
+| Cloudinary | Legacy-photo deletion fallback only, via a lazy dynamic import | `user.controller.js:20-21` |
+
+An earlier version of this document listed Cloudinary as the only storage dependency. That was wrong and would have carried a real migration risk: extracting the Users module against this map could have left the **primary** storage adapter and its environment contract behind. Caught in review of PR #96.
+
+`user.controller.js` imports `sequelize` directly to orchestrate its own transactions. `discipline.controller.js` does the same — see section 9. Those are the two.
 
 ---
 

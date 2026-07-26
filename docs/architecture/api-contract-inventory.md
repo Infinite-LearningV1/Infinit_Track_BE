@@ -46,11 +46,21 @@ with successful list responses adding `data` and `pagination`. Two documented de
 | Method | Path | Auth | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|---|
 | POST | `/api/auth/login` | none, rate-limited | — | body: email, password | 400, 401, 429 | covered | covered | covered |
-| POST | `/api/auth/refresh` | refresh cookie | — | cookie | 401 | covered | covered | **gap** |
-| POST | `/api/auth/logout` | none | — | cookie | 200 always | covered | n/a | **gap** |
+| POST | `/api/auth/refresh` | refresh token | — | `refresh_token` **cookie or body** | 401 | covered | covered | **gap** |
+| POST | `/api/auth/logout` | none | — | `refresh_token` cookie or body; access token also identifies the session | 200; 5xx paths **needs verification** | covered | n/a | **gap** |
 | GET | `/api/auth/me` | Bearer or cookie | any | — | 401 | covered | covered | n/a |
 
 Strongest-covered module in the codebase: seven dedicated auth test files.
+
+**Token inputs — corrected.** An earlier version of this table recorded the refresh cookie as the only input. `resolveRefreshToken` at `src/controllers/auth.controller.js:201-202` reads **both** sources:
+
+```js
+return req.cookies?.refresh_token || req.body?.refresh_token || null;
+```
+
+The body form is what mobile clients use. Recording only the cookie would let an auth migration keep the web flow green while silently dropping Android refresh and logout. Caught in review of PR #96.
+
+**Needs verification:** review also reported that logout returns a generic 500 when an identified session lookup fails. The 500 at `auth.controller.js:193` is inside `login`, not `logout`, so that specific claim is unconfirmed. Logout's failure branches must be read before the auth module is migrated.
 
 ## 2. `/api/users` — 6 endpoints
 
@@ -166,9 +176,11 @@ Twelve dedicated `analysisFuzzyAhp*` test files. The thinnest controller in the 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
 | GET | `/api/settings/operational` | Admin, Management | 401, 403, 500 `E_OPERATIONAL_SETTINGS_INVALID` | covered | covered | n/a |
-| PATCH | `/api/settings/operational` | Admin, Management | 400, 401, 403 | **gap** | **gap** | **gap** |
+| PATCH | `/api/settings/operational` | Admin, Management | 400, 401, 403 | covered | **gap** | covered |
 
-The read path is well covered; the **mutation path has none**.
+**Corrected.** An earlier version marked the mutation path as having no coverage at all. `tests/settingsOperationalRoutesContract.test.js` in fact asserts PATCH success for both Admin and Management, a no-op patch, and a 400 on an empty body with its response shape.
+
+What is genuinely missing is narrower: the 401 and 403 cases in that file are asserted against **GET**, not PATCH, so PATCH-specific authorization is unproven. Caught in review of PR #96.
 
 ## 10. `/api` reference data — 4 endpoints
 
@@ -228,9 +240,9 @@ That closes the RBAC axis for the whole module, including all nine operational t
 Remaining highest-risk gaps, in order:
 
 1. `POST /api/attendance/check-in` — only duplicate-safety behavior is covered, by `attendanceDuplicateSafety.test.js`.
-2. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
-3. Users controller response bodies, per the note in section 2.
-4. WFA's three endpoints, which still have only route-exposure coverage.
+2. Users controller response bodies, per the note in section 2.
+3. WFA's three endpoints, which still have only route-exposure coverage.
+4. `PATCH /api/settings/operational` — PATCH-specific authorization only; happy path and validation are already covered.
 
 ---
 
@@ -246,7 +258,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F4 | `contribution.routes.js` is entirely commented out and unmounted — dead file | `src/routes/contribution.routes.js` |
 | F5 | Error `code` is exposed only when status < 500 or the code is allowlisted; `E_INVALID_REFERENCE_STATE` has its extra fields copied one by one | `src/middlewares/errorHandler.js:72-96` |
 | F6 | CI pins Node 18; local development observed on Node v24.16.0 | `.github/workflows/ci.yml:10` |
-| **F7** | **13 controller responses across 7 files return `error: error.message` directly instead of calling `next(err)`. These bypass the global handler entirely, so the production 500-masking in `errorHandler.js:66-70` never applies to them — internal error text can reach clients in production.** | `analysis` ×1, `attendance` ×5, `auth` ×1, `discipline` ×1, `health` ×1, `user` ×2, `wfa` ×2 |
+| **F7** | **Six 5xx responses across two files return `error: error.message` directly instead of calling `next(err)`. These bypass the global handler, so the production 500-masking in `errorHandler.js:66-70` never applies — internal error text can reach clients in production.** | `attendance.controller.js:153,656,1101,2288`; `user.controller.js:50,69` |
+| F7b | Three responses embed `error.message` inside a **200** body rather than a 5xx: a per-user `error` field in the discipline list, a `scoring_details.breakdown.error` in WFA recommendations, and the Admin-only FAHP diagnostic results. Not a masking bypass, but still client-visible internal error text | `discipline.controller.js:250`, `wfa.controller.js:204,551` |
 | F8 | Four responses use a bare `{ message }` envelope with no `success` flag, breaking the dominant convention | `src/controllers/user.controller.js:45,50,59,69` |
 | F9 | `wfa.controller.js` imports `../models/settings.model.js` directly, bypassing `models/index.js` where associations are registered | `src/controllers/wfa.controller.js` |
 | F10 | Authorization for `/api/discipline` lives in the controller body for three routes and in `roleGuard` middleware for the fourth. Enforced correctly in both cases, but inconsistently located | `src/controllers/discipline.controller.js:26-30,163,307` |
@@ -270,4 +283,20 @@ expect(res.status).not.toHaveBeenCalled();
 
 > **Numbering gap.** F12 and F13 are deliberately absent here. They came out of the Phase 0c integration-harness work, which is parked pending [INF-254](https://linear.app/infinite-track-palu/issue/INF-254/backendinfra-database-schema-cannot-be-built-from-the-repository). Finding IDs are stable identifiers referenced from Linear issues, so they are not renumbered to close the gap.
 
-**F7 is the most serious.** It is an information-disclosure risk in production, not merely an architectural inconsistency, and it is invisible to the existing tests because they run with `env: 'test'`. It should be raised as its own issue rather than absorbed into a migration PR.
+**F7 is the most serious.** It is an information-disclosure risk in production, not merely an architectural inconsistency, and it is invisible to the existing tests because they run with `env: 'test'`. It should be raised as its own issue rather than absorbed into a migration PR — see [INF-253](https://linear.app/infinite-track-palu/issue/INF-253/backendsecurity-controller-responses-bypass-production-error-masking).
+
+### F7 — corrected count
+
+The first published version of this finding claimed *"13 responses across 7 files"*. That was wrong, and the error was methodological: the count came from `grep -rnE "error:\s*(error|err)\.message"`, which matches the pattern **anywhere in a file**, including inside `logger.error(...)` calls that never reach `res.json`.
+
+Reclassifying all 13 occurrences by whether they reach the client:
+
+| Category | Count | Locations |
+|---|---|---|
+| **5xx response — bypasses production masking (F7)** | 6 | `attendance.controller.js:153,656,1101,2288`; `user.controller.js:50,69` |
+| 200 response — client-visible but not a masking bypass (F7b) | 3 | `discipline.controller.js:250`; `wfa.controller.js:204,551` |
+| Logger metadata — never reaches the client | 4 | `analysis.controller.js:79`; `attendance.controller.js:1616`; `auth.controller.js:165`; `health.controller.js:46` |
+
+`auth.controller.js` and `health.controller.js` were implicated by the original count and should **not** have been: both occurrences are structured-logging fields. The security remediation scope is six responses in two files, not thirteen across seven.
+
+Credit: caught in review of PR #96.
