@@ -2803,35 +2803,33 @@ paths:
       tags:
         - User Management
       summary: Get all users (Admin/Management only)
-      description: Retrieve all users with full profile details
+      description: |
+        Retrieve the user directory list projection. This response is intentionally slim:
+        it never contains phone numbers or raw WFH location data (latitude, longitude,
+        radius, description) — those are detail-surface data available only on
+        `GET /api/users/{id}`. WFH readiness is exposed through `location_status`;
+        the value `integrity_error` marks an active user whose required WFH location
+        is missing, which is a data-integrity violation and must not be rendered as a
+        normal "not configured" state.
       parameters:
-        - in: query
-          name: page
-          schema:
-            type: integer
-            default: 1
-          description: Page number for pagination
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            default: 10
-          description: Number of items per page
         - in: query
           name: search
           schema:
             type: string
-          description: Search by name or email
+          description: Search by full name or NIP/NIM
         - in: query
-          name: role_id
+          name: sortBy
           schema:
-            type: integer
-          description: Filter by role ID
+            type: string
+            default: created_at
+          description: Column to sort by
         - in: query
-          name: division_id
+          name: sortOrder
           schema:
-            type: integer
-          description: Filter by division ID
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+          description: Sort direction
       responses:
         '200':
           description: Users retrieved successfully
@@ -2844,14 +2842,12 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    type: object
-                    properties:
-                      users:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/User'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserListItem'
+                  message:
+                    type: string
+                    example: 'Users fetched successfully'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2872,9 +2868,14 @@ paths:
                 - email
                 - password
                 - full_name
-                - role_id
-                - position_id
-                - division_id
+                - phone
+                - nip_nim
+                - id_roles
+                - id_programs
+                - id_position
+                - latitude
+                - longitude
+                - face_photo
               properties:
                 email:
                   type: string
@@ -2883,27 +2884,60 @@ paths:
                 password:
                   type: string
                   format: password
-                  minLength: 6
+                  minLength: 8
                   example: 'password123'
                 full_name:
                   type: string
                   example: 'John Doe'
-                role_id:
+                phone:
+                  type: string
+                  example: '081234567890'
+                nip_nim:
+                  type: string
+                  example: 'A12345'
+                id_roles:
                   type: integer
                   example: 2
-                position_id:
+                id_programs:
                   type: integer
                   example: 1
-                division_id:
+                id_position:
                   type: integer
                   example: 1
+                id_divisions:
+                  type: integer
+                  nullable: true
+                  example: 1
+                latitude:
+                  type: number
+                  format: double
+                  minimum: -90
+                  maximum: 90
+                  description: Required WFH latitude. Zero is rejected.
+                  example: -6.2
+                longitude:
+                  type: number
+                  format: double
+                  minimum: -180
+                  maximum: 180
+                  description: Required WFH longitude. Zero is rejected.
+                  example: 106.8
+                radius:
+                  type: number
+                  description: Optional WFH geofence radius in meters. Canonical backend default is 100 when omitted.
+                  example: 100
+                description:
+                  type: string
+                  nullable: true
+                  description: Optional WFH location description. Stored as null when omitted — the backend never fabricates a placeholder.
+                  example: 'Rumah utama'
                 face_photo:
                   type: string
                   format: binary
                   description: Face photo file upload
       responses:
         '201':
-          description: User created successfully
+          description: User created and required WFH location persisted atomically in one transaction. A failed WFH location write rolls back the whole user creation.
           content:
             application/json:
               schema:
@@ -2916,7 +2950,7 @@ paths:
                     type: string
                     example: 'User created successfully'
                   data:
-                    $ref: '#/components/schemas/User'
+                    $ref: '#/components/schemas/UserDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2931,7 +2965,10 @@ paths:
       tags:
         - User Management
       summary: Get user by ID (Admin/Management only)
-      description: Retrieve detailed information about a specific user
+      description: |
+        Retrieve detailed information about a specific user. This is the detail
+        surface: it includes `phone` and the full WFH `location` object that are
+        intentionally absent from the `GET /api/users` list projection.
       parameters:
         - in: path
           name: id
@@ -2951,13 +2988,29 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: '#/components/schemas/User'
+                    $ref: '#/components/schemas/UserDetail'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Data-integrity violation — the user exists but has no required WFH location. Clients must show an explicit error/recovery state, not a normal "not configured" state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: 'E_USER_LOCATION_INTEGRITY'
+                  message:
+                    type: string
+                    example: 'User data integrity violation: required WFH location is missing'
 
     patch:
       tags:
@@ -3012,7 +3065,7 @@ paths:
                     type: string
                     example: 'User updated successfully'
                   data:
-                    $ref: '#/components/schemas/User'
+                    $ref: '#/components/schemas/UserDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -5499,6 +5552,150 @@ components:
           type: string
           format: date-time
           example: '2025-07-01T10:00:00.000Z'
+
+    UserListItem:
+      type: object
+      description: |
+        Slim user directory row for `GET /api/users`. Never contains phone or raw
+        WFH coordinates — those are detail-surface fields on `UserDetail`.
+      properties:
+        id:
+          type: integer
+          example: 1
+        full_name:
+          type: string
+          example: 'John Doe'
+        email:
+          type: string
+          format: email
+          example: 'user@company.com'
+        role_name:
+          type: string
+          nullable: true
+          example: 'User'
+        position_name:
+          type: string
+          nullable: true
+          example: 'Engineer'
+        program_name:
+          type: string
+          nullable: true
+          example: 'Program A'
+        division_name:
+          type: string
+          nullable: true
+          example: 'Division A'
+        nip_nim:
+          type: string
+          example: 'A12345'
+        photo:
+          type: string
+          nullable: true
+          example: 'https://spaces.example.com/users/1/profile/photo.jpg'
+        photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-07-01T00:00:00.000Z'
+        location_status:
+          type: string
+          enum: [configured, integrity_error]
+          description: |
+            WFH location readiness indicator. `configured` means the required WFH
+            location exists. `integrity_error` means the active user has no WFH
+            location — a data-integrity violation that clients must render as an
+            explicit error/recovery state, never as a normal "not configured" state.
+          example: 'configured'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-01T10:00:00.000Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-02T10:00:00.000Z'
+
+    UserDetail:
+      type: object
+      description: |
+        Full user projection for detail, create, and update responses. This is the
+        only user-management surface that carries `phone` and the raw WFH `location`.
+      properties:
+        id:
+          type: integer
+          example: 1
+        full_name:
+          type: string
+          example: 'John Doe'
+        email:
+          type: string
+          format: email
+          example: 'user@company.com'
+        role_name:
+          type: string
+          nullable: true
+          example: 'User'
+        position_name:
+          type: string
+          nullable: true
+          example: 'Engineer'
+        program_name:
+          type: string
+          nullable: true
+          example: 'Program A'
+        division_name:
+          type: string
+          nullable: true
+          example: 'Division A'
+        nip_nim:
+          type: string
+          example: 'A12345'
+        phone:
+          type: string
+          nullable: true
+          example: '081234567890'
+        photo:
+          type: string
+          nullable: true
+          example: 'https://spaces.example.com/users/1/profile/photo.jpg'
+        photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-07-01T00:00:00.000Z'
+        location:
+          type: object
+          description: Required WFH location. Never null in a successful response for an active user; a missing location yields `409 E_USER_LOCATION_INTEGRITY` instead.
+          properties:
+            location_id:
+              type: integer
+              example: 10
+            latitude:
+              type: number
+              format: double
+              example: -6.2
+            longitude:
+              type: number
+              format: double
+              example: 106.8
+            radius:
+              type: number
+              example: 100
+            description:
+              type: string
+              nullable: true
+              example: 'Rumah utama'
+            category_name:
+              type: string
+              example: 'Work From Home'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-01T10:00:00.000Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-02T10:00:00.000Z'
 
     OperationalSettings:
       type: object

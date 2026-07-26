@@ -35,6 +35,58 @@ const deleteLegacyCloudinaryPhoto = async (publicId) => {
   }
 };
 
+const toWfhLocationProjection = (wfhLocation) =>
+  wfhLocation
+    ? {
+        location_id: wfhLocation.location_id,
+        latitude: parseFloat(wfhLocation.latitude),
+        longitude: parseFloat(wfhLocation.longitude),
+        radius: parseFloat(wfhLocation.radius),
+        description: wfhLocation.description,
+        category_name: wfhLocation.attendance_category
+          ? wfhLocation.attendance_category.category_name
+          : 'Work From Home'
+      }
+    : null;
+
+// Full projection: detail/create/update surfaces only (INF-261 keeps phone and
+// raw coordinates out of the list response).
+const toUserDetailProjection = (user) => ({
+  id: user.id_users,
+  full_name: user.full_name,
+  email: user.email,
+  role_name: user.role ? user.role.role_name : null,
+  position_name: user.position ? user.position.position_name : null,
+  program_name: user.program ? user.program.program_name : null,
+  division_name: user.division ? user.division.division_name : null,
+  nip_nim: user.nip_nim,
+  phone: user.phone,
+  photo: user.photo_file ? user.photo_file.photo_url : null,
+  photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
+  location: toWfhLocationProjection(user.wfh_location),
+  created_at: user.created_at,
+  updated_at: user.updated_at
+});
+
+// Slim list projection: no phone, no raw coordinates. A missing WFH location is
+// a data-integrity violation (active users must always have one), surfaced as
+// an explicit status instead of silently hiding the row.
+const toUserListProjection = (user) => ({
+  id: user.id_users,
+  full_name: user.full_name,
+  email: user.email,
+  role_name: user.role ? user.role.role_name : null,
+  position_name: user.position ? user.position.position_name : null,
+  program_name: user.program ? user.program.program_name : null,
+  division_name: user.division ? user.division.division_name : null,
+  nip_nim: user.nip_nim,
+  photo: user.photo_file ? user.photo_file.photo_url : null,
+  photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
+  location_status: user.wfh_location ? 'configured' : 'integrity_error',
+  created_at: user.created_at,
+  updated_at: user.updated_at
+});
+
 export const getProfile = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
@@ -132,38 +184,25 @@ export const getAllUsers = async (req, res, next) => {
               attributes: ['category_name']
             }
           ],
-          required: true
+          // Left join: an active user without a WFH location is a
+          // data-integrity violation that must stay visible, not vanish.
+          required: false
         }
       ],
       order: [[sortBy, sortOrder.toUpperCase()]]
     });
 
-    // Transform data to match the response structure from /auth/me endpoint
-    const transformedUsers = users.map((user) => ({
-      id: user.id_users,
-      full_name: user.full_name,
-      email: user.email,
-      role_name: user.role ? user.role.role_name : null,
-      position_name: user.position ? user.position.position_name : null,
-      program_name: user.program ? user.program.program_name : null,
-      division_name: user.division ? user.division.division_name : null,
-      nip_nim: user.nip_nim,
-      phone: user.phone,
-      photo: user.photo_file ? user.photo_file.photo_url : null,
-      photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
-      location: user.wfh_location
-        ? {
-            location_id: user.wfh_location.location_id,
-            latitude: parseFloat(user.wfh_location.latitude),
-            longitude: parseFloat(user.wfh_location.longitude),
-            radius: parseFloat(user.wfh_location.radius),
-            description: user.wfh_location.description,
-            category_name: user.wfh_location.attendance_category
-              ? user.wfh_location.attendance_category.category_name
-              : 'Work From Home'
-          }
-        : null
-    }));
+    const transformedUsers = users.map(toUserListProjection);
+
+    const integrityViolations = transformedUsers.filter(
+      (user) => user.location_status === 'integrity_error'
+    );
+    if (integrityViolations.length > 0) {
+      logger.warn(
+        `Data integrity violation: ${integrityViolations.length} active user(s) without WFH location`,
+        { userIds: integrityViolations.map((user) => user.id) }
+      );
+    }
 
     logger.info(`Users fetched successfully, returned ${transformedUsers.length} users`);
 
@@ -430,32 +469,7 @@ export const updateUser = async (req, res, next) => {
       ]
     });
 
-    // Transform response data to match /auth/login and /auth/me structure
-    const responseData = {
-      id: updatedUser.id_users,
-      full_name: updatedUser.full_name,
-      email: updatedUser.email,
-      role_name: updatedUser.role ? updatedUser.role.role_name : null,
-      position_name: updatedUser.position ? updatedUser.position.position_name : null,
-      program_name: updatedUser.program ? updatedUser.program.program_name : null,
-      division_name: updatedUser.division ? updatedUser.division.division_name : null,
-      nip_nim: updatedUser.nip_nim,
-      phone: updatedUser.phone,
-      photo: updatedUser.photo_file ? updatedUser.photo_file.photo_url : null,
-      photo_updated_at: updatedUser.photo_file ? updatedUser.photo_file.photo_updated_at : null,
-      location: updatedUser.wfh_location
-        ? {
-            location_id: updatedUser.wfh_location.location_id,
-            latitude: parseFloat(updatedUser.wfh_location.latitude),
-            longitude: parseFloat(updatedUser.wfh_location.longitude),
-            radius: parseFloat(updatedUser.wfh_location.radius),
-            description: updatedUser.wfh_location.description,
-            category_name: updatedUser.wfh_location.attendance_category
-              ? updatedUser.wfh_location.attendance_category.category_name
-              : 'Work From Home'
-          }
-        : null
-    };
+    const responseData = toUserDetailProjection(updatedUser);
 
     logger.info(`User ${id} updated successfully by user ${req.user.id}`);
 
@@ -615,7 +629,8 @@ export const createUser = async (req, res, next) => {
       { transaction }
     );
 
-    // Create WFH location
+    // Create WFH location. Radius 100 is the canonical backend default; a
+    // description is stored only when the admin actually provided one.
     await Location.create(
       {
         user_id: newUser.id_users,
@@ -623,7 +638,8 @@ export const createUser = async (req, res, next) => {
         latitude,
         longitude,
         radius: radius || 100,
-        description: description || 'Default WFH Location'
+        description:
+          typeof description === 'string' && description.trim() ? description.trim() : null
       },
       { transaction }
     );
@@ -677,32 +693,7 @@ export const createUser = async (req, res, next) => {
       ]
     });
 
-    // Transform response data to match /auth/login and /auth/me structure
-    const responseData = {
-      id: createdUser.id_users,
-      full_name: createdUser.full_name,
-      email: createdUser.email,
-      role_name: createdUser.role ? createdUser.role.role_name : null,
-      position_name: createdUser.position ? createdUser.position.position_name : null,
-      program_name: createdUser.program ? createdUser.program.program_name : null,
-      division_name: createdUser.division ? createdUser.division.division_name : null,
-      nip_nim: createdUser.nip_nim,
-      phone: createdUser.phone,
-      photo: createdUser.photo_file ? createdUser.photo_file.photo_url : null,
-      photo_updated_at: createdUser.photo_file ? createdUser.photo_file.photo_updated_at : null,
-      location: createdUser.wfh_location
-        ? {
-            location_id: createdUser.wfh_location.location_id,
-            latitude: parseFloat(createdUser.wfh_location.latitude),
-            longitude: parseFloat(createdUser.wfh_location.longitude),
-            radius: parseFloat(createdUser.wfh_location.radius),
-            description: createdUser.wfh_location.description,
-            category_name: createdUser.wfh_location.attendance_category
-              ? createdUser.wfh_location.attendance_category.category_name
-              : 'Work From Home'
-          }
-        : null
-    };
+    const responseData = toUserDetailProjection(createdUser);
 
     logger.info(`User created successfully with ID ${newUser.id_users} by user ${req.user.id}`);
 
@@ -776,7 +767,9 @@ export const getUserById = async (req, res, next) => {
               attributes: ['category_name']
             }
           ],
-          required: true
+          // Left join so a missing WFH location is reported as a data-integrity
+          // error instead of masquerading as a missing user (404).
+          required: false
         }
       ]
     });
@@ -790,32 +783,16 @@ export const getUserById = async (req, res, next) => {
       });
     }
 
-    // Transform data to match the response structure from /auth/me endpoint
-    const transformedUser = {
-      id: user.id_users,
-      full_name: user.full_name,
-      email: user.email,
-      role_name: user.role ? user.role.role_name : null,
-      position_name: user.position ? user.position.position_name : null,
-      program_name: user.program ? user.program.program_name : null,
-      division_name: user.division ? user.division.division_name : null,
-      nip_nim: user.nip_nim,
-      phone: user.phone,
-      photo: user.photo_file ? user.photo_file.photo_url : null,
-      photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
-      location: user.wfh_location
-        ? {
-            location_id: user.wfh_location.location_id,
-            latitude: parseFloat(user.wfh_location.latitude),
-            longitude: parseFloat(user.wfh_location.longitude),
-            radius: parseFloat(user.wfh_location.radius),
-            description: user.wfh_location.description,
-            category_name: user.wfh_location.attendance_category
-              ? user.wfh_location.attendance_category.category_name
-              : 'Work From Home'
-          }
-        : null
-    };
+    if (!user.wfh_location) {
+      logger.error(`Data integrity violation: user ${id} is active but has no WFH location`);
+      return res.status(409).json({
+        success: false,
+        code: 'E_USER_LOCATION_INTEGRITY',
+        message: 'User data integrity violation: required WFH location is missing'
+      });
+    }
+
+    const transformedUser = toUserDetailProjection(user);
 
     logger.info(`User ${id} details fetched successfully by user ${req.user.id}`);
 

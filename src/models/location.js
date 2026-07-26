@@ -42,8 +42,10 @@ const Location = sequelize.define(
       defaultValue: 100
     },
     description: {
+      // Nullable by design: a description is stored only when a real one was
+      // provided — never a fabricated placeholder (INF-251).
       type: DataTypes.TEXT,
-      allowNull: false
+      allowNull: true
     }
   },
   {
