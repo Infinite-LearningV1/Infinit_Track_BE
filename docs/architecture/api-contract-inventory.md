@@ -95,7 +95,7 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | GET | `/` | Admin, Management | 401, 403 | route-only | covered | **gap** |
 | GET | `/today-locations` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/geofence-evidence` | Admin, Management | 400, 401, 403 | covered | covered | covered |
-| POST | `/check-in` | any | 400, 409 | partial | covered | **gap** |
+| POST | `/check-in` | any | 400, 409, 500 | covered | covered | covered |
 | POST | `/checkout/:id` | any | 400, 403, 404 | covered | covered | covered |
 | GET | `/history/personal/pdf` | any | 400 | covered | covered | covered |
 | GET | `/history/export.pdf` | any | 400 | covered | covered | covered |
@@ -115,7 +115,9 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | GET | `/smart-config` | Admin, Management | 200 | route-only | covered | n/a |
 | GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | route-only | covered | **gap** |
 
-`partial` for `/check-in` means `attendanceDuplicateSafety.test.js` exercises `checkIn` at controller level, but only for duplicate-safety behavior — not the general success path. It is now the highest remaining gap in this module: `/checkout/:id`, which was equally uncovered, is fully pinned by `tests/attendanceCheckoutContract.test.js`.
+`/check-in` and `/checkout/:id` are both fully pinned as of 2026-07-26, by `tests/attendanceCheckinContract.test.js` (17 tests) and `tests/attendanceCheckoutContract.test.js` (10 tests). `attendanceDuplicateSafety.test.js` continues to own the two 409 duplicate paths.
+
+What `check-in` coverage now includes: the working-hours window at both ends, the holiday/weekend gate and the deliberate WFA exemption from it, the WFO 500 for missing office configuration, the WFO and WFH radius refusals, all five WFA booking refusals (missing id, unknown, wrong owner, unapproved, wrong day) plus its radius check, the ON TIME and LATE classifications, and the 201 payload including `status_classification`.
 
 `autoCheckout.test.js` tests the FAHP smart-checkout *logic*, not the `/manual-auto-checkout` endpoint. The two must not be conflated.
 
@@ -227,8 +229,8 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Users — route, RBAC, validation | **done** | `tests/usersRouteContract.test.js`, 14 tests |
 | Attendance — routing and authorization matrix, all 23 endpoints | **done** | `tests/attendanceRouteContract.test.js`, 55 tests |
 | Attendance — `checkout` controller behavior | **done** | `tests/attendanceCheckoutContract.test.js`, 10 tests |
+| Attendance — `check-in` controller behavior | **done** | `tests/attendanceCheckinContract.test.js`, 17 tests |
 | Users — controller response bodies | open | needs model-level mocking |
-| Attendance — `check-in` controller behavior | open | only duplicate-safety covered today |
 | WFA — 3 endpoints | open | — |
 
 **Attendance authorization is now fully pinned.** All 23 endpoints are asserted: the 7 self-service routes reach their controller for a plain User; the 15 privileged routes return 403 for a plain User and 200 for Admin and Management; the lazy-loaded `test-weighted-prediction` trigger is confirmed Admin/Management-only; and unauthenticated requests are refused on both classes of route.
@@ -237,12 +239,14 @@ That closes the RBAC axis for the whole module, including all nine operational t
 
 `POST /api/attendance/checkout/:id` is now fully pinned: ownership 403, double-checkout 400, geofence refusal across all three location sources, the WFO/WFH/WFA lookup shapes, the transaction lifecycle, the success payload, and the pre-commit failure path. Characterizing it surfaced findings F14 and F15.
 
+**Both attendance final-state mutations are now fully pinned.** `check-in` and `checkout` were the two highest-risk endpoints in the codebase; characterizing them surfaced F14, F15, F16 and F17.
+
 Remaining highest-risk gaps, in order:
 
-1. `POST /api/attendance/check-in` — only duplicate-safety behavior is covered, by `attendanceDuplicateSafety.test.js`.
-2. Users controller response bodies, per the note in section 2.
-3. WFA's three endpoints, which still have only route-exposure coverage.
-4. `PATCH /api/settings/operational` — PATCH-specific authorization only; happy path and validation are already covered.
+1. Users controller response bodies, per the note in section 2.
+2. WFA's three endpoints, which still have only route-exposure coverage.
+3. `PATCH /api/settings/operational` — PATCH-specific authorization only; happy path and validation are already covered.
+4. `DELETE /api/attendance/:id` — destructive, routing and authorization pinned, controller behavior not.
 
 ---
 
@@ -266,6 +270,16 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F11 | `DELETE /api/attendance/:id` applies `verifyToken` a second time, though `router.use(verifyToken)` already covers it | `src/routes/attendance.routes.js` |
 | **F14** | **`checkOut` rolls back an already-committed transaction.** The commit happens at line 1519, but lines 1522-1548 remain inside the same `try`. Any throw after the commit — the post-commit refetch returning `null` is the realistic one — sends control to the `catch`, which calls `transaction.rollback()` on a finished transaction. Sequelize throws, so `next(error)` is never reached and the request ends in an unhandled rejection with no response to the client | `src/controllers/attendance.controller.js:1519-1552` |
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
+| **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
+| F17 | `checkIn` derives the weekend/holiday decision from a raw `new Date()` at line 683, while the two lines above it use the explicit Jakarta helpers `getJakartaTime()` and `getJakartaDateString()`. It is correct in production only because `TZ=Asia/Jakarta` is set process-wide in `server.js`; the calendar gate silently depends on process configuration rather than on the timezone contract used by the surrounding code | `src/controllers/attendance.controller.js:682-684,736-737` |
+
+### F16 — why it matters
+
+`attendance_statuses` reserves id 4 for EARLY, and the classifier is written as though three outcomes are possible. In practice only ON TIME and LATE can occur.
+
+Either the gate is too strict — early arrivals should be recorded as EARLY rather than refused — or the classifier branch is dead code that should go. The two readings imply opposite fixes, which is exactly why this needs a product decision rather than a silent cleanup during extraction.
+
+`tests/attendanceCheckinContract.test.js` pins the current behavior: an early check-in receives 400 and no attendance row is created.
 
 ### F14 — executable evidence
 
