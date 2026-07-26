@@ -108,12 +108,12 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | GET | `/history` | any | 200, 401 | covered | covered | **gap** |
 | GET | `/status-today` | any | 200 | partial | covered | n/a |
 | GET | `/debug-checkin-time` | Admin, Management | 200, 400, 401, 403 | covered | covered | covered |
-| POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | route-only | covered | **gap** |
+| POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | covered | covered | n/a |
 | GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | route-only | covered | n/a |
-| POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | route-only | covered | **gap** |
-| POST | `/manual-general-alpha` | Admin, Management | 400 | route-only | covered | **gap** |
-| POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | route-only | covered | **gap** |
-| POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | covered | covered | n/a |
+| POST | `/manual-general-alpha` | Admin, Management | 400 | covered | covered | covered |
+| POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | covered | covered | covered |
+| POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | covered | covered | covered |
 | POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
 | POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
 | POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | covered | **gap** |
@@ -273,6 +273,7 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Users — `updateUser` | **done** | `tests/usersUpdateContract.test.js`, 15 tests |
 | Discipline payloads | **done** | `tests/disciplinePayloadContract.test.js`, 15 tests |
 | Reference data payloads | **done** | `tests/referenceDataContract.test.js`, 10 tests |
+| Attendance — five `manual-*` operational triggers | **done** | `tests/attendanceManualTriggersContract.test.js`, 30 tests |
 
 **The Users module is fully characterized.** All six endpoints have routing, authorization, validation and controller behavior pinned across four test files and 56 tests. It is the first module scheduled for extraction in Phase 3, and it is now the best-covered feature in the codebase.
 
@@ -302,14 +303,13 @@ Every slice on the Phase 0b list is done. That is **not** the same as full cover
 |---|---|---|
 | `GET /api/attendance` | controller behavior — the admin list with search and sorting | The busiest admin read; its query shape moves in Phase 2 |
 | `POST /api/attendance/location-event` | controller behavior and validation | Writes `LocationEvent`, feeds geofence evidence |
-| `POST /manual-auto-checkout` | controller behavior | **Triggers a job that mutates final attendance state** |
-| `POST /manual-resolve-wfa-bookings` | controller behavior | **Same** |
-| `POST /manual-general-alpha` | controller behavior | **Same** |
-| `POST /manual-resolve-wfa-for-date` | controller behavior | **Same** |
-| `POST /manual-smart-auto-checkout` | controller behavior | **Same** |
+| `GET /api/attendance/auto-checkout-settings` | controller behavior | Read-only diagnostic |
+| `GET /api/attendance/enhanced-auto-checkout-settings` | controller behavior | Read-only diagnostic |
 | `GET /api/summary/reports/pdf` and `/excel` | RBAC assertions | Route-level only today |
 
-The five `manual-*` triggers are the notable ones. Their routing and authorization are pinned, but **what they do once called is not** — and each invokes a background job that writes attendance. An earlier draft of this section claimed "every mutation in the API is characterized"; that was wrong, and these are why.
+**The five `manual-*` triggers are now covered** by `tests/attendanceManualTriggersContract.test.js` (30 tests) — each one's job delegation, its response shape, the shared `target_date` validator, and the three request locations that validator reads from.
+
+An earlier draft of this section claimed "every mutation in the API is characterized". That was wrong when written; with this slice it is now true, but the remaining reads above are still open and are listed rather than glossed.
 
 | Slice | Tests |
 |---|---|
@@ -371,6 +371,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F28** | **The five `manual-*` triggers duplicate an authorization check the route already performs.** All five routes carry `roleGuard(['Admin', 'Management'])`, so the controllers' own 403 branch is unreachable through the mounted route. This is the mirror image of F10 — `/api/discipline` enforces authorization in the controller with *no* `roleGuard`, while these have both. Neither places it consistently | `attendance.controller.js:1746,1829,1857,1883,1909` |
+| **F29** | **`target_date` is validated by shape, not by calendar.** The check is `/^\d{4}-\d{2}-\d{2}$/`, so `2026-13-45` passes and reaches a job that writes attendance state | `attendance.controller.js:1866,1892,1918` |
 | **F26** | **`updateUser` writes two tables with no transaction.** It updates the user row and then the WFH location as independent operations. A failure between them leaves the user half-updated with nothing to roll it back. `createUser` wraps its three writes in one transaction; this one opens none at all | `src/controllers/user.controller.js:292-472` |
 | **F27** | **The same NIP conflict has two response shapes.** `createUser` returns `{ success: false, code: 'E_VALIDATION_NIP_EXISTS', message: 'NIP/NIM sudah digunakan' }`. `updateUser` returns `{ success: false, message: 'E_VALIDATION_NIP_EXISTS: NIP/NIM already exists' }` — **no `code` field**, the code smuggled into the message string, and a different language | `user.controller.js:560-566` vs `:331-335` |
 | **F25** | **`createUser` repeats the F14 post-commit pattern, with a worse blast radius.** The commit is at line 632, but the refetch, mapping and response all remain inside the same `try`. A post-commit throw reaches a `catch` that unconditionally deletes the uploaded Spaces object **and** rolls back an already-committed transaction. Net result: the user exists in the database, its photo has been deleted from object storage, `next(error)` never runs, and the caller receives no response | `src/controllers/user.controller.js:632-726` |
