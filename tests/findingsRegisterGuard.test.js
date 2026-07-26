@@ -162,14 +162,23 @@ describe('F16 — the EARLY status is unreachable', () => {
   });
 });
 
-describe('F20 — GET /api/users has no pagination', () => {
-  it('still reads no page or limit parameter', () => {
+describe('F20 — GET /api/users pagination (CLOSED by INF-262)', () => {
+  /**
+   * F20 recorded the absence of pagination. INF-262 (INF-250 decision) closed
+   * it with opt-in pagination: page/limit trigger findAndCountAll with the
+   * canonical envelope, while their absence preserves the legacy full-array
+   * response (phase A of the migration plan). This guard now protects the
+   * closure: both modes must remain present until phase C retires legacy.
+   */
+  it('reads page and limit, paginates via findAndCountAll, and keeps the legacy findAll path', () => {
     const body = SRC('controllers/user.controller.js');
     const listSection = body.slice(body.indexOf('export const getAllUsers'), body.indexOf('export const uploadUserPhoto'));
 
-    expect(listSection).toContain('req.query.search');
-    expect(listSection).not.toMatch(/req\.query\.(page|limit)/);
-    expect(listSection).not.toMatch(/\blimit:/);
+    expect(listSection).toMatch(/const \{ search, role, program, division, position \} = req\.query/);
+    expect(listSection).toMatch(/req\.query\.page/);
+    expect(listSection).toMatch(/req\.query\.limit/);
+    expect(listSection).toContain('findAndCountAll');
+    expect(listSection).toContain('User.findAll');
   });
 });
 

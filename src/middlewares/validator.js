@@ -377,6 +377,71 @@ export const validateCreateUser = [
   body('description').optional().isString().trim().withMessage('Deskripsi harus berupa teks')
 ];
 
+// Sort whitelist for the user directory (INF-250 contract). Raw client column
+// names must never reach an ORDER BY clause.
+export const USER_LIST_SORTABLE_COLUMNS = [
+  'full_name',
+  'email',
+  'nip_nim',
+  'created_at',
+  'updated_at'
+];
+
+// Validation for GET /users directory query (INF-250 matrix, INF-262).
+// Every invalid value is a deterministic 400 E_VALIDATION — including
+// array-shaped parameters that previously crashed into a 500.
+export const validateListUsers = [
+  query('page').optional().isInt({ min: 1 }).withMessage('page harus bilangan bulat >= 1').toInt(),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit harus bilangan bulat 1-100')
+    .toInt(),
+
+  query('search').optional().isString().withMessage('search harus berupa teks').trim(),
+
+  query('role').optional().isInt({ gt: 0 }).withMessage('role harus ID angka positif').toInt(),
+
+  query('program')
+    .optional()
+    .isInt({ gt: 0 })
+    .withMessage('program harus ID angka positif')
+    .toInt(),
+
+  query('division')
+    .optional()
+    .isInt({ gt: 0 })
+    .withMessage('division harus ID angka positif')
+    .toInt(),
+
+  query('position')
+    .optional()
+    .isInt({ gt: 0 })
+    .withMessage('position harus ID angka positif')
+    .toInt(),
+
+  query('location_status')
+    .optional()
+    .isIn(['configured', 'integrity_error'])
+    .withMessage('location_status harus configured atau integrity_error'),
+
+  query('sortBy')
+    .optional()
+    .isString()
+    .withMessage('sortBy harus berupa teks')
+    .isIn(USER_LIST_SORTABLE_COLUMNS)
+    .withMessage(`sortBy harus salah satu dari: ${USER_LIST_SORTABLE_COLUMNS.join(', ')}`),
+
+  query('sortOrder')
+    .optional()
+    .isString()
+    .withMessage('sortOrder harus berupa teks')
+    .customSanitizer((value) => (typeof value === 'string' ? value.toUpperCase() : value))
+    .isIn(['ASC', 'DESC'])
+    .withMessage('sortOrder harus ASC atau DESC')
+];
+
 // Check-in validation rules
 export const checkInValidation = [
   body('category_id')
