@@ -367,6 +367,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F9 | `wfa.controller.js` imports `../models/settings.model.js` directly, bypassing `models/index.js` where associations are registered | `src/controllers/wfa.controller.js` |
 | F10 | Authorization for `/api/discipline` lives in the controller body for three routes and in `roleGuard` middleware for the fourth. Enforced correctly in both cases, but inconsistently located | `src/controllers/discipline.controller.js:26-30,163,307` |
 | F11 | `DELETE /api/attendance/:id` applies `verifyToken` a second time, though `router.use(verifyToken)` already covers it | `src/routes/attendance.routes.js` |
+| F12 | `database-cli.cjs` exported only `development`, `staging` and `production`. Running `npm run migrate` with `NODE_ENV=test` resolved to `undefined` and failed with *"Dialect needs to be explicitly supplied as of v4.0.0"*. A `test` key is added here, since the integration harness needs it. **Fixed** | `src/config/database-cli.cjs` |
+| **F13** | **The schema cannot be built from the repository.** All 9 files in `src/models/migrations/` contain zero `createTable` calls. The first is an explicit stub: *"Historical alignment stub: the users table already exists in the baseline schema."* Migrations only patch a baseline that lives outside version control | `src/models/migrations/*.cjs` |
 | **F14** | **`checkOut` rolls back an already-committed transaction.** The commit happens at line 1519, but lines 1522-1548 remain inside the same `try`. Any throw after the commit — the post-commit refetch returning `null` is the realistic one — sends control to the `catch`, which calls `transaction.rollback()` on a finished transaction. Sequelize throws, so `next(error)` is never reached and the request ends in an unhandled rejection with no response to the client | `src/controllers/attendance.controller.js:1519-1552` |
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
@@ -453,7 +455,24 @@ expect(res.status).not.toHaveBeenCalled();
 
 **When F14 is fixed, that test will fail.** It should then be replaced with an assertion that `next()` receives the original error. The fix is small — move the refetch and response outside the `try`, or guard the rollback — but it changes behavior and belongs in its own PR.
 
-> **Numbering gap.** F12 and F13 are deliberately absent here. They came out of the Phase 0c integration-harness work, which is parked pending [INF-254](https://linear.app/infinite-track-palu/issue/INF-254/backendinfra-database-schema-cannot-be-built-from-the-repository). Finding IDs are stable identifiers referenced from Linear issues, so they are not renumbered to close the gap.
+### F13 — evidence
+
+Verified against a disposable MySQL 8.0 container with an empty database:
+
+```text
+$ npm run migrate            # NODE_ENV=test
+== 20240525120000-create-user: migrated (0.028s)
+== 20240619000000-update-photos-for-cloudinary: migrated (0.025s)
+== 20260403000000-add-unique-constraint-attendance: migrating
+ERROR: Table 'infinite_track_test.attendance' doesn't exist
+
+$ SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='infinite_track_test'
+sequelizemeta
+```
+
+After a full migration run against an empty database, the only table that exists is `sequelizemeta`.
+
+**Resolution chosen:** commit a baseline schema dump and apply it before migrations. See [`db/baseline/README.md`](../../db/baseline/README.md) for the procedure and [INF-254](https://linear.app/infinite-track-palu/issue/INF-254/backendinfra-database-schema-cannot-be-built-from-the-repository) for the decision record.
 
 **F7 is the most serious.** It is an information-disclosure risk in production, not merely an architectural inconsistency, and it is invisible to the existing tests because they run with `env: 'test'`. It should be raised as its own issue rather than absorbed into a migration PR — see [INF-253](https://linear.app/infinite-track-palu/issue/INF-253/backendsecurity-controller-responses-bypass-production-error-masking).
 

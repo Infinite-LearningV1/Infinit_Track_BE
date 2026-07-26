@@ -27,6 +27,23 @@ const sslEnabled = process.env.DB_SSL === 'true';
 const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
 
 module.exports = {
+  // Integration-test environment (INF-252 Phase 0c). Used only by
+  // `npm run migrate` with NODE_ENV=test against a disposable database --
+  // an ephemeral MySQL service in CI, or a throwaway container locally.
+  // Purely additive: development, staging and production are unaffected.
+  test: {
+    username: process.env.DB_USER,
+    password: process.env.DB_PASS,
+    database: process.env.DB_NAME,
+    host: process.env.DB_HOST,
+    port: dbPort,
+    dialect: 'mysql',
+    migrationStorageTableName: 'sequelizemeta',
+    dialectOptions: {
+      charset: 'utf8mb4',
+      ssl: false
+    }
+  },
   development: {
     username: process.env.DB_USER,
     password: process.env.DB_PASS,
