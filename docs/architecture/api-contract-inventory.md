@@ -66,12 +66,18 @@ The body form is what mobile clients use. Recording only the cookie would let an
 
 | Method | Path | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|
-| GET | `/api/users` | Admin, Management | query: page, limit, search | 401, 403 | route-only | covered | n/a |
-| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 | route-only | covered | n/a |
+| GET | `/api/users` | Admin, Management | query: `search`, `sortBy`, `sortOrder` — **no pagination** | 401, 403 | covered | covered | n/a |
+| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 `E_NOT_FOUND` | covered | covered | n/a |
 | POST | `/api/users` | Admin, Management | multipart + body | 400, 401, 403 | route-only | covered | covered |
 | POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
 | PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | route-only | covered | covered |
-| DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 | route-only | covered | n/a |
+| DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 (no code) | covered | covered | n/a |
+
+**Request-shape correction.** An earlier version of this table recorded `GET /api/users` as accepting `page` and `limit`. It does not. It accepts `search`, `sortBy` (default `created_at`) and `sortOrder` (default `DESC`), and returns every non-deleted user in one response — see F20.
+
+**Payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the search predicate covering `full_name` and `nip_nim` only, and the delete semantics.
+
+`createUser` and `updateUser` remain `route-only`: both run DigitalOcean Spaces uploads and transaction orchestration, and deserve their own slice.
 
 **Updated 2026-07-26 — `tests/usersRouteContract.test.js` added (14 tests).**
 
@@ -255,7 +261,8 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Attendance — `check-in` controller behavior | **done** | `tests/attendanceCheckinContract.test.js`, 17 tests |
 | WFA — 3 endpoints, controller behavior | **done** | `tests/wfaControllerContract.test.js`, 22 tests |
 | **Authorization matrix — every remaining route file** | **done** | `tests/routeAuthorizationMatrix.test.js`, 87 tests |
-| Users — controller response bodies | open | needs model-level mocking |
+| Users — read and delete payloads | **done** | `tests/usersPayloadContract.test.js`, 16 tests |
+| Users — `createUser` / `updateUser` | open | Spaces uploads plus transaction orchestration |
 | `DELETE /api/attendance/:id` — controller behavior | open | destructive; routing and authorization pinned |
 
 **The authorization axis is now closed for the entire API.** Every one of the 60 route-file endpoints has its middleware chain pinned: `/api/users` by `usersRouteContract`, `/api/attendance` by `attendanceRouteContract`, `/api/bookings` by `bookingsReadinessContract`, and the remaining seven route files by `routeAuthorizationMatrix`.
@@ -272,7 +279,7 @@ That closes the RBAC axis for the whole module, including all nine operational t
 
 Remaining gaps, in order — all are **controller response bodies**, since routing and authorization are fully pinned:
 
-1. Users list and detail payloads — pagination metadata, mapped user shape, 404 for a missing `:id`.
+1. `createUser` and `updateUser` — the two Users mutations, both involving Spaces uploads and transactions.
 2. `DELETE /api/attendance/:id` — destructive, and the only remaining untested attendance mutation.
 3. `/api/discipline` response payloads for three of four endpoints.
 4. Reference-data dropdown payloads — lowest risk in the codebase.
@@ -301,6 +308,10 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F20** | **`GET /api/users` has no pagination.** It returns every non-deleted user in a single response, with no `limit` or `offset`. The endpoint accepts `search`, `sortBy` and `sortOrder` only — `page` and `limit` are ignored if sent. This is the scalability problem [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and) exists to address, and Phase 2's allowlisted list-query foundation is where it gets fixed | `src/controllers/user.controller.js:95-140` |
+| F21 | `getUserById` returns 404 with `code: 'E_NOT_FOUND'`; `deleteUser` returns 404 for the same condition **without** any code. Two shapes for one meaning, within one module | `user.controller.js:786-790` vs `:481-485` |
+| F22 | `getUserById` excludes soft-deleted rows inside the query (`findOne` with `deleted_at: null`), while `deleteUser` fetches by primary key and inspects `deleted_at` afterwards. Two approaches to the same concern in one file; the extracted repository should settle on one | `user.controller.js:735-739` vs `:479-493` |
+| F23 | `DELETE /api/users/:id` is **not idempotent from the client's view**: deleting an already soft-deleted user returns 404 rather than confirming the desired end state | `user.controller.js:488-493` |
 | **F19** | **Six controller exports are unreachable** — no route mounts them and no module imports them. One of them, `booking.getMyBookings`, shares its purpose with a use case INF-252 Phase 4 plans to extract | see the audit below |
 
 ### F19 — unreachable controller exports
