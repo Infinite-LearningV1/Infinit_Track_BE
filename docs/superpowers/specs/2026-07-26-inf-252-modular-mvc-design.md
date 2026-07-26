@@ -255,16 +255,17 @@ The envelope produced by the new path is **deliberately identical** to the curre
 
 ### 5.3 Proof that nothing changed
 
-A characterization test pins every existing branch of `errorHandler` before the new branch is added:
+`tests/errorHandler.test.js` already exists and pins three branches: the `E_OPERATIONAL_SETTINGS_INVALID` details path, the `E_INVALID_REFERENCE_STATE` field copying, and the rule that a `details` array is *not* logged for other codes.
 
-- `SequelizeValidationError` → 400 with `errors[]` of `{ field, message }`
-- `SequelizeUniqueConstraintError` → 400 `Resource already exists`
-- `JsonWebTokenError` → 401 `Invalid token`
-- `TokenExpiredError` → 401 `Token expired`
-- 500 in production → message masked to `Internal server error`
-- `code` exposure gated by status < 500 or `PUBLIC_ERROR_CODES`
-- `E_INVALID_REFERENCE_STATE` → `target_date`, `endpoint_type`, `conflicts`, `hint` copied through
-- `config.env === 'development'` → `stack` included
+Five branches are unpinned and must be covered before the new branch is added:
+
+| Branch | Expected |
+|---|---|
+| `SequelizeValidationError` | 400, `errors[]` of `{ field, message }` |
+| `SequelizeUniqueConstraintError` | 400, `Resource already exists` |
+| `JsonWebTokenError` | 401, `Invalid token` |
+| `TokenExpiredError` | 401, `Token expired` |
+| `config.env === 'production'` and status 500 | message masked to `Internal server error` |
 
 ---
 
