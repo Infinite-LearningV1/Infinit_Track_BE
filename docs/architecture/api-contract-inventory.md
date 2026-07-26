@@ -86,7 +86,7 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | GET | `/today-locations` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/geofence-evidence` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | POST | `/check-in` | any | 400, 409 | partial | covered | **gap** |
-| POST | `/checkout/:id` | any | 400, 404 | route-only | covered | **gap** |
+| POST | `/checkout/:id` | any | 400, 403, 404 | covered | covered | covered |
 | GET | `/history/personal/pdf` | any | 400 | covered | covered | covered |
 | GET | `/history/export.pdf` | any | 400 | covered | covered | covered |
 | GET | `/history` | any | 200, 401 | covered | covered | **gap** |
@@ -214,21 +214,23 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 |---|---|---|
 | Users — route, RBAC, validation | **done** | `tests/usersRouteContract.test.js`, 14 tests |
 | Attendance — routing and authorization matrix, all 23 endpoints | **done** | `tests/attendanceRouteContract.test.js`, 55 tests |
+| Attendance — `checkout` controller behavior | **done** | `tests/attendanceCheckoutContract.test.js`, 10 tests |
 | Users — controller response bodies | open | needs model-level mocking |
-| Attendance — `check-in` / `checkout` controller behavior | open | highest remaining risk |
+| Attendance — `check-in` controller behavior | open | only duplicate-safety covered today |
 | WFA — 3 endpoints | open | — |
 
 **Attendance authorization is now fully pinned.** All 23 endpoints are asserted: the 7 self-service routes reach their controller for a plain User; the 15 privileged routes return 403 for a plain User and 200 for Admin and Management; the lazy-loaded `test-weighted-prediction` trigger is confirmed Admin/Management-only; and unauthenticated requests are refused on both classes of route.
 
 That closes the RBAC axis for the whole module, including all nine operational triggers that mutate final attendance state — the property most at risk of silent drift during extraction.
 
+`POST /api/attendance/checkout/:id` is now fully pinned: ownership 403, double-checkout 400, geofence refusal across all three location sources, the WFO/WFH/WFA lookup shapes, the transaction lifecycle, the success payload, and the pre-commit failure path. Characterizing it surfaced findings F14 and F15.
+
 Remaining highest-risk gaps, in order:
 
-1. `POST /api/attendance/checkout/:id` — final-state mutation. Routing and authorization are pinned; **controller behavior is not**.
-2. `POST /api/attendance/check-in` — only duplicate-safety behavior is covered, by `attendanceDuplicateSafety.test.js`.
-3. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
-4. Users controller response bodies, per the note in section 2.
-5. WFA's three endpoints, which still have only route-exposure coverage.
+1. `POST /api/attendance/check-in` — only duplicate-safety behavior is covered, by `attendanceDuplicateSafety.test.js`.
+2. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
+3. Users controller response bodies, per the note in section 2.
+4. WFA's three endpoints, which still have only route-exposure coverage.
 
 ---
 
@@ -249,5 +251,23 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F9 | `wfa.controller.js` imports `../models/settings.model.js` directly, bypassing `models/index.js` where associations are registered | `src/controllers/wfa.controller.js` |
 | F10 | Authorization for `/api/discipline` lives in the controller body for three routes and in `roleGuard` middleware for the fourth. Enforced correctly in both cases, but inconsistently located | `src/controllers/discipline.controller.js:26-30,163,307` |
 | F11 | `DELETE /api/attendance/:id` applies `verifyToken` a second time, though `router.use(verifyToken)` already covers it | `src/routes/attendance.routes.js` |
+| **F14** | **`checkOut` rolls back an already-committed transaction.** The commit happens at line 1519, but lines 1522-1548 remain inside the same `try`. Any throw after the commit — the post-commit refetch returning `null` is the realistic one — sends control to the `catch`, which calls `transaction.rollback()` on a finished transaction. Sequelize throws, so `next(error)` is never reached and the request ends in an unhandled rejection with no response to the client | `src/controllers/attendance.controller.js:1519-1552` |
+| F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
+
+### F14 — executable evidence
+
+`tests/attendanceCheckoutContract.test.js` characterizes this defect rather than fixing it. The test mocks the transaction faithfully — rolling back after commit throws, exactly as Sequelize does — and asserts the current outcome:
+
+```js
+await expect(checkOut(buildReq(), res, next)).rejects.toThrow(
+  /Transaction cannot be rolled back/
+);
+expect(next).not.toHaveBeenCalled();   // the original error never reaches the handler
+expect(res.status).not.toHaveBeenCalled();
+```
+
+**When F14 is fixed, that test will fail.** It should then be replaced with an assertion that `next()` receives the original error. The fix is small — move the refetch and response outside the `try`, or guard the rollback — but it changes behavior and belongs in its own PR.
+
+> **Numbering gap.** F12 and F13 are deliberately absent here. They came out of the Phase 0c integration-harness work, which is parked pending [INF-254](https://linear.app/infinite-track-palu/issue/INF-254/backendinfra-database-schema-cannot-be-built-from-the-repository). Finding IDs are stable identifiers referenced from Linear issues, so they are not renumbered to close the gap.
 
 **F7 is the most serious.** It is an information-disclosure risk in production, not merely an architectural inconsistency, and it is invisible to the existing tests because they run with `env: 'test'`. It should be raised as its own issue rather than absorbed into a migration PR.
