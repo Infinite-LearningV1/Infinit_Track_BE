@@ -137,9 +137,9 @@ Best-covered feature module. `bookingsReadinessContract.test.js` asserts 200, 20
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| GET | `/api/wfa/recommendations` | any | 400 `E_VALIDATION`, 401, 408 `E_TIMEOUT`, 429 `E_RATE_LIMIT`, 500 `E_CONFIG`/`E_API_KEY`, 503 `E_SERVICE_UNAVAILABLE`/`E_EXTERNAL_SERVER` | covered | **gap** | covered |
-| GET | `/api/wfa/ahp-config` | any | 401 | covered | **gap** | n/a |
-| POST | `/api/wfa/test-ahp` | Admin, Management | 400, 401, 403 | covered | **gap** | covered |
+| GET | `/api/wfa/recommendations` | any | 400 `E_VALIDATION`, 401, 408 `E_TIMEOUT`, 429 `E_RATE_LIMIT`, 500 `E_CONFIG`/`E_API_KEY`, 503 `E_SERVICE_UNAVAILABLE`/`E_EXTERNAL_SERVER` | covered | covered | covered |
+| GET | `/api/wfa/ahp-config` | any | 401 | covered | covered | n/a |
+| POST | `/api/wfa/test-ahp` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 
 `wfaRouteExposure.test.js` asserts 404 for paths that must **not** be exposed. That is exposure control, not behavioral coverage. The `analysisFuzzyAhpWfa*` tests cover `/api/analysis/fuzzy-ahp/wfa`, a different endpoint.
 
@@ -177,10 +177,12 @@ Also pinned: the search radius comes from the `wfa.recommendation.search_radius`
 
 | Method | Path | Authorization | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| GET | `/api/discipline/user/:userId` | in controller | 403, 404 | **gap** | **gap** | **gap** |
-| GET | `/api/discipline/all` | in controller | 403 | covered | partial | n/a |
-| GET | `/api/discipline/config` | in controller | 403 | **gap** | **gap** | n/a |
-| POST | `/api/discipline/test-ahp` | `roleGuard` | 400, 403 | **gap** | **gap** | **gap** |
+| GET | `/api/discipline/user/:userId` | in controller | 403, 404 | **gap** | covered | **gap** |
+| GET | `/api/discipline/all` | in controller | 403 | covered | covered | n/a |
+| GET | `/api/discipline/config` | in controller | 403 | **gap** | covered | n/a |
+| POST | `/api/discipline/test-ahp` | `roleGuard` | 400, 403 | **gap** | covered | **gap** |
+
+The RBAC column here means the **route-layer** contract is pinned, which for three of these four routes means proving they have *no* `roleGuard` and that a plain User reaches the handler. `tests/routeAuthorizationMatrix.test.js` asserts exactly that, so finding F10 is now executable rather than prose: authorization is enforced correctly, but in two different places depending on the route.
 
 ## 8. `/api/analysis` — 5 endpoints
 
@@ -199,7 +201,7 @@ Twelve dedicated `analysisFuzzyAhp*` test files. The thinnest controller in the 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
 | GET | `/api/settings/operational` | Admin, Management | 401, 403, 500 `E_OPERATIONAL_SETTINGS_INVALID` | covered | covered | n/a |
-| PATCH | `/api/settings/operational` | Admin, Management | 400, 401, 403 | covered | **gap** | covered |
+| PATCH | `/api/settings/operational` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 
 **Corrected.** An earlier version marked the mutation path as having no coverage at all. `tests/settingsOperationalRoutesContract.test.js` in fact asserts PATCH success for both Admin and Management, a no-op patch, and a 400 on an empty body with its response shape.
 
@@ -209,12 +211,12 @@ What is genuinely missing is narrower: the 401 and 403 cases in that file are as
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| GET | `/api/roles` | Admin, Management | 401, 403 | **gap** | **gap** | n/a |
-| GET | `/api/programs` | Admin, Management | 401, 403 | **gap** | **gap** | n/a |
-| GET | `/api/positions` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| GET | `/api/divisions` | Admin, Management | 401, 403 | **gap** | **gap** | n/a |
+| GET | `/api/roles` | Admin, Management | 401, 403 | **gap** | covered | n/a |
+| GET | `/api/programs` | Admin, Management | 401, 403 | **gap** | covered | n/a |
+| GET | `/api/positions` | Admin, Management | 401, 403 | **gap** | covered | **gap** |
+| GET | `/api/divisions` | Admin, Management | 401, 403 | **gap** | covered | n/a |
 
-No behavioral coverage at all. These are low-risk read-only dropdown endpoints, which is why they are not in the Phase 0b priority set.
+Authorization is pinned by `tests/routeAuthorizationMatrix.test.js`. The controllers' own response bodies are still uncovered — these are low-risk read-only dropdown endpoints, which is why they remain outside the Phase 0b priority set.
 
 ## 11. Health — 2 endpoints
 
@@ -252,8 +254,13 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Attendance — `checkout` controller behavior | **done** | `tests/attendanceCheckoutContract.test.js`, 10 tests |
 | Attendance — `check-in` controller behavior | **done** | `tests/attendanceCheckinContract.test.js`, 17 tests |
 | WFA — 3 endpoints, controller behavior | **done** | `tests/wfaControllerContract.test.js`, 22 tests |
+| **Authorization matrix — every remaining route file** | **done** | `tests/routeAuthorizationMatrix.test.js`, 87 tests |
 | Users — controller response bodies | open | needs model-level mocking |
-| WFA — route-level RBAC | open | no route contract test for `/api/wfa` yet |
+| `DELETE /api/attendance/:id` — controller behavior | open | destructive; routing and authorization pinned |
+
+**The authorization axis is now closed for the entire API.** Every one of the 60 route-file endpoints has its middleware chain pinned: `/api/users` by `usersRouteContract`, `/api/attendance` by `attendanceRouteContract`, `/api/bookings` by `bookingsReadinessContract`, and the remaining seven route files by `routeAuthorizationMatrix`.
+
+That matters more than the raw test count: who may reach a handler is the property most likely to drift silently when routes move into feature modules, and it is now impossible to change any of it without a test failing.
 
 **Attendance authorization is now fully pinned.** All 23 endpoints are asserted: the 7 self-service routes reach their controller for a plain User; the 15 privileged routes return 403 for a plain User and 200 for Admin and Management; the lazy-loaded `test-weighted-prediction` trigger is confirmed Admin/Management-only; and unauthenticated requests are refused on both classes of route.
 
@@ -263,12 +270,12 @@ That closes the RBAC axis for the whole module, including all nine operational t
 
 **Both attendance final-state mutations are now fully pinned.** `check-in` and `checkout` were the two highest-risk endpoints in the codebase; characterizing them surfaced F14, F15, F16 and F17.
 
-Remaining highest-risk gaps, in order:
+Remaining gaps, in order — all are **controller response bodies**, since routing and authorization are fully pinned:
 
-1. Users controller response bodies, per the note in section 2.
-2. `DELETE /api/attendance/:id` — destructive, routing and authorization pinned, controller behavior not.
-3. `PATCH /api/settings/operational` — PATCH-specific authorization only; happy path and validation are already covered.
-4. Route-level RBAC for `/api/wfa` — controller behavior is pinned, but no route contract test exists for that prefix.
+1. Users list and detail payloads — pagination metadata, mapped user shape, 404 for a missing `:id`.
+2. `DELETE /api/attendance/:id` — destructive, and the only remaining untested attendance mutation.
+3. `/api/discipline` response payloads for three of four endpoints.
+4. Reference-data dropdown payloads — lowest risk in the codebase.
 
 ---
 
