@@ -72,6 +72,32 @@ Six endpoints, six PRs, in this order. **Each PR introduces exactly one new laye
 
 **Slice 6** is last because `createUser` is the only function that owns a transaction, and spec §3.3 puts transaction ownership in the service. By the time it runs, mapper, repository, query object, and policy code all exist and it is the only new thing being proven.
 
+### Amended 2026-07-27 — INF-251 / INF-261 landed on develop (#125)
+
+`8b6f8f2` changed this module underneath the plan. The slice **order** survives unchanged; the **contents** of slices 1 and 3 do not.
+
+**Slice 3 is now the largest slice, not just the riskiest.** It was "move a `LIKE` search into a query object". It now also carries:
+
+1. **Two projections, not one.** `toUserListProjection` and `toUserDetailProjection` already exist as separate functions in the legacy controller. They map to two mappers, or one mapper with two named projections — the module decides, but the split is now a contract, not an implementation detail. The list deliberately omits `phone` and raw coordinates.
+2. **The `location_status` integrity flag**, plus the `logger.warn` that names offending user ids. That warn is a service-layer concern, not a mapper one.
+3. **The sort allowlist (F49).** `sortBy` and `sortOrder` reach `ORDER BY` unvalidated today; `?sortOrder[]=x` returns a 500. Spec §3.3 already requires a per-endpoint allowlist, so this closes inside the slice rather than becoming a separate issue.
+
+**Slice 1 gains an error branch.** `GET /api/users/:id` now returns **409 `E_USER_LOCATION_INTEGRITY`** where it used to return a misleading 404. That is a genuine use case for the typed-error taxonomy Phase 1 added — likely a `ConflictError` subclass with a `code` override, which is precisely why the override was added to `AppError`.
+
+**Re-verified against `8b6f8f2`** — every "verified, not assumed" claim above still holds:
+
+| Claim | State |
+|---|---|
+| `getUserById` uses `findOne`, not `findByPk` | ✅ still true |
+| `updateUser` and `uploadUserPhoto` write two entities with **no transaction** | ✅ still true — zero `transaction` references in either |
+| 8 exports, 6 mounted; `getProfile`/`updateProfile` unreachable (F19) | ✅ still true |
+| `User` is `paranoid: true` | ✅ still true |
+| **F25** — post-commit rollback in `createUser` | ✅ **still present**, untouched by #125 |
+
+**The undecided item is unchanged.** `getProfile` and `updateProfile` survived this PR, so spec §3.5.4 still has no answer for the legacy file after slice 6.
+
+**One number moved:** the repository now has **10** migrations, not 9 (`20260727000000-allow-null-location-description.cjs`). The baseline procedure states its ledger check relatively — "must match the number of migration files" — so `db/baseline/README.md` needs no edit, but a dump produced now must carry 10 `sequelizemeta` rows.
+
 ---
 
 ## The rule every slice obeys

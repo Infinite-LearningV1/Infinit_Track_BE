@@ -67,7 +67,7 @@ The body form is what mobile clients use. Recording only the cookie would let an
 | Method | Path | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|
 | GET | `/api/users` | Admin, Management | query: `search`, `sortBy`, `sortOrder` — **no pagination** | 401, 403 | covered | covered | n/a |
-| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 `E_NOT_FOUND` | covered | covered | n/a |
+| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 `E_NOT_FOUND`, **409 `E_USER_LOCATION_INTEGRITY`** | covered | covered | n/a |
 | POST | `/api/users` | Admin, Management | multipart + body | 400 `E_UPLOAD`/`E_VALIDATION_EMAIL_EXISTS`/`E_VALIDATION_NIP_EXISTS`, 401, 403 | covered | covered | covered |
 | POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
 | PATCH | `/api/users/:id` | Admin, Management | body, all fields optional; `email` is ignored | 400 (**no `code` field** — see F27), 404 | covered | covered | covered |
@@ -78,6 +78,56 @@ The body form is what mobile clients use. Recording only the cookie would let an
 **Payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the search predicate covering `full_name` and `nip_nim` only, and the delete semantics.
 
 `createUser` and `updateUser` remain `route-only`: both run DigitalOcean Spaces uploads and transaction orchestration, and deserve their own slice.
+
+### Remapped 2026-07-27 — INF-251 / INF-261 (#125)
+
+**One claim above is superseded.** The payload note says the 15-field shape is *shared by list and detail*. It is not, as of `8b6f8f2`: the two projections were deliberately split, and that split is the single most important input to Phase 2 slice 3.
+
+| | `GET /api/users` (list) | `GET /api/users/:id` (detail) |
+|---|---|---|
+| Builder | `toUserListProjection` | `toUserDetailProjection` |
+| `phone` | **removed** | present |
+| `location` object | **removed** | present (lat/lng/radius/description) |
+| `location_status` | **new** — `configured` \| `integrity_error` | absent |
+| `created_at` / `updated_at` | **new** | **new** |
+
+**Why the split exists.** Before this change the list sent every user's home coordinates and phone number to anyone with directory access; restricting it in the UI was cosmetic, because the data was in the response. The list is now the low-sensitivity surface and the detail endpoint is where identifying data lives.
+
+**The missing-location semantics inverted.** The WFH association was an inner join (`required: true`), so an active user with no WFH location silently vanished from the list and returned 404 from detail. Now:
+
+- **list** — left join; the row stays visible and carries `location_status: 'integrity_error'`, plus a `logger.warn` naming the offending user ids
+- **detail** — **409 `E_USER_LOCATION_INTEGRITY`**, replacing the misleading 404. A user that exists is no longer reported as absent
+
+**Also in this change:** `locations.description` became nullable (migration `20260727000000-allow-null-location-description.cjs`, taking the repository from 9 migrations to **10**), and `createUser` stopped fabricating `'Default WFH Location'` for an empty description.
+
+**Coverage added** — four new files: `userListProjectionContract`, `userDetailProjectionContract`, `userCreateUpdateProjectionContract`, `userCreateValidationContract`. `usersPayloadContract` was amended, which is the correct signal: this was a behaviour change, not an extraction.
+
+#### What this does *not* resolve
+
+Re-verified against `8b6f8f2`, not assumed:
+
+| Finding | State |
+|---|---|
+| **F19** — `getProfile` / `updateProfile` unreachable | **unchanged.** Both still exported, still mounted by nothing |
+| **F8** — bare `{ message }` envelopes | **unchanged.** All four still inside those two unreachable exports |
+| **F20** — no pagination on `GET /api/users` | **unchanged.** Still returns every non-deleted user in one response. INF-250 scope |
+| **F25** — post-commit rollback in `createUser` | **unchanged.** Commit at `:648`; the refetch, mapping and response remain inside the same `try`, and the `catch` still deletes the Spaces object and rolls back unconditionally |
+| **F36** — attendance half of the OpenAPI drift | **unchanged**, deliberately. INF-250 |
+| `updateUser`, `uploadUserPhoto` — two-entity writes with no transaction | **unchanged.** Verified line by line: zero `transaction` references in either |
+
+#### F49 — the sort parameters reach `ORDER BY` with no allowlist
+
+`getAllUsers` reads `req.query.sortBy` and `req.query.sortOrder` and passes them straight into `order: [[sortBy, sortOrder.toUpperCase()]]`. Nothing validates either one — not the route (`users.routes.js` mounts no validator on `GET /`), not the controller, not a query object.
+
+**Confirmed, empirically:** Express parses `?sortOrder[]=x` into an array, and `[].toUpperCase` does not exist.
+
+```text
+GET /api/users?sortOrder[]=x  →  TypeError: sortOrder.toUpperCase is not a function  →  500
+```
+
+**Needs Verification:** `?sortBy=<not-a-column>` and `?sortBy[]=x` reach Sequelize's `order` clause unvalidated. Sequelize quotes identifiers, so this is **not** SQL injection, but the resulting SQL error almost certainly surfaces as a 500. Confirming that requires the integration harness (Phase 0c), which is why it is not asserted here.
+
+This is not new to #125 — the same two lines existed before it — but no finding recorded it, and the endpoint-level tests only pin that the parameters are *documented*, never that they are *validated*. Spec §3.3 already requires a strict per-endpoint allowlist for exactly this surface, so Phase 2 slice 3 is where it gets closed.
 
 **Updated 2026-07-26 — `tests/usersRouteContract.test.js` added (14 tests).**
 
