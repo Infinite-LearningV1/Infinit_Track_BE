@@ -9,15 +9,16 @@ import path from 'node:path';
  * every undocumented one appears on the deliberate exclusion list that
  * openApiMountedRoutesContract.test.js already enforces. No phantom paths.
  *
- * The *contract* audit is not clean. Both list endpoints document a response
- * shape the runtime does not produce, and both document query parameters the
- * controllers ignore. A client written literally against the spec would read
- * `response.data.users` and get undefined.
+ * The *contract* audit had two halves.
  *
- * These assertions describe the mismatch as it stands today. They are
- * characterization, not approval -- see F35 and F36 in
- * docs/architecture/api-contract-inventory.md. Whichever way INF-250 resolves
- * the user-directory contract, this file has to be updated deliberately.
+ * The users half (F35) was resolved by INF-251/INF-261: docs/openapi.yaml now
+ * documents the real runtime query parameters (search/sortBy/sortOrder), the
+ * real envelope (data as an array plus message), and the new slim UserListItem
+ * projection. The /api/users block below asserts the spec STAYS aligned.
+ *
+ * The attendance half (F36) is still drifted and still pinned as-is; whichever
+ * way INF-250 resolves the attendance list contract, that block has to be
+ * updated deliberately. See docs/architecture/api-contract-inventory.md.
  */
 
 const spec = readFileSync(path.join(process.cwd(), 'docs', 'openapi.yaml'), 'utf8');
@@ -51,36 +52,40 @@ describe('GET /api/users — documented contract versus runtime', () => {
   });
 
   /**
-   * F35. usersPayloadContract.test.js pins the runtime as accepting
-   * search, sortBy and sortOrder, with no pagination whatsoever (F20).
+   * F35 resolved (INF-251/INF-261). usersPayloadContract.test.js pins the
+   * runtime as accepting search, sortBy and sortOrder, with no pagination
+   * whatsoever (F20) — and the spec now says exactly that.
    */
   it.each([['page'], ['limit'], ['role_id'], ['division_id']])(
-    'documents a "%s" query parameter the controller ignores',
+    'no longer documents the "%s" query parameter the controller ignores',
+    (param) => {
+      expect(block).not.toContain(`name: ${param}`);
+    }
+  );
+
+  it.each([['search'], ['sortBy'], ['sortOrder']])(
+    'documents the "%s" query parameter the controller reads',
     (param) => {
       expect(block).toContain(`name: ${param}`);
     }
   );
 
-  it('does not document sortBy or sortOrder, which the controller does read', () => {
-    expect(block).not.toContain('name: sortBy');
-    expect(block).not.toContain('name: sortOrder');
-  });
-
-  it('describes search as covering email, though the controller searches nip_nim', () => {
-    expect(block).toMatch(/Search by name or email/);
+  it('describes search as covering full name and NIP/NIM, matching the controller', () => {
+    expect(block).toMatch(/Search by full name or NIP\/NIM/);
   });
 
   /**
-   * The runtime answers { success, data: [...], message }. The spec describes
-   * data as an object wrapping `users` and `pagination`.
+   * The runtime answers { success, data: [...], message } and the spec now
+   * documents that envelope with the slim UserListItem projection.
    */
-  it('documents data as an object wrapping users and pagination', () => {
-    expect(block).toContain('users:');
-    expect(block).toContain('pagination:');
+  it('documents data as an array of UserListItem with no pagination wrapper', () => {
+    expect(block).toContain("$ref: '#/components/schemas/UserListItem'");
+    expect(block).not.toContain('users:');
+    expect(block).not.toContain('pagination:');
   });
 
-  it('does not document the message field the controller always returns', () => {
-    expect(block).not.toContain('message:');
+  it('documents the message field the controller always returns', () => {
+    expect(block).toContain('message:');
   });
 });
 
@@ -123,19 +128,22 @@ describe('GET /api/attendance — documented contract versus runtime', () => {
 
 describe('the two list endpoints disagree with each other', () => {
   /**
-   * Worth stating on its own: the runtime shapes differ between the two
-   * admin lists -- attendance paginates, users does not (F20) -- while the
-   * spec describes them identically. Phase 2's list-query foundation has to
-   * pick one, and the spec currently matches neither.
+   * The runtime shapes differ between the two admin lists -- attendance
+   * paginates, users does not (F20). Since INF-251/INF-261 the users spec
+   * matches its runtime; the attendance spec is still the drifted shape.
+   * Phase 2's list-query foundation (INF-250) still has to unify the two
+   * runtime contracts themselves.
    */
-  it('are documented with the same envelope despite behaving differently', () => {
+  it('users is documented without pagination while attendance still documents it', () => {
     const users = operationBlock('/api/users', 'get');
     const attendance = operationBlock('/api/attendance', 'get');
 
-    for (const block of [users, attendance]) {
-      expect(block).toContain('pagination:');
-      expect(block).toContain('name: page');
-      expect(block).toContain('name: limit');
-    }
+    expect(users).not.toContain('pagination:');
+    expect(users).not.toContain('name: page');
+    expect(users).not.toContain('name: limit');
+
+    expect(attendance).toContain('pagination:');
+    expect(attendance).toContain('name: page');
+    expect(attendance).toContain('name: limit');
   });
 });

@@ -83,7 +83,12 @@ const loadUsers = async ({ findAll = [], findByPk = null, findOne = null, destro
   return { ...mod, userFindAll, userFindByPk, userFindOne, destroy };
 };
 
-const expectedMappedUser = {
+/**
+ * Since INF-251/INF-261 the list and detail projections are deliberately
+ * different surfaces: the list row is slim (no phone, no raw coordinates,
+ * a location_status readiness flag), while the detail keeps the full shape.
+ */
+const expectedListRow = {
   id: 7,
   full_name: 'Nadia Putri',
   email: 'nadia@example.com',
@@ -92,9 +97,16 @@ const expectedMappedUser = {
   program_name: 'Internship',
   division_name: 'Engineering',
   nip_nim: 'A12345',
-  phone: '081234567890',
   photo: 'https://cdn.example/nadia.jpg',
   photo_updated_at: '2026-07-01',
+  location_status: 'configured',
+  created_at: undefined,
+  updated_at: undefined
+};
+
+const expectedDetailUser = {
+  ...expectedListRow,
+  phone: '081234567890',
   location: {
     location_id: 12,
     latitude: -0.8917,
@@ -104,11 +116,12 @@ const expectedMappedUser = {
     category_name: 'Work From Home'
   }
 };
+delete expectedDetailUser.location_status;
 
 describe('getAllUsers payload', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('maps a fully populated row to the documented shape', async () => {
+  it('maps a fully populated row to the slim documented list shape', async () => {
     const { getAllUsers } = await loadUsers({ findAll: [fullUserRow()] });
     const res = buildRes();
 
@@ -116,24 +129,23 @@ describe('getAllUsers payload', () => {
 
     expect(res.json).toHaveBeenCalledWith({
       success: true,
-      data: [expectedMappedUser],
+      data: [expectedListRow],
       message: 'Users fetched successfully'
     });
   });
 
-  it('coerces the location numerics from strings to numbers', async () => {
+  it('never exposes phone or raw coordinates on the list surface', async () => {
     const { getAllUsers } = await loadUsers({ findAll: [fullUserRow()] });
     const res = buildRes();
 
     await getAllUsers({ query: {}, user: { id: 1 } }, res, jest.fn());
 
-    const { location } = res.json.mock.calls[0][0].data[0];
-    expect(typeof location.latitude).toBe('number');
-    expect(typeof location.longitude).toBe('number');
-    expect(typeof location.radius).toBe('number');
+    const row = res.json.mock.calls[0][0].data[0];
+    expect(row).not.toHaveProperty('phone');
+    expect(row).not.toHaveProperty('location');
   });
 
-  it('nulls every optional association rather than omitting it', async () => {
+  it('nulls every optional association and flags a missing WFH location', async () => {
     const bare = fullUserRow({
       role: null,
       position: null,
@@ -155,19 +167,8 @@ describe('getAllUsers payload', () => {
       division_name: null,
       photo: null,
       photo_updated_at: null,
-      location: null
+      location_status: 'integrity_error'
     });
-  });
-
-  it('defaults the location category name when the association is missing', async () => {
-    const row = fullUserRow();
-    row.wfh_location = { ...row.wfh_location, attendance_category: null };
-    const { getAllUsers } = await loadUsers({ findAll: [row] });
-    const res = buildRes();
-
-    await getAllUsers({ query: {}, user: { id: 1 } }, res, jest.fn());
-
-    expect(res.json.mock.calls[0][0].data[0].location.category_name).toBe('Work From Home');
   });
 
   it('excludes soft-deleted users through the where clause', async () => {
@@ -258,7 +259,7 @@ describe('getAllUsers payload', () => {
 describe('getUserById payload', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('returns the same mapped shape as the list, unwrapped', async () => {
+  it('returns the full detail projection including phone and location', async () => {
     const { getUserById } = await loadUsers({ findOne: fullUserRow() });
     const res = buildRes();
 
@@ -266,9 +267,32 @@ describe('getUserById payload', () => {
 
     expect(res.json).toHaveBeenCalledWith({
       success: true,
-      data: expectedMappedUser,
+      data: expectedDetailUser,
       message: 'User details fetched successfully'
     });
+  });
+
+  it('coerces the location numerics from strings to numbers', async () => {
+    const { getUserById } = await loadUsers({ findOne: fullUserRow() });
+    const res = buildRes();
+
+    await getUserById({ params: { id: '7' }, user: { id: 1 } }, res, jest.fn());
+
+    const { location } = res.json.mock.calls[0][0].data;
+    expect(typeof location.latitude).toBe('number');
+    expect(typeof location.longitude).toBe('number');
+    expect(typeof location.radius).toBe('number');
+  });
+
+  it('defaults the location category name when the association is missing', async () => {
+    const row = fullUserRow();
+    row.wfh_location = { ...row.wfh_location, attendance_category: null };
+    const { getUserById } = await loadUsers({ findOne: row });
+    const res = buildRes();
+
+    await getUserById({ params: { id: '7' }, user: { id: 1 } }, res, jest.fn());
+
+    expect(res.json.mock.calls[0][0].data.location.category_name).toBe('Work From Home');
   });
 
   it('returns 404 with E_NOT_FOUND when the user does not exist', async () => {
