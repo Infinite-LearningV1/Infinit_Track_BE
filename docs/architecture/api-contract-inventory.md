@@ -375,6 +375,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F37** | **`applySearch` silently discards earlier predicates — latent.** It decides whether to preserve existing conditions with `Object.keys(queryOptions.where).length > 0`, but stores its own predicate under the **symbol** key `Op.or`, and `Object.keys` does not enumerate symbols. A second call therefore concludes the where clause is empty and **replaces** it. **Not triggered today**: both call sites invoke it exactly once per query, and `applyMultipleSearch` is unused. It becomes live the moment anything composes two search predicates — which is precisely what Phase 2's query object does | `src/utils/searchHelper.js:38-59` |
+| F38 | `applyMultipleSearch` is exported from `searchHelper.js` and used nowhere in `src/`. It is also the only caller pattern that would trigger F37 | `src/utils/searchHelper.js:71-91` |
 | **F35** | **`GET /api/users` is documented almost entirely wrong.** OpenAPI declares `page`, `limit`, `role_id` and `division_id` query parameters — the controller reads **none** of them. It omits `sortBy` and `sortOrder`, which the controller does read. It describes `search` as covering "name or email"; the controller searches `full_name` and `nip_nim`. It documents `data` as an object wrapping `users` and `pagination`; the runtime returns `data` as a **flat array** with no pagination, plus an undocumented `message` | `docs/openapi.yaml` vs `user.controller.js` |
 | **F36** | **`GET /api/attendance` documents filters that do not exist and the wrong envelope.** `date` and `user_id` are declared and ignored. `search` is again described as covering email. `data` is documented as an object wrapping `attendances` and `pagination`; the runtime returns `data` as a **flat array** with `pagination` as its **sibling** | `docs/openapi.yaml` vs `attendance.controller.js` |
 | F34 | **Four routes carry no validation middleware at all**, so their Validation axis is `n/a` rather than a gap: `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/attendance/history`, and `POST /api/attendance/test-weighted-prediction`. Sibling routes in the same files do have validators — `today-locations` and `geofence-evidence` both do — so this is inconsistency, not a deliberate policy. `/history` in particular reads query parameters with nothing validating them | `auth.routes.js:11-12`, `attendance.routes.js:68,115` |
@@ -409,6 +411,26 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 `checkIn` shows the codebase already knows the right shape — it tracks `transactionFinished` and only rolls back when the transaction is still open. Two of its three sibling mutations were never updated to match.
 
 Both are pinned by tests that assert the current, broken outcome, so a fix makes them fail deliberately.
+
+### F37 — the trap Phase 2 walks into
+
+`src/utils/searchHelper.js` is the shared search primitive behind both admin lists. **Eleven test files mock it. None tested it** until `tests/searchHelperContract.test.js`.
+
+Writing that file surfaced a defect worse than the two already recorded:
+
+```js
+if (queryOptions.where[Op.and]) { /* append */ }
+else if (Object.keys(queryOptions.where).length > 0) { /* wrap in AND */ }
+else { queryOptions.where = { [Op.or]: searchConditions }; }   // ← replaces
+```
+
+The predicate it writes lives under `Op.or`, a **symbol**. `Object.keys` skips symbols. So on a second call the middle branch sees an apparently empty `where` and falls through to the last one, overwriting the first predicate entirely.
+
+**Severity: latent, not active.** Both production call sites — `attendance.controller.js:1682` and `summaryReport.service.js:473` — invoke `applySearch` exactly once per query, and `applyMultipleSearch`, the only pattern that would call it twice, is unused (F38).
+
+It matters because **Phase 2 composes queries**. An allowlisted query object that layers a search predicate onto an existing filter is exactly the second call this function mishandles. Pinned now so the foundation is not built on top of it.
+
+Also pinned in the same file: the mutation (F2) and the unescaped LIKE wildcards (F3), including that a search for `%` becomes `LIKE '%%%'` and matches everything.
 
 ### F35 / F36 — the OpenAPI audit
 
