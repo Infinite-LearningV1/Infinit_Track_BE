@@ -56,16 +56,24 @@ Strongest-covered module in the codebase: seven dedicated auth test files.
 
 | Method | Path | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|
-| GET | `/api/users` | Admin, Management | query: page, limit, search | 401, 403 | **gap** | **gap** | **gap** |
-| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 | **gap** | **gap** | **gap** |
-| POST | `/api/users` | Admin, Management | multipart + body | 400, 401, 403 | **gap** | **gap** | **gap** |
-| POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | **gap** | covered |
-| PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | **gap** | **gap** | **gap** |
-| DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 | **gap** | **gap** | **gap** |
+| GET | `/api/users` | Admin, Management | query: page, limit, search | 401, 403 | route-only | covered | n/a |
+| GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 | route-only | covered | n/a |
+| POST | `/api/users` | Admin, Management | multipart + body | 400, 401, 403 | route-only | covered | covered |
+| POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
+| PATCH | `/api/users/:id` | Admin, Management | body | 400, 404, `E_VALIDATION_NIP_EXISTS`, `E_VALIDATION_EMAIL_EXISTS` | route-only | covered | covered |
+| DELETE | `/api/users/:id` | Admin | param: id | 401, 403, 404 | route-only | covered | n/a |
 
-> **Five of six Users endpoints have zero behavioral coverage.** The only references to `/api/users` in the suite come from `configContract.test.js`, which asserts documentation, not behavior. `uploadUserPhoto` is the sole exception, covered by `uploadUserPhotoController.test.js`.
->
-> This is the single largest coverage hole in the codebase, and Users is the first module scheduled for migration (Phase 3). Phase 0b must close it before any extraction.
+**Updated 2026-07-26 — `tests/usersRouteContract.test.js` added (14 tests).**
+
+Before it, five of six Users endpoints had zero behavioral coverage; the only `/api/users` references came from `configContract.test.js`, which asserts documentation. What is now pinned:
+
+- every route resolves to its intended controller function;
+- Admin reaches all six endpoints, Management reaches five and is refused `DELETE` with 403, a plain User is refused all six;
+- unauthenticated requests are rejected before the controller runs;
+- the create-payload rules, including that **`latitude` and `longitude` are required and may not be 0** — the required-WFH-location rule that INF-251 depends on;
+- update treats every field as optional, and its 400 envelope is `{ success: false, code: 'E_VALIDATION', message, errors[] }`.
+
+**Still open for Users:** `route-only` above means the middleware chain and routing are pinned but the **controller's own response body is not** — pagination metadata, the mapped user shape, and 404 handling for a missing `:id` remain uncovered. Closing that requires model-level mocking rather than controller mocking, and is the remaining Phase 0b work for this module.
 
 ## 3. `/api/attendance` — 23 endpoints
 
@@ -73,31 +81,31 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| POST | `/location-event` | any | 400 | **gap** | **gap** | **gap** |
-| GET | `/` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
+| POST | `/location-event` | any | 400 | route-only | covered | **gap** |
+| GET | `/` | Admin, Management | 401, 403 | route-only | covered | **gap** |
 | GET | `/today-locations` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/geofence-evidence` | Admin, Management | 400, 401, 403 | covered | covered | covered |
-| POST | `/check-in` | any | 400, 409 | partial | **gap** | **gap** |
-| POST | `/checkout/:id` | any | 400, 404 | **gap** | **gap** | **gap** |
-| GET | `/history/personal/pdf` | any | 400 | covered | **gap** | covered |
-| GET | `/history/export.pdf` | any | 400 | covered | **gap** | covered |
+| POST | `/check-in` | any | 400, 409 | partial | covered | **gap** |
+| POST | `/checkout/:id` | any | 400, 403, 404 | covered | covered | covered |
+| GET | `/history/personal/pdf` | any | 400 | covered | covered | covered |
+| GET | `/history/export.pdf` | any | 400 | covered | covered | covered |
 | GET | `/history` | any | 200, 401 | covered | covered | **gap** |
-| GET | `/status-today` | any | 200 | partial | **gap** | n/a |
+| GET | `/status-today` | any | 200 | partial | covered | n/a |
 | GET | `/debug-checkin-time` | Admin, Management | 200, 400, 401, 403 | covered | covered | covered |
-| POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | **gap** | **gap** | **gap** |
-| POST | `/manual-general-alpha` | Admin, Management | 400 | **gap** | **gap** | **gap** |
-| POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | **gap** | **gap** | **gap** |
-| POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | **gap** | **gap** | **gap** |
-| POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | **gap** | covered |
-| POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | **gap** | covered |
-| POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | **gap** | **gap** |
-| DELETE | `/:id` | Admin, Management | 401, 403, 404 | **gap** | **gap** | **gap** |
-| GET | `/smart-config` | Admin, Management | 200 | **gap** | **gap** | n/a |
-| GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | **gap** | **gap** | **gap** |
+| POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | route-only | covered | **gap** |
+| GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | route-only | covered | n/a |
+| POST | `/manual-resolve-wfa-bookings` | Admin, Management | 401, 403 | route-only | covered | **gap** |
+| POST | `/manual-general-alpha` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/manual-resolve-wfa-for-date` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/manual-smart-auto-checkout` | Admin, Management | 400 | route-only | covered | **gap** |
+| POST | `/research-trigger/daily` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
+| POST | `/research-trigger/full-day` | Admin, Management | 400, 409 `E_INVALID_REFERENCE_STATE` | covered | covered | covered |
+| POST | `/test-weighted-prediction` | Admin, Management | 200 | partial | covered | **gap** |
+| DELETE | `/:id` | Admin, Management | 401, 403, 404 | route-only | covered | **gap** |
+| GET | `/smart-config` | Admin, Management | 200 | route-only | covered | n/a |
+| GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | route-only | covered | **gap** |
 
-`partial` for `/check-in` means `attendanceDuplicateSafety.test.js` exercises `checkIn` at controller level, but only for duplicate-safety behavior — not the general success path. `/checkout/:id` has **no dedicated test at all**, despite being a final-state mutation.
+`partial` for `/check-in` means `attendanceDuplicateSafety.test.js` exercises `checkIn` at controller level, but only for duplicate-safety behavior — not the general success path. It is now the highest remaining gap in this module: `/checkout/:id`, which was equally uncovered, is fully pinned by `tests/attendanceCheckoutContract.test.js`.
 
 `autoCheckout.test.js` tests the FAHP smart-checkout *logic*, not the `/manual-auto-checkout` endpoint. The two must not be conflated.
 
@@ -188,6 +196,8 @@ Covered by `healthReadiness.test.js`.
 
 Priority modules only — Users, Bookings (incl. WFA), Attendance — 37 endpoints:
 
+Baseline as measured on 2026-07-26, before any Phase 0b work:
+
 | Module | Endpoints | Fully covered | Partial | No behavioral coverage |
 |---|---|---|---|---|
 | Users | 6 | 0 | 1 | 5 |
@@ -196,15 +206,31 @@ Priority modules only — Users, Bookings (incl. WFA), Attendance — 37 endpoin
 | Attendance | 23 | 5 | 4 | 14 |
 | **Total** | **37** | **10** | **7** | **20** |
 
-**20 of 37 priority endpoints have no behavioral test at all.** Bookings needs no backfill. Users and Attendance carry essentially the entire cost.
+**20 of 37 priority endpoints had no behavioral test at all.** Bookings needs no backfill. Users and Attendance carry essentially the entire cost.
 
-Highest-risk gaps, in order — these mutate final state or are first in the migration queue:
+### Progress
 
-1. `POST /api/attendance/checkout/:id` — final-state mutation, no test whatsoever.
-2. `GET`, `POST`, `PATCH`, `DELETE /api/users*` — five endpoints, first module to migrate.
-3. `DELETE /api/attendance/:id` — destructive, Admin/Management, untested.
-4. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
-5. The seven `manual-*` and `research-trigger` operational endpoints that write attendance state.
+| Slice | Status | Evidence |
+|---|---|---|
+| Users — route, RBAC, validation | **done** | `tests/usersRouteContract.test.js`, 14 tests |
+| Attendance — routing and authorization matrix, all 23 endpoints | **done** | `tests/attendanceRouteContract.test.js`, 55 tests |
+| Attendance — `checkout` controller behavior | **done** | `tests/attendanceCheckoutContract.test.js`, 10 tests |
+| Users — controller response bodies | open | needs model-level mocking |
+| Attendance — `check-in` controller behavior | open | only duplicate-safety covered today |
+| WFA — 3 endpoints | open | — |
+
+**Attendance authorization is now fully pinned.** All 23 endpoints are asserted: the 7 self-service routes reach their controller for a plain User; the 15 privileged routes return 403 for a plain User and 200 for Admin and Management; the lazy-loaded `test-weighted-prediction` trigger is confirmed Admin/Management-only; and unauthenticated requests are refused on both classes of route.
+
+That closes the RBAC axis for the whole module, including all nine operational triggers that mutate final attendance state — the property most at risk of silent drift during extraction.
+
+`POST /api/attendance/checkout/:id` is now fully pinned: ownership 403, double-checkout 400, geofence refusal across all three location sources, the WFO/WFH/WFA lookup shapes, the transaction lifecycle, the success payload, and the pre-commit failure path. Characterizing it surfaced findings F14 and F15.
+
+Remaining highest-risk gaps, in order:
+
+1. `POST /api/attendance/check-in` — only duplicate-safety behavior is covered, by `attendanceDuplicateSafety.test.js`.
+2. `PATCH /api/settings/operational` — mutation feeding the auto-checkout job, untested.
+3. Users controller response bodies, per the note in section 2.
+4. WFA's three endpoints, which still have only route-exposure coverage.
 
 ---
 
@@ -225,5 +251,23 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F9 | `wfa.controller.js` imports `../models/settings.model.js` directly, bypassing `models/index.js` where associations are registered | `src/controllers/wfa.controller.js` |
 | F10 | Authorization for `/api/discipline` lives in the controller body for three routes and in `roleGuard` middleware for the fourth. Enforced correctly in both cases, but inconsistently located | `src/controllers/discipline.controller.js:26-30,163,307` |
 | F11 | `DELETE /api/attendance/:id` applies `verifyToken` a second time, though `router.use(verifyToken)` already covers it | `src/routes/attendance.routes.js` |
+| **F14** | **`checkOut` rolls back an already-committed transaction.** The commit happens at line 1519, but lines 1522-1548 remain inside the same `try`. Any throw after the commit — the post-commit refetch returning `null` is the realistic one — sends control to the `catch`, which calls `transaction.rollback()` on a finished transaction. Sequelize throws, so `next(error)` is never reached and the request ends in an unhandled rejection with no response to the client | `src/controllers/attendance.controller.js:1519-1552` |
+| F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
+
+### F14 — executable evidence
+
+`tests/attendanceCheckoutContract.test.js` characterizes this defect rather than fixing it. The test mocks the transaction faithfully — rolling back after commit throws, exactly as Sequelize does — and asserts the current outcome:
+
+```js
+await expect(checkOut(buildReq(), res, next)).rejects.toThrow(
+  /Transaction cannot be rolled back/
+);
+expect(next).not.toHaveBeenCalled();   // the original error never reaches the handler
+expect(res.status).not.toHaveBeenCalled();
+```
+
+**When F14 is fixed, that test will fail.** It should then be replaced with an assertion that `next()` receives the original error. The fix is small — move the refetch and response outside the `try`, or guard the rollback — but it changes behavior and belongs in its own PR.
+
+> **Numbering gap.** F12 and F13 are deliberately absent here. They came out of the Phase 0c integration-harness work, which is parked pending [INF-254](https://linear.app/infinite-track-palu/issue/INF-254/backendinfra-database-schema-cannot-be-built-from-the-repository). Finding IDs are stable identifiers referenced from Linear issues, so they are not renumbered to close the gap.
 
 **F7 is the most serious.** It is an information-disclosure risk in production, not merely an architectural inconsistency, and it is invisible to the existing tests because they run with `env: 'test'`. It should be raised as its own issue rather than absorbed into a migration PR.
