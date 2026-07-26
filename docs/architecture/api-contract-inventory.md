@@ -291,9 +291,9 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F4 | `contribution.routes.js` is entirely commented out and unmounted — dead file | `src/routes/contribution.routes.js` |
 | F5 | Error `code` is exposed only when status < 500 or the code is allowlisted; `E_INVALID_REFERENCE_STATE` has its extra fields copied one by one | `src/middlewares/errorHandler.js:72-96` |
 | F6 | CI pins Node 18; local development observed on Node v24.16.0 | `.github/workflows/ci.yml:10` |
-| **F7** | **Six 5xx responses across two files return `error: error.message` directly instead of calling `next(err)`. These bypass the global handler, so the production 500-masking in `errorHandler.js:66-70` never applies — internal error text can reach clients in production.** | `attendance.controller.js:153,656,1101,2288`; `user.controller.js:50,69` |
-| F7b | Three responses embed `error.message` inside a **200** body rather than a 5xx: a per-user `error` field in the discipline list, a `scoring_details.breakdown.error` in WFA recommendations, and the Admin-only FAHP diagnostic results. Not a masking bypass, but still client-visible internal error text | `discipline.controller.js:250`, `wfa.controller.js:204,551` |
-| F8 | Four responses use a bare `{ message }` envelope with no `success` flag, breaking the dominant convention | `src/controllers/user.controller.js:45,50,59,69` |
+| **F7** | **Three reachable 5xx responses return `error: error.message` directly instead of calling `next(err)`. These bypass the global handler, so the production 500-masking in `errorHandler.js:66-70` never applies — internal error text can reach clients in production.** | `attendance.controller.js:153` (`testWeightedPrediction`), `:656` (`getAttendanceHistory`), `:1101` (`debugCheckInTime`) |
+| F7b | Two reachable responses embed `error.message` inside a **200** body rather than a 5xx: a per-user `error` field in the discipline list, and `scoring_details.breakdown.error` in WFA recommendations. Not a masking bypass, but still client-visible internal error text | `discipline.controller.js:250`, `wfa.controller.js:204` |
+| F8 | Four responses use a bare `{ message }` envelope with no `success` flag, breaking the dominant convention. **All four are inside `getProfile` and `updateProfile`, which are unreachable — see F19.** No live endpoint emits this shape | `src/controllers/user.controller.js:45,50,59,69` |
 | F9 | `wfa.controller.js` imports `../models/settings.model.js` directly, bypassing `models/index.js` where associations are registered | `src/controllers/wfa.controller.js` |
 | F10 | Authorization for `/api/discipline` lives in the controller body for three routes and in `roleGuard` middleware for the fourth. Enforced correctly in both cases, but inconsistently located | `src/controllers/discipline.controller.js:26-30,163,307` |
 | F11 | `DELETE /api/attendance/:id` applies `verifyToken` a second time, though `router.use(verifyToken)` already covers it | `src/routes/attendance.routes.js` |
@@ -301,6 +301,21 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F19** | **Six controller exports are unreachable** — no route mounts them and no module imports them. One of them, `booking.getMyBookings`, shares its purpose with a use case INF-252 Phase 4 plans to extract | see the audit below |
+
+### F19 — unreachable controller exports
+
+| File | Export | Why it matters |
+|---|---|---|
+| `booking.controller.js` | `getMyBookings` | **Phase 4 lists `ListMyBookings` as a use case to extract.** The live endpoint is `GET /api/bookings/history` → `getBookingHistory`. Extracting the dead function instead would ship an implementation nobody has ever run |
+| `auth.controller.js` | `register` | Self-registration appears to have been withdrawn — users are created through `POST /api/users`, Admin-only — without removing the handler |
+| `user.controller.js` | `getProfile`, `updateProfile` | Contain all four F8 envelope deviations and two of the responses originally counted under F7 |
+| `attendance.controller.js` | `testTimezone` | Contains one more response originally counted under F7 |
+| `wfa.controller.js` | `debugGeoapifyApi` | F18; duplicates the Geoapify integration |
+
+`tests/controllerExportReachability.test.js` pins this set. A **new** unreachable export fails the suite, and removing one of these fails a second assertion so the recorded list has to shrink in the same commit.
+
+These are not deleted here. Removal needs intent confirmed per export — `auth.register` in particular may be a deliberately parked feature rather than an oversight.
 | F17 | `checkIn` derives the weekend/holiday decision from a raw `new Date()` at line 683, while the two lines above it use the explicit Jakarta helpers `getJakartaTime()` and `getJakartaDateString()`. It is correct in production only because `TZ=Asia/Jakarta` is set process-wide in `server.js`; the calendar gate silently depends on process configuration rather than on the timezone contract used by the surrounding code | `src/controllers/attendance.controller.js:682-684,736-737` |
 
 ### F16 — why it matters
@@ -329,18 +344,23 @@ expect(res.status).not.toHaveBeenCalled();
 
 **F7 is the most serious.** It is an information-disclosure risk in production, not merely an architectural inconsistency, and it is invisible to the existing tests because they run with `env: 'test'`. It should be raised as its own issue rather than absorbed into a migration PR — see [INF-253](https://linear.app/infinite-track-palu/issue/INF-253/backendsecurity-controller-responses-bypass-production-error-masking).
 
-### F7 — corrected count
+### F7 — corrected twice
 
-The first published version of this finding claimed *"13 responses across 7 files"*. That was wrong, and the error was methodological: the count came from `grep -rnE "error:\s*(error|err)\.message"`, which matches the pattern **anywhere in a file**, including inside `logger.error(...)` calls that never reach `res.json`.
+This finding has been wrong twice. Both errors came from classifying by pattern match rather than by what a client can actually receive.
 
-Reclassifying all 13 occurrences by whether they reach the client:
+**First version:** *"13 responses across 7 files"*, from `grep -rnE "error:\s*(error|err)\.message"`. That matches the pattern **anywhere in a file**, including inside `logger.error(...)` calls. Caught in review of PR #96.
+
+**Second version:** *"6 responses across 2 files"*, after separating responses from logger metadata. Still wrong, because it never checked whether the enclosing function is **reachable**. Three of those six sit in exports that no route mounts.
+
+Final classification of all 13 occurrences:
 
 | Category | Count | Locations |
 |---|---|---|
-| **5xx response — bypasses production masking (F7)** | 6 | `attendance.controller.js:153,656,1101,2288`; `user.controller.js:50,69` |
-| 200 response — client-visible but not a masking bypass (F7b) | 3 | `discipline.controller.js:250`; `wfa.controller.js:204,551` |
+| **Reachable 5xx response — bypasses production masking (F7)** | **3** | `attendance.controller.js:153` (`testWeightedPrediction`), `:656` (`getAttendanceHistory`), `:1101` (`debugCheckInTime`) |
+| Reachable 200 response — client-visible, not a masking bypass (F7b) | 2 | `discipline.controller.js:250` (`getAllDisciplineIndices`), `wfa.controller.js:204` (`getWfaRecommendations`) |
+| **Inside unreachable exports — cannot be triggered** | 4 | `attendance.controller.js:2288` (`testTimezone`), `user.controller.js:50,69` (`getProfile`, `updateProfile`), `wfa.controller.js:551` (`debugGeoapifyApi`) |
 | Logger metadata — never reaches the client | 4 | `analysis.controller.js:79`; `attendance.controller.js:1616`; `auth.controller.js:165`; `health.controller.js:46` |
 
-`auth.controller.js` and `health.controller.js` were implicated by the original count and should **not** have been: both occurrences are structured-logging fields. The security remediation scope is six responses in two files, not thirteen across seven.
+**The security remediation scope is three responses in one file.** `user.controller.js`, `auth.controller.js` and `health.controller.js` were all implicated at some point and none of them belong.
 
-Credit: caught in review of PR #96.
+The lesson generalizes beyond this finding: **a grep hit is not a contract fact.** Both a call-site check and a reachability check are needed before a pattern count means anything. That is what F19 and `tests/controllerExportReachability.test.js` now enforce.
