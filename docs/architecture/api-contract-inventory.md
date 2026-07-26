@@ -499,20 +499,20 @@ Two audits were run against `docs/openapi.yaml`. They reached opposite conclusio
 
 **Structural alignment: clean.** 62 mounted operations, 50 documented, **zero documented-but-not-mounted**. All 12 undocumented operations appear on the deliberate exclusion list already enforced by `openApiMountedRoutesContract.test.js` — debug, test and internal-ops endpoints are kept out of the public contract on purpose. Nothing to fix.
 
-**Contract alignment: not clean.** Both admin list endpoints describe a response shape the runtime does not produce.
+**Contract alignment: originally not clean.** Both admin list endpoints described a response shape the runtime does not produce.
 
-| | Documented | Actual |
+| | Documented (at audit time) | Actual |
 |---|---|---|
 | `GET /api/users` — query | `page`, `limit`, `search`, `role_id`, `division_id` | `search`, `sortBy`, `sortOrder` |
 | `GET /api/users` — body | `data: { users, pagination }` | `data: [ … ]`, no pagination, plus `message` |
 | `GET /api/attendance` — query | `page`, `limit`, `search`, `date`, `user_id` | `page`, `limit`, `search` |
 | `GET /api/attendance` — body | `data: { attendances, pagination }` | `data: [ … ]`, `pagination` as a **sibling** |
 
-A client written literally against this spec reads `response.data.users` and gets `undefined`.
+A client written literally against that spec reads `response.data.users` and gets `undefined`.
 
-Note also that the spec describes the two endpoints **identically**, while the runtime behaves differently — attendance paginates, users does not (F20). Phase 2's list-query foundation has to pick one shape, and the spec currently matches neither.
+**F35 (users half) — RESOLVED by INF-251/INF-261.** `docs/openapi.yaml` now documents the real `GET /api/users` runtime: query `search`/`sortBy`/`sortOrder`, envelope `{ success, data: [UserListItem], message }`, and the deliberately slim list projection (no `phone`, no raw coordinates, `location_status` readiness flag). `tests/openApiRuntimeDriftContract.test.js` now asserts the users spec stays aligned.
 
-**Not fixed here, deliberately.** Choosing between correcting the document and adding pagination to the runtime is a contract decision, and [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and) exists to make it. `tests/openApiRuntimeDriftContract.test.js` pins the mismatch so it cannot drift further or be closed by accident.
+**F36 (attendance half) — still open, deliberately.** Choosing between correcting the document and changing the runtime remains a contract decision for [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and). The attendance mismatch stays pinned in `tests/openApiRuntimeDriftContract.test.js` so it cannot drift further or be closed by accident. The two list runtimes still differ from each other (attendance paginates, users does not — F20); unifying that is also INF-250 scope.
 
 ### F24 — the delete asymmetry
 
