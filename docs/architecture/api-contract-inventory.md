@@ -375,6 +375,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F35** | **`GET /api/users` is documented almost entirely wrong.** OpenAPI declares `page`, `limit`, `role_id` and `division_id` query parameters — the controller reads **none** of them. It omits `sortBy` and `sortOrder`, which the controller does read. It describes `search` as covering "name or email"; the controller searches `full_name` and `nip_nim`. It documents `data` as an object wrapping `users` and `pagination`; the runtime returns `data` as a **flat array** with no pagination, plus an undocumented `message` | `docs/openapi.yaml` vs `user.controller.js` |
+| **F36** | **`GET /api/attendance` documents filters that do not exist and the wrong envelope.** `date` and `user_id` are declared and ignored. `search` is again described as covering email. `data` is documented as an object wrapping `attendances` and `pagination`; the runtime returns `data` as a **flat array** with `pagination` as its **sibling** | `docs/openapi.yaml` vs `attendance.controller.js` |
 | F34 | **Four routes carry no validation middleware at all**, so their Validation axis is `n/a` rather than a gap: `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/attendance/history`, and `POST /api/attendance/test-weighted-prediction`. Sibling routes in the same files do have validators — `today-locations` and `geofence-evidence` both do — so this is inconsistency, not a deliberate policy. `/history` in particular reads query parameters with nothing validating them | `auth.routes.js:11-12`, `attendance.routes.js:68,115` |
 | **F33** | **`getEnhancedAutoCheckoutSettings` is an N+1.** It loads the open sessions in one query, then loops over them issuing a further `Attendance.findAll` per session for that user's month of history. N open sessions cost N+1 queries. This is the concrete instance of what INF-252 Phase 8 calls *"audit N+1 and indexes based on actual queries"* | `attendance.controller.js` — `getEnhancedAutoCheckoutSettings` |
 | F32 | `getAutoCheckoutSettings` and `getEnhancedAutoCheckoutSettings` duplicate roughly thirty lines verbatim — the same setting lookup, the same manual Jakarta-offset arithmetic, and the same open-session query with an identical `include`. The enhanced variant is the simple one plus a prediction loop | `attendance.controller.js` — both getters |
@@ -407,6 +409,27 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 `checkIn` shows the codebase already knows the right shape — it tracks `transactionFinished` and only rolls back when the transaction is still open. Two of its three sibling mutations were never updated to match.
 
 Both are pinned by tests that assert the current, broken outcome, so a fix makes them fail deliberately.
+
+### F35 / F36 — the OpenAPI audit
+
+Two audits were run against `docs/openapi.yaml`. They reached opposite conclusions, and the difference is the point.
+
+**Structural alignment: clean.** 62 mounted operations, 50 documented, **zero documented-but-not-mounted**. All 12 undocumented operations appear on the deliberate exclusion list already enforced by `openApiMountedRoutesContract.test.js` — debug, test and internal-ops endpoints are kept out of the public contract on purpose. Nothing to fix.
+
+**Contract alignment: not clean.** Both admin list endpoints describe a response shape the runtime does not produce.
+
+| | Documented | Actual |
+|---|---|---|
+| `GET /api/users` — query | `page`, `limit`, `search`, `role_id`, `division_id` | `search`, `sortBy`, `sortOrder` |
+| `GET /api/users` — body | `data: { users, pagination }` | `data: [ … ]`, no pagination, plus `message` |
+| `GET /api/attendance` — query | `page`, `limit`, `search`, `date`, `user_id` | `page`, `limit`, `search` |
+| `GET /api/attendance` — body | `data: { attendances, pagination }` | `data: [ … ]`, `pagination` as a **sibling** |
+
+A client written literally against this spec reads `response.data.users` and gets `undefined`.
+
+Note also that the spec describes the two endpoints **identically**, while the runtime behaves differently — attendance paginates, users does not (F20). Phase 2's list-query foundation has to pick one shape, and the spec currently matches neither.
+
+**Not fixed here, deliberately.** Choosing between correcting the document and adding pagination to the runtime is a contract decision, and [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and) exists to make it. `tests/openApiRuntimeDriftContract.test.js` pins the mismatch so it cannot drift further or be closed by accident.
 
 ### F24 — the delete asymmetry
 
