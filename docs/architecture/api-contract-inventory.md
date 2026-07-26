@@ -90,7 +90,7 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | GET | `/history/personal/pdf` | any | 400 | covered | covered | covered |
 | GET | `/history/export.pdf` | any | 400 | covered | covered | covered |
 | GET | `/history` | any | 200, 401 | covered | covered | **gap** |
-| GET | `/status-today` | any | 200 | partial | **gap** | n/a |
+| GET | `/status-today` | any | 200 | partial | covered | n/a |
 | GET | `/debug-checkin-time` | Admin, Management | 200, 400, 401, 403 | covered | covered | covered |
 | POST | `/manual-auto-checkout` | Admin, Management | 401, 403 | route-only | covered | **gap** |
 | GET | `/auto-checkout-settings` | Admin, Management | 401, 403 | route-only | covered | n/a |
@@ -105,7 +105,7 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 | GET | `/smart-config` | Admin, Management | 200 | route-only | covered | n/a |
 | GET | `/enhanced-auto-checkout-settings` | Admin, Management | 200 | route-only | covered | **gap** |
 
-`partial` for `/check-in` means `attendanceDuplicateSafety.test.js` exercises `checkIn` at controller level, but only for duplicate-safety behavior — not the general success path. `/checkout/:id` has **no dedicated test at all**, despite being a final-state mutation.
+`partial` for `/check-in` means `attendanceDuplicateSafety.test.js` exercises `checkIn` at controller level, but only for duplicate-safety behavior — not the general success path. It is now the highest remaining gap in this module: `/checkout/:id`, which was equally uncovered, is fully pinned by `tests/attendanceCheckoutContract.test.js`.
 
 `autoCheckout.test.js` tests the FAHP smart-checkout *logic*, not the `/manual-auto-checkout` endpoint. The two must not be conflated.
 
