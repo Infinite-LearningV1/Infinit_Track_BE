@@ -97,8 +97,8 @@ All require `verifyToken`. Roles column shows the additional `roleGuard`.
 
 | Method | Path | Roles | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|
-| POST | `/location-event` | any | 400 | route-only | covered | **gap** |
-| GET | `/` | Admin, Management | 401, 403 | route-only | covered | **gap** |
+| POST | `/location-event` | any | 400 `INVALID_LOCATION_ID`/`INVALID_TIMESTAMP`/`NO_ACTIVE_SESSION`/`SESSION_ALREADY_ENDED` | covered | covered | covered |
+| GET | `/` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/today-locations` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/geofence-evidence` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | POST | `/check-in` | any | 400, 409, 500 | covered | covered | covered |
@@ -176,8 +176,10 @@ Also pinned: the search radius comes from the `wfa.recommendation.search_radius`
 |---|---|---|---|---|---|---|
 | GET | `/api/summary/dashboard-analytics` | Admin, Management | 400, 401, 403 | covered | covered | covered |
 | GET | `/api/summary/reports` | Admin, Management | 400, 401, 403 | covered | covered | covered |
-| GET | `/api/summary/reports/pdf` | Admin, Management | 400 | covered | **gap** | partial |
-| GET | `/api/summary/reports/excel` | Admin, Management | 400 | covered | **gap** | partial |
+| GET | `/api/summary/reports/pdf` | Admin, Management | 400 | covered | covered | partial |
+| GET | `/api/summary/reports/excel` | Admin, Management | 400 | covered | covered | partial |
+
+**Correction.** These two were listed as RBAC gaps. They are not — `tests/routeAuthorizationMatrix.test.js` covers both in its privileged set. The rows were simply not updated when that file landed.
 
 ## 7. `/api/discipline` — 4 endpoints
 
@@ -274,6 +276,7 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 | Discipline payloads | **done** | `tests/disciplinePayloadContract.test.js`, 15 tests |
 | Reference data payloads | **done** | `tests/referenceDataContract.test.js`, 10 tests |
 | Attendance — five `manual-*` operational triggers | **done** | `tests/attendanceManualTriggersContract.test.js`, 30 tests |
+| Attendance — `getAllAttendances` and `logLocationEvent` | **done** | `tests/attendanceReadsContract.test.js`, 19 tests |
 
 **The Users module is fully characterized.** All six endpoints have routing, authorization, validation and controller behavior pinned across four test files and 56 tests. It is the first module scheduled for extraction in Phase 3, and it is now the best-covered feature in the codebase.
 
@@ -301,11 +304,10 @@ Every slice on the Phase 0b list is done. That is **not** the same as full cover
 
 | Endpoint | What is missing | Why it matters |
 |---|---|---|
-| `GET /api/attendance` | controller behavior — the admin list with search and sorting | The busiest admin read; its query shape moves in Phase 2 |
-| `POST /api/attendance/location-event` | controller behavior and validation | Writes `LocationEvent`, feeds geofence evidence |
-| `GET /api/attendance/auto-checkout-settings` | controller behavior | Read-only diagnostic |
-| `GET /api/attendance/enhanced-auto-checkout-settings` | controller behavior | Read-only diagnostic |
-| `GET /api/summary/reports/pdf` and `/excel` | RBAC assertions | Route-level only today |
+| `GET /api/attendance/auto-checkout-settings` | controller behavior | Read-only diagnostic, no mutation, no external call |
+| `GET /api/attendance/enhanced-auto-checkout-settings` | controller behavior | Read-only diagnostic, no mutation, no external call |
+
+Two endpoints, both Admin/Management diagnostics that read settings and return them. Their routing and authorization are pinned. They are the lowest-value coverage left in the codebase, and are listed rather than quietly dropped.
 
 **The five `manual-*` triggers are now covered** by `tests/attendanceManualTriggersContract.test.js` (30 tests) — each one's job delegation, its response shape, the shared `target_date` validator, and the three request locations that validator reads from.
 
@@ -373,6 +375,8 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | F15 | Nine `console.log` calls sit in the `checkOut` final-state mutation path, printing raw attendance rows. They bypass the winston logger used everywhere else, so they carry no request ID and no structured format | `src/controllers/attendance.controller.js:1503-1508,1525-1529` |
 | **F16** | **The `EARLY` check-in status is unreachable.** The working-hours gate returns 400 when `currentTimeMinutes < checkinStartMinutes`, and the classifier below tests that identical condition to assign `status_id: 4` / `EARLY`. Nothing can satisfy the second test after passing the first, so `status_id 4` can never be produced by check-in | `attendance.controller.js:757` vs `:918-921` |
 | F18 | `debugGeoapifyApi` is exported from `wfa.controller.js` but imported nowhere and mounted on no route — roughly 127 lines of dead code in a 586-line controller. It also calls Geoapify directly, so it duplicates the integration logic that Phase 4 is meant to consolidate | `src/controllers/wfa.controller.js:459-586` |
+| **F30** | **The pagination guard lets non-numeric input past.** `getAllAttendances` checks `pageNum < 1 \|\| limitNum < 1`. `parseInt('abc')` is `NaN`, and every comparison with `NaN` is false, so `?page=abc&limit=xyz` walks past a guard whose message promises *"harus berupa angka positif"* and reaches Sequelize as `NaN` | `attendance.controller.js` — `getAllAttendances` |
+| F31 | **A third error-code convention.** `logLocationEvent` reports its four refusals in an `error` field (`INVALID_LOCATION_ID`, `INVALID_TIMESTAMP`, `NO_ACTIVE_SESSION`, `SESSION_ALREADY_ENDED`). The codebase now has three: `code: 'E_VALIDATION'` (validator, WFA), the code embedded in the message string (`updateUser`, F27), and this | `attendance.controller.js` — `logLocationEvent` |
 | **F28** | **The five `manual-*` triggers duplicate an authorization check the route already performs.** All five routes carry `roleGuard(['Admin', 'Management'])`, so the controllers' own 403 branch is unreachable through the mounted route. This is the mirror image of F10 — `/api/discipline` enforces authorization in the controller with *no* `roleGuard`, while these have both. Neither places it consistently | `attendance.controller.js:1746,1829,1857,1883,1909` |
 | **F29** | **`target_date` is validated by shape, not by calendar.** The check is `/^\d{4}-\d{2}-\d{2}$/`, so `2026-13-45` passes and reaches a job that writes attendance state | `attendance.controller.js:1866,1892,1918` |
 | **F26** | **`updateUser` writes two tables with no transaction.** It updates the user row and then the WFH location as independent operations. A failure between them leaves the user half-updated with nothing to roll it back. `createUser` wraps its three writes in one transaction; this one opens none at all | `src/controllers/user.controller.js:292-472` |
