@@ -2,8 +2,11 @@
 
 **Linear:** [INF-252](https://linear.app/infinite-track-palu/issue/INF-252/backendarchitecture-adopt-modular-mvc-per-feature-with-safe), [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and)
 **Date:** 2026-07-27
-**Status:** Proposed — **blocked on two decisions and one artifact**
+**Status:** Superseded — historical pre-INF-262 decision record
+**Superseded by:** [2026-07-27-inf-252-list-query-post-inf262-design.md](2026-07-27-inf-252-list-query-post-inf262-design.md)
 **Scope:** the shared list-query foundation only. No module extraction; that is Phase 3 onwards.
+
+> Historical boundary: the facts and recommendations below describe the repository before INF-250 was decided and INF-262 landed in PR #129. Do not use this document to implement the Users query extraction.
 
 ---
 
