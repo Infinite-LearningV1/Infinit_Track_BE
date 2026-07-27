@@ -103,13 +103,13 @@ Six endpoints, six PRs, in this order. **Each PR introduces exactly one new laye
 
 Slice 3 now extracts the Phase A dual-mode contract. It does not introduce Phase C.
 
-- Pagination is triggered when either `page` or `limit` is supplied; defaults are `page=1` and `limit=20`, the cap is `limit=100`, the paginated path counts the complete result set, and pages beyond the last page return `200` with empty `data` and accurate totals.
+- Pagination is triggered when either `page` or `limit` is supplied; defaults are `page=1` and `limit=20`, the cap is `limit=100`, the paginated path counts the complete result set, pages beyond the last page return `200` with empty `data` and accurate totals, and the canonical `{ page, limit, total, totalPages }` object remains a sibling of `data`.
 - Search covers `full_name`, `nip_nim`, and `email`; `%` and `_` are escaped so they remain literal search characters.
 - Filters are `role`, `program`, `division`, `position`, and `location_status`.
 - Sorting is allowlisted to `full_name`, `email`, `nip_nim`, `created_at`, and `updated_at`; malformed or unsupported query values receive deterministic `400 E_VALIDATION` responses.
 - `location_status=integrity_error` remains a visible recovery state for active users with invalid WFH location integrity; it is not collapsed into a normal not-configured state.
 - `UserListItem` is the slim list projection boundary and does not reintroduce phone numbers or raw coordinates.
-- Phase B depends on INF-263 moving the Web FE to the server-driven directory contract and verifying that migration.
+- Phase B depends on INF-263 moving the Web FE to the server-driven directory contract: every directory request sends both `page` and `limit`, and the client renders server pagination metadata without a second client-side pagination layer. That migration must be verified.
 - Phase C is a separate contract PR, after Phase B evidence, to remove the compatibility branch and make `GET /api/users` always paginated.
 
 ---
