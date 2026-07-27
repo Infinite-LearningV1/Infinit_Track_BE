@@ -2,6 +2,7 @@
 
 **Issue:** [INF-252](https://linear.app/infinite-track-palu/issue/INF-252)
 **Binding spec:** [2026-07-26-inf-252-modular-mvc-design.md](../specs/2026-07-26-inf-252-modular-mvc-design.md)
+**Binding list-query design:** [2026-07-27-inf-252-list-query-post-inf262-design.md](../specs/2026-07-27-inf-252-list-query-post-inf262-design.md)
 **Status:** plan only. **Execution is gated — see the gate below.**
 
 The spec details execution for Phase 0 and Phase 1 and leaves Phases 2–8 as a single arrow on a dependency diagram. This plan converts the first of them into executable steps, and picks the module order for everything after it.
@@ -64,7 +65,7 @@ Six endpoints, six PRs, in this order. **Each PR introduces exactly one new laye
 
 **Slice 2** is the simplest mutation. `User` is `paranoid: true` with `deletedAt: 'deleted_at'`, so `destroy()` is a genuine soft delete and the repository must not quietly become a hard delete.
 
-**Slice 3** carries the real risk: `Op.or` over `full_name` and `nip_nim` with `Op.like`, plus includes. Spec §3.3 requires a strict per-endpoint attribute allowlist. **This is why the gate exists.**
+**Slice 3** carries the highest read-path risk. It moves the complete Phase A query matrix into `user.query.js`: the `findAll` compatibility path; the `findAndCountAll` paginated path; pagination defaults and cap; escaped three-field search; five filters; allowlisted sorting; left-joined WFH location integrity; `distinct: true`; and `subQuery: false`. `user.validation.js` owns transport validation, `user.service.js` owns integrity warnings, and `user.mapper.js` owns the slim list projection. The extraction must preserve both response modes exactly.
 
 **Slice 4** writes `User` and `Location` with **no transaction** — the legacy behaviour, pinned by `usersUpdateContract.test.js`. The extraction preserves it. Adding a transaction here would be a behaviour change and belongs to its own issue.
 
@@ -97,6 +98,19 @@ Six endpoints, six PRs, in this order. **Each PR introduces exactly one new laye
 **The undecided item is unchanged.** `getProfile` and `updateProfile` survived this PR, so spec §3.5.4 still has no answer for the legacy file after slice 6.
 
 **One number moved:** the repository now has **10** migrations, not 9 (`20260727000000-allow-null-location-description.cjs`). The baseline procedure states its ledger check relatively — "must match the number of migration files" — so `db/baseline/README.md` needs no edit, but a dump produced now must carry 10 `sequelizemeta` rows.
+
+### Amended 2026-07-27 — INF-250 / INF-262 landed in PR #129
+
+Slice 3 now extracts the Phase A dual-mode contract. It does not introduce Phase C.
+
+- Pagination is triggered when either `page` or `limit` is supplied; defaults are `page=1` and `limit=20`, the cap is `limit=100`, the paginated path counts the complete result set, pages beyond the last page return `200` with empty `data` and accurate totals, and the canonical `{ page, limit, total, totalPages }` object remains a sibling of `data`.
+- Search covers `full_name`, `nip_nim`, and `email`; `%` and `_` are escaped so they remain literal search characters.
+- Filters are `role`, `program`, `division`, `position`, and `location_status`.
+- Sorting is allowlisted to `full_name`, `email`, `nip_nim`, `created_at`, and `updated_at`; malformed or unsupported query values receive deterministic `400 E_VALIDATION` responses.
+- `location_status=integrity_error` remains a visible recovery state for active users with invalid WFH location integrity; it is not collapsed into a normal not-configured state.
+- `UserListItem` is the slim list projection boundary and does not reintroduce phone numbers or raw coordinates.
+- Phase B depends on INF-263 moving the Web FE to the server-driven directory contract: every directory request sends both `page` and `limit`, and the client renders server pagination metadata without a second client-side pagination layer. That migration must be verified.
+- Phase C is a separate contract PR, after Phase B evidence, to remove the compatibility branch and make `GET /api/users` always paginated.
 
 ---
 
@@ -140,6 +154,14 @@ npm run test:integration   # once Phase 0c is green — mandatory from slice 3 o
 ```
 
 A slice is done when all three pass, the legacy function is gone, and the diff shows no edits under `tests/`.
+
+Slice 3 must also retain these existing contract tests without edits:
+
+- `tests/usersListPaginationContract.test.js`
+- `tests/usersListQueryValidationContract.test.js`
+- `tests/usersListSortContract.test.js`
+- `tests/usersPayloadContract.test.js`
+- `tests/openApiRuntimeDriftContract.test.js`
 
 ---
 

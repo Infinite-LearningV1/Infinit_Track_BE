@@ -66,7 +66,7 @@ The body form is what mobile clients use. Recording only the cookie would let an
 
 | Method | Path | Roles | Request | Error codes | Happy | RBAC | Validation |
 |---|---|---|---|---|---|---|---|
-| GET | `/api/users` | Admin, Management | query: `search`, `sortBy`, `sortOrder` — **no pagination** | 401, 403 | covered | covered | n/a |
+| GET | `/api/users` | Admin, Management | query: `page`, `limit`, `search`, `role`, `program`, `division`, `position`, `location_status`, `sortBy`, `sortOrder`; pagination opt-in in Phase A | 400, 401, 403 | covered | covered | covered |
 | GET | `/api/users/:id` | Admin, Management | param: id | 401, 403, 404 `E_NOT_FOUND`, **409 `E_USER_LOCATION_INTEGRITY`** | covered | covered | n/a |
 | POST | `/api/users` | Admin, Management | multipart + body | 400 `E_UPLOAD`/`E_VALIDATION_EMAIL_EXISTS`/`E_VALIDATION_NIP_EXISTS`, 401, 403 | covered | covered | covered |
 | POST | `/api/users/:id/photo` | Admin, Management | multipart `face_photo` | 400, 404, `E_UPLOAD` | covered | covered | covered |
@@ -75,7 +75,9 @@ The body form is what mobile clients use. Recording only the cookie would let an
 
 **Request-shape correction.** An earlier version of this table recorded `GET /api/users` as accepting `page` and `limit`. At the time it did not; since INF-262 it does (opt-in pagination plus the INF-250 filter matrix: `role`, `program`, `division`, `position`, `location_status`). Without `page`/`limit` it still returns every non-deleted user in one response — see F20 (closed).
 
-**Payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the search predicate covering `full_name` and `nip_nim` only, and the delete semantics.
+**Migration target.** INF-263 is Phase B: every Web FE directory request sends both `page` and `limit`, then renders the server pagination metadata without a second client-side pagination layer. Phase C later makes pagination the backend default and removes the full-array path in a separate contract PR.
+
+**Historical payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the then-current search predicate covering `full_name` and `nip_nim` only, and the delete semantics. The list projection and search claims are superseded below: INF-251/INF-261 split the projections, and INF-262 added `email` to the current three-field search.
 
 `createUser` and `updateUser` remain `route-only`: both run DigitalOcean Spaces uploads and transaction orchestration, and deserve their own slice.
 
@@ -131,7 +133,7 @@ Before it, five of six Users endpoints had zero behavioral coverage; the only `/
 - the create-payload rules, including that **`latitude` and `longitude` are required and may not be 0** — the required-WFH-location rule that INF-251 depends on;
 - update treats every field as optional, and its 400 envelope is `{ success: false, code: 'E_VALIDATION', message, errors[] }`.
 
-**Still open for Users:** `route-only` above means the middleware chain and routing are pinned but the **controller's own response body is not** — pagination metadata, the mapped user shape, and 404 handling for a missing `:id` remain uncovered. Closing that requires model-level mocking rather than controller mocking, and is the remaining Phase 0b work for this module.
+**Historical coverage gap — closed by subsequent characterization.** The earlier `route-only` limitation is no longer current: the controller response body, including pagination metadata, the mapped user shape, and 404 handling for a missing `:id`, is now pinned. There is no remaining Phase 0b work for the Users module.
 
 ## 3. `/api/attendance` — 23 endpoints
 
@@ -323,7 +325,7 @@ Baseline as measured on 2026-07-26, before any Phase 0b work:
 
 **The Users module is fully characterized.** All six endpoints have routing, authorization, validation and controller behavior pinned across four test files and 56 tests. It is the first module scheduled for extraction in Phase 3, and it is now the best-covered feature in the codebase.
 
-Characterizing it produced eight findings — F8, F19, F20, F21, F22, F23, F25 and F27 — none of them fixed, all recorded.
+Characterizing it produced eight findings — F8, F19, F20, F21, F22, F23, F25 and F27. F20 is closed by INF-262; F49, recorded later during characterization, is also closed by INF-262. The remaining Users findings stay open unless their own entries say otherwise.
 
 **The authorization axis is now closed for the entire API.** Every one of the 60 route-file endpoints has its middleware chain pinned: `/api/users` by `usersRouteContract`, `/api/attendance` by `attendanceRouteContract`, `/api/bookings` by `bookingsReadinessContract`, and the remaining seven route files by `routeAuthorizationMatrix`.
 
@@ -429,7 +431,7 @@ Recorded, deliberately **not fixed** under INF-252. Each needs its own issue.
 | **F39** | **The paginated list surfaces use different key names for the same concepts.** `GET /api/attendance` returns `total_records` and `records_per_page`; `GET /api/summary/reports` returns `total_items` and `items_per_page`. Since INF-262, `GET /api/users` uses the INF-250 **canonical** spelling — `page`, `limit`, `total`, `totalPages` — which the other two surfaces are expected to migrate to (separate scope). Until then a client consuming all three must handle three spellings | `attendance.controller.js` — `getAllAttendances`; `summaryReport.service.js:405-412`; `user.controller.js` — `getAllUsers` |
 | **F37** | **`applySearch` silently discards earlier predicates — latent.** It decides whether to preserve existing conditions with `Object.keys(queryOptions.where).length > 0`, but stores its own predicate under the **symbol** key `Op.or`, and `Object.keys` does not enumerate symbols. A second call therefore concludes the where clause is empty and **replaces** it. **Not triggered today**: both call sites invoke it exactly once per query, and `applyMultipleSearch` is unused. It becomes live the moment anything composes two search predicates — which is precisely what Phase 2's query object does | `src/utils/searchHelper.js:38-59` |
 | F38 | `applyMultipleSearch` is exported from `searchHelper.js` and used nowhere in `src/`. It is also the only caller pattern that would trigger F37 | `src/utils/searchHelper.js:71-91` |
-| **F35** | **`GET /api/users` is documented almost entirely wrong.** OpenAPI declares `page`, `limit`, `role_id` and `division_id` query parameters — the controller reads **none** of them. It omits `sortBy` and `sortOrder`, which the controller does read. It describes `search` as covering "name or email"; the controller searches `full_name` and `nip_nim`. It documents `data` as an object wrapping `users` and `pagination`; the runtime returns `data` as a **flat array** with no pagination, plus an undocumented `message` | `docs/openapi.yaml` vs `user.controller.js` |
+| **F35** | **Users half CLOSED by INF-251/INF-261/INF-262.** OpenAPI now documents the slim projection and the full Phase A query/pagination matrix. The historical mismatch is preserved below; F36 remains the attendance-only open half | `docs/openapi.yaml`; `user.controller.js` |
 | **F36** | **`GET /api/attendance` documents filters that do not exist and the wrong envelope.** `date` and `user_id` are declared and ignored. `search` is again described as covering email. `data` is documented as an object wrapping `attendances` and `pagination`; the runtime returns `data` as a **flat array** with `pagination` as its **sibling** | `docs/openapi.yaml` vs `attendance.controller.js` |
 | F34 | **Four routes carry no validation middleware at all**, so their Validation axis is `n/a` rather than a gap: `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/attendance/history`, and `POST /api/attendance/test-weighted-prediction`. Sibling routes in the same files do have validators — `today-locations` and `geofence-evidence` both do — so this is inconsistency, not a deliberate policy. `/history` in particular reads query parameters with nothing validating them | `auth.routes.js:11-12`, `attendance.routes.js:68,115` |
 | **F33** | **`getEnhancedAutoCheckoutSettings` is an N+1.** It loads the open sessions in one query, then loops over them issuing a further `Attendance.findAll` per session for that user's month of history. N open sessions cost N+1 queries. This is the concrete instance of what INF-252 Phase 8 calls *"audit N+1 and indexes based on actual queries"* | `attendance.controller.js` — `getEnhancedAutoCheckoutSettings` |
@@ -543,6 +545,8 @@ Two audits were run against `docs/openapi.yaml`. They reached opposite conclusio
 
 **Contract alignment: originally not clean.** Both admin list endpoints described a response shape the runtime does not produce.
 
+**Historical snapshot — before INF-251/INF-261/INF-262:**
+
 | | Documented (at audit time) | Actual |
 |---|---|---|
 | `GET /api/users` — query | `page`, `limit`, `search`, `role_id`, `division_id` | `search`, `sortBy`, `sortOrder` |
@@ -552,7 +556,14 @@ Two audits were run against `docs/openapi.yaml`. They reached opposite conclusio
 
 A client written literally against that spec reads `response.data.users` and gets `undefined`.
 
-**F35 (users half) — RESOLVED by INF-251/INF-261.** `docs/openapi.yaml` now documents the real `GET /api/users` runtime: query `search`/`sortBy`/`sortOrder`, envelope `{ success, data: [UserListItem], message }`, and the deliberately slim list projection (no `phone`, no raw coordinates, `location_status` readiness flag). `tests/openApiRuntimeDriftContract.test.js` now asserts the users spec stays aligned.
+**Current snapshot — `develop` at `df5a491`:**
+
+| Surface | OpenAPI | Runtime |
+|---|---|---|
+| `GET /api/users` — query | Phase A: `page`, `limit`, `search`, `role`, `program`, `division`, `position`, `location_status`, `sortBy`, `sortOrder` | same |
+| `GET /api/users` — body | Phase A paginated mode: flat `data` plus sibling `pagination`; legacy mode: flat `data` without pagination | same |
+
+**F35 (users half) — RESOLVED by INF-251/INF-261/INF-262.** `docs/openapi.yaml` now documents the real `GET /api/users` Phase A runtime: opt-in pagination, filters (`role`, `program`, `division`, `position`, `location_status`), three-field search (`full_name`, `nip_nim`, `email`), and allowlisted sorting. It also documents the deliberately slim list projection (no `phone`, no raw coordinates, `location_status` readiness flag). `tests/openApiRuntimeDriftContract.test.js` now asserts the users spec stays aligned.
 
 **F36 (attendance half) — still open, deliberately.** Choosing between correcting the document and changing the runtime remains a contract decision for [INF-250](https://linear.app/infinite-track-palu/issue/INF-250/cross-repo-define-scalable-user-directory-search-filter-sort-and). The attendance mismatch stays pinned in `tests/openApiRuntimeDriftContract.test.js` so it cannot drift further or be closed by accident. The two list runtimes now both paginate but spell their envelopes differently (users uses the INF-250 canonical `page/limit/total/totalPages`, attendance still uses `total_records`/`records_per_page` — F39); migrating attendance to the canonical spelling is follow-up scope.
 
