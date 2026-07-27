@@ -300,9 +300,19 @@ Update the F35 row in the active inconsistency table to:
 | **F35** | **Users half CLOSED by INF-251/INF-261/INF-262.** OpenAPI now documents the slim projection and the full Phase A query/pagination matrix. The historical mismatch is preserved below; F36 remains the attendance-only open half | `docs/openapi.yaml`; `user.controller.js` |
 ```
 
-Replace the historical F35/F36 comparison table Users rows with current Phase A values:
+Preserve the existing F35/F36 comparison table and label it:
 
 ```markdown
+**Historical snapshot — before INF-251/INF-261/INF-262:**
+```
+
+Then add a separate current-state table:
+
+```markdown
+**Current snapshot — `develop` at `df5a491`:**
+
+| Surface | OpenAPI | Runtime |
+|---|---|---|
 | `GET /api/users` — query | Phase A: `page`, `limit`, `search`, `role`, `program`, `division`, `position`, `location_status`, `sortBy`, `sortOrder` | same |
 | `GET /api/users` — body | Phase A paginated mode: flat `data` plus sibling `pagination`; legacy mode: flat `data` without pagination | same |
 ```
@@ -315,11 +325,11 @@ Run:
 
 ```powershell
 $file = 'docs/architecture/api-contract-inventory.md'
-if (Select-String -Path $file -Pattern 'query: `search`, `sortBy`, `sortOrder` — \*\*no pagination\*\*|none of them fixed|data: \[ … \], no pagination') { exit 1 }
-rg -n 'pagination opt-in in Phase A|Migration target|F20 is closed|Users half CLOSED|INF-251/INF-261/INF-262|F39|F36.*still open' $file
+if (Select-String -Path $file -Pattern 'query: `search`, `sortBy`, `sortOrder` — \*\*no pagination\*\*|none of them fixed') { exit 1 }
+rg -n 'pagination opt-in in Phase A|Migration target|F20 is closed|Users half CLOSED|Historical snapshot|Current snapshot|INF-251/INF-261/INF-262|F39|F36.*still open' $file
 ```
 
-Expected: the first command exits successfully with no stale matches; the second shows corrected Users facts while F39 and F36 remain open.
+Expected: the first command exits successfully with no stale active claims; the second shows both labelled snapshots, corrected Users facts, and the still-open F39/F36 findings.
 
 - [ ] **Step 5: Confirm OpenAPI was not changed**
 
