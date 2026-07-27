@@ -77,7 +77,7 @@ The body form is what mobile clients use. Recording only the cookie would let an
 
 **Migration target.** INF-263 is Phase B: Web FE always sends pagination. Phase C later makes pagination the backend default and removes the full-array path in a separate contract PR.
 
-**Payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the search predicate covering `full_name` and `nip_nim` only, and the delete semantics.
+**Historical payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the then-current search predicate covering `full_name` and `nip_nim` only, and the delete semantics. The list projection and search claims are superseded below: INF-251/INF-261 split the projections, and INF-262 added `email` to the current three-field search.
 
 `createUser` and `updateUser` remain `route-only`: both run DigitalOcean Spaces uploads and transaction orchestration, and deserve their own slice.
 
@@ -133,7 +133,7 @@ Before it, five of six Users endpoints had zero behavioral coverage; the only `/
 - the create-payload rules, including that **`latitude` and `longitude` are required and may not be 0** — the required-WFH-location rule that INF-251 depends on;
 - update treats every field as optional, and its 400 envelope is `{ success: false, code: 'E_VALIDATION', message, errors[] }`.
 
-**Still open for Users:** `route-only` above means the middleware chain and routing are pinned but the **controller's own response body is not** — pagination metadata, the mapped user shape, and 404 handling for a missing `:id` remain uncovered. Closing that requires model-level mocking rather than controller mocking, and is the remaining Phase 0b work for this module.
+**Historical coverage gap — closed by subsequent characterization.** The earlier `route-only` limitation is no longer current: the controller response body, including pagination metadata, the mapped user shape, and 404 handling for a missing `:id`, is now pinned. There is no remaining Phase 0b work for the Users module.
 
 ## 3. `/api/attendance` — 23 endpoints
 
