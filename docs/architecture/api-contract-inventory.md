@@ -75,7 +75,7 @@ The body form is what mobile clients use. Recording only the cookie would let an
 
 **Request-shape correction.** An earlier version of this table recorded `GET /api/users` as accepting `page` and `limit`. At the time it did not; since INF-262 it does (opt-in pagination plus the INF-250 filter matrix: `role`, `program`, `division`, `position`, `location_status`). Without `page`/`limit` it still returns every non-deleted user in one response — see F20 (closed).
 
-**Migration target.** INF-263 is Phase B: Web FE always sends pagination. Phase C later makes pagination the backend default and removes the full-array path in a separate contract PR.
+**Migration target.** INF-263 is Phase B: every Web FE directory request sends both `page` and `limit`, then renders the server pagination metadata without a second client-side pagination layer. Phase C later makes pagination the backend default and removes the full-array path in a separate contract PR.
 
 **Historical payloads pinned 2026-07-26** by `tests/usersPayloadContract.test.js` (16 tests): the 15-field mapped user shape shared by list and detail, string-to-number coercion of the location numerics, `null` for every absent association, the `'Work From Home'` category default, the `deleted_at: null` filter, the then-current search predicate covering `full_name` and `nip_nim` only, and the delete semantics. The list projection and search claims are superseded below: INF-251/INF-261 split the projections, and INF-262 added `email` to the current three-field search.
 
