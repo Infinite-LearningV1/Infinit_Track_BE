@@ -96,6 +96,30 @@ Owns list and report queries: associations, selected attributes, search, filter,
 - Uses a **strict allowlist per endpoint**. A client-supplied sort field that is not on the list is rejected, not passed through.
 - Shared code supplies the mechanism; each feature owns its public query contract.
 
+#### Worked example — Users directory
+
+```text
+user.routes.js
+  -> user.validation.js
+  -> user.controller.js
+  -> user.service.js
+  -> user.query.js
+  -> Sequelize models
+  -> user.mapper.js
+  -> HTTP response
+```
+
+1. Validation owns scalar shape, ranges, enums, and the sort allowlist.
+2. Controller contains no Sequelize concepts.
+3. Service owns integrity-warning orchestration.
+4. Query owns associations, predicates, ordering, pagination, and both Phase A fetch paths.
+5. Mapper owns the stable slim response item.
+6. Feature-specific fields and joins remain in Users.
+7. Shared pagination/search mechanisms require two real consumers.
+8. Phase C is not part of the extraction.
+
+The Phase 2 Users migration follows the binding [post-INF-262 list-query design](../superpowers/specs/2026-07-27-inf-252-list-query-post-inf262-design.md): retain the Phase A `findAll` compatibility path and `findAndCountAll` paginated path while INF-263 supplies Phase B client evidence. A separate Phase C contract PR may remove compatibility only after that evidence exists.
+
 ### Validation
 
 Transport validation only — params, query shape, body types and ranges. Business validation stays in the service or a policy.
