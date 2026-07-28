@@ -27,7 +27,9 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   BookingStatus: {},
   User: {},
   Position: {},
-  Role: {}
+  Role: {},
+  WfaRequestReason: {},
+  WfaRejectionReason: {}
 }));
 jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
   readWfaRequestConfig: mockReadWfaRequestConfig,

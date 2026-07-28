@@ -3,7 +3,16 @@ import { isValid, parseISO } from 'date-fns';
 import axios from 'axios';
 
 import sequelize from '../config/database.js';
-import { Booking, Location, BookingStatus, User, Position, Role } from '../models/index.js';
+import {
+  Booking,
+  Location,
+  BookingStatus,
+  User,
+  Position,
+  Role,
+  WfaRequestReason,
+  WfaRejectionReason
+} from '../models/index.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
 import { getJakartaDateString } from '../utils/geofence.js';
@@ -31,6 +40,44 @@ const BOOKING_HISTORY_STATUS_FILTERS = Object.freeze({
   approved: BOOKING_STATUS.approved.id,
   rejected: BOOKING_STATUS.rejected.id,
   pending: BOOKING_STATUS.pending.id
+});
+
+const buildWfaReasonIncludes = () => [
+  {
+    model: WfaRequestReason,
+    as: 'request_reason',
+    attributes: ['id', 'label', 'is_other']
+  },
+  {
+    model: WfaRejectionReason,
+    as: 'rejection_reason_detail',
+    attributes: ['id', 'label', 'is_other']
+  }
+];
+
+const projectWfaReasonData = (booking) => ({
+  request_reason: booking.request_reason
+    ? {
+        id: booking.request_reason.id,
+        label: booking.request_reason.label,
+        is_other: Boolean(booking.request_reason.is_other),
+        other_text: booking.request_other_reason || null
+      }
+    : null,
+  rejection_reason: booking.rejection_reason_detail
+    ? {
+        id: booking.rejection_reason_detail.id,
+        label: booking.rejection_reason_detail.label,
+        is_other: Boolean(booking.rejection_reason_detail.is_other),
+        note: booking.rejection_note || null
+      }
+    : null,
+  radius_snapshot:
+    booking.radius_snapshot != null
+      ? Number(booking.radius_snapshot)
+      : booking.location?.radius != null
+        ? Number(booking.location.radius)
+        : null
 });
 
 function getBookingStatusPresentation(booking) {
@@ -360,7 +407,8 @@ export const updateBookingStatus = async (req, res, next) => {
         {
           model: Location,
           as: 'location'
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       transaction
     });
@@ -443,7 +491,8 @@ export const updateBookingStatus = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ]
     });
 
@@ -465,6 +514,7 @@ export const updateBookingStatus = async (req, res, next) => {
           radius: updatedBooking.location.radius,
           description: updatedBooking.location.description
         },
+        ...projectWfaReasonData(updatedBooking),
         rejection_reason:
           status === 'rejected'
             ? {
@@ -630,7 +680,8 @@ export const getAllBookings = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       order: [
         // Urutan kustom untuk status: 3 (pending), 1 (approved), 2 (rejected)
@@ -664,7 +715,8 @@ export const getAllBookings = async (req, res, next) => {
       suitability_label: booking.suitability_label,
       created_at: booking.created_at,
       processed_at: booking.processed_at,
-      approved_by: booking.approved_by
+      approved_by: booking.approved_by,
+      ...projectWfaReasonData(booking)
     }));
 
     // Response dengan struktur data yang flattened
@@ -720,7 +772,8 @@ export const getMyBookings = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       order: [['created_at', 'DESC']],
       limit: parseInt(limit),
@@ -748,7 +801,8 @@ export const getMyBookings = async (req, res, next) => {
       suitability_label: booking.suitability_label,
       created_at: booking.created_at,
       processed_at: booking.processed_at,
-      approved_by: booking.approved_by
+      approved_by: booking.approved_by,
+      ...projectWfaReasonData(booking)
     }));
 
     res.status(200).json({
@@ -919,7 +973,8 @@ export const getBookingHistory = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       order: orderClause,
       limit: limitNum,
@@ -955,7 +1010,8 @@ export const getBookingHistory = async (req, res, next) => {
         suitability_label: booking.suitability_label,
         created_at: booking.created_at,
         processed_at: booking.processed_at,
-        approved_by: booking.approved_by
+        approved_by: booking.approved_by,
+        ...projectWfaReasonData(booking)
       };
     });
 

@@ -41,7 +41,9 @@ describe('booking controller readiness regressions', () => {
       BookingStatus: {},
       User: {},
       Position: {},
-      Role: {}
+      Role: {},
+      WfaRequestReason: {},
+      WfaRejectionReason: {}
     };
   }
 
