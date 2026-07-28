@@ -16,9 +16,10 @@ import path from 'node:path';
  * real envelope (data as an array plus message), and the new slim UserListItem
  * projection. The /api/users block below asserts the spec STAYS aligned.
  *
- * The attendance half (F36) is still drifted and still pinned as-is; whichever
- * way INF-250 resolves the attendance list contract, that block has to be
- * updated deliberately. See docs/architecture/api-contract-inventory.md.
+ * INF-267 resolved the attendance half (F36): the public contract now matches
+ * the validated query matrix and audit list envelope. The attendance block
+ * below protects that closure while F39 deliberately retains its legacy
+ * pagination key spelling.
  */
 
 const spec = readFileSync(path.join(process.cwd(), 'docs', 'openapi.yaml'), 'utf8');
@@ -107,33 +108,36 @@ describe('GET /api/attendance — documented contract versus runtime', () => {
     expect(block).not.toHaveLength(0);
   });
 
-  /**
-   * F36. attendanceReadsContract.test.js pins the runtime as accepting
-   * search, page and limit only.
-   */
   it.each([['date'], ['user_id']])(
-    'documents a "%s" filter the controller ignores',
+    'does not document the removed "%s" parameter',
     (param) => {
-      expect(block).toContain(`name: ${param}`);
+      expect(block).not.toContain(`name: ${param}`);
     }
   );
 
-  it('documents page and limit, which this controller genuinely honours', () => {
-    expect(block).toContain('name: page');
-    expect(block).toContain('name: limit');
+  it.each([
+    ['page'],
+    ['limit'],
+    ['search'],
+    ['from'],
+    ['to'],
+    ['mode'],
+    ['status'],
+    ['checkout_state'],
+    ['sortBy'],
+    ['sortOrder']
+  ])('documents the validated "%s" query parameter', (param) => {
+    expect(block).toContain(`name: ${param}`);
   });
 
-  it('describes search as covering email, though the controller searches nip_nim', () => {
-    expect(block).toMatch(/Search by user name or email/);
+  it('describes search as covering full name, NIP/NIM, and email', () => {
+    expect(block).toMatch(/full name, NIP\/NIM, and email/);
   });
 
-  /**
-   * The runtime answers { success, message, data: [...], pagination: {...} }
-   * with pagination a SIBLING of data. The spec nests both inside data.
-   */
-  it('nests attendances and pagination inside data, unlike the runtime', () => {
-    expect(block).toContain('attendances:');
+  it('documents the flat audit-list data and sibling pagination envelope', () => {
+    expect(block).toContain("$ref: '#/components/schemas/AttendanceAuditListRow'");
     expect(block).toContain('pagination:');
+    expect(block).not.toContain('attendances:');
   });
 });
 

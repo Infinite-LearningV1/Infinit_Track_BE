@@ -226,7 +226,7 @@ describe('F38 — applyMultipleSearch is unused', () => {
 
 describe('F39 — the two paginated lists disagree on key names', () => {
   it('attendance still says records_per_page', () => {
-    expect(SRC('controllers/attendance.controller.js')).toContain('records_per_page');
+    expect(SRC('modules/attendance/attendanceRead.service.js')).toContain('records_per_page');
   });
 
   it('summary still says items_per_page', () => {
