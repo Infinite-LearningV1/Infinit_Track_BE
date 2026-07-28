@@ -17,9 +17,9 @@ describe('INF-270 public OpenAPI contract', () => {
     const operation = openapi.paths['/api/wfa/request-config'].get;
     const data = operation.responses['200'].content['application/json'].schema.properties.data;
 
-    expect(data.required).toEqual(['radius_m', 'request_reasons']);
-    expect(data.properties.radius_m).toMatchObject({ type: 'integer', minimum: 1 });
-    expect(data.properties.request_reasons.items.$ref).toBe('#/components/schemas/WfaReason');
+    expect(data.required).toEqual(['radius_meters', 'reasons']);
+    expect(data.properties.radius_meters).toMatchObject({ type: 'integer', minimum: 1 });
+    expect(data.properties.reasons.items.$ref).toBe('#/components/schemas/WfaPublicReason');
     expect(operation.responses).toHaveProperty('500');
   });
 
@@ -35,6 +35,17 @@ describe('INF-270 public OpenAPI contract', () => {
       expect(requestSchema(member.patch).$ref).toBe('#/components/schemas/WfaReasonUpdateRequest');
     }
   );
+
+  test('documents the catalog mutation wrapper returned by controllers', () => {
+    const mutation =
+      openapi.components.responses.WfaReasonMutationResponse.content['application/json'].schema;
+
+    expect(mutation.properties.data.required).toEqual(['reason']);
+    expect(mutation.properties.data.properties.reason.$ref).toBe('#/components/schemas/WfaReason');
+    expect(openapi.components.schemas.WfaReason.required).toEqual(
+      expect.arrayContaining(['created_at', 'updated_at'])
+    );
+  });
 
   test('adds the server-owned radius to operational settings', () => {
     const settings = openapi.components.schemas.OperationalSettings;

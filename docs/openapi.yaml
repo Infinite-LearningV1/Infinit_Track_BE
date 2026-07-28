@@ -3335,7 +3335,7 @@ paths:
                   example: 2
                 request_other_reason:
                   type: string
-                  maxLength: 255
+                  maxLength: 500
                   nullable: true
                   example: 'Client incident response'
                 latitude:
@@ -3634,17 +3634,17 @@ paths:
                   data:
                     type: object
                     required:
-                      - radius_m
-                      - request_reasons
+                      - radius_meters
+                      - reasons
                     properties:
-                      radius_m:
+                      radius_meters:
                         type: integer
                         minimum: 1
                         example: 100
-                      request_reasons:
+                      reasons:
                         type: array
                         items:
-                          $ref: '#/components/schemas/WfaReason'
+                          $ref: '#/components/schemas/WfaPublicReason'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -6843,7 +6843,7 @@ components:
 
     WfaReason:
       type: object
-      required: [id, label, is_other, is_active, sort_order]
+      required: [id, label, is_other, is_active, sort_order, created_at, updated_at]
       additionalProperties: false
       properties:
         id:
@@ -6861,6 +6861,30 @@ components:
         sort_order:
           type: integer
           example: 20
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WfaPublicReason:
+      type: object
+      required: [id, label, is_other, sort_order]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          example: 2
+        label:
+          type: string
+          example: 'Client meeting'
+        is_other:
+          type: boolean
+          example: false
+        sort_order:
+          type: integer
+          example: 20
 
     WfaReasonCreateRequest:
       type: object
@@ -6870,7 +6894,7 @@ components:
         label:
           type: string
           minLength: 1
-          maxLength: 255
+          maxLength: 120
         is_other:
           type: boolean
           default: false
@@ -6891,7 +6915,7 @@ components:
         label:
           type: string
           minLength: 1
-          maxLength: 255
+          maxLength: 120
         is_active:
           type: boolean
         sort_order:
@@ -7371,7 +7395,11 @@ components:
                 type: boolean
                 example: true
               data:
-                $ref: '#/components/schemas/WfaReason'
+                type: object
+                required: [reason]
+                properties:
+                  reason:
+                    $ref: '#/components/schemas/WfaReason'
 
     BadRequest:
       description: Bad request - Invalid input data
