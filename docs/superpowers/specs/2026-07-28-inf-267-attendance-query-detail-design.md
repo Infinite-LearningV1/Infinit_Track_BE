@@ -1,8 +1,8 @@
 # INF-267 Management Attendance Query and Detail Design
 
-**Date:** 2026-07-28  
-**Issue:** INF-267  
-**Repository:** `Infinite-LearningV1/Infinit_Track_BE`  
+**Date:** 2026-07-28
+**Issue:** INF-267
+**Repository:** `Infinite-LearningV1/Infinit_Track_BE`
 **Base branch:** `develop`
 
 ## Purpose
