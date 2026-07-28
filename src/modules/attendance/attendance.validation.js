@@ -30,9 +30,16 @@ const rejectNonScalarValues = query().custom((_value, { req }) => {
   return true;
 });
 
+const rejectEmptyPaginationValues = query().custom((_value, { req }) => {
+  const invalid = ['page', 'limit'].find((key) => req.query?.[key] === '');
+  if (invalid) throw new Error(`${invalid} tidak boleh kosong`);
+  return true;
+});
+
 export const validateAttendanceListQuery = [
   rejectUnknownKeys,
   rejectNonScalarValues,
+  rejectEmptyPaginationValues,
   query('page').default(1).isInt({ min: 1 }).withMessage('page harus bilangan bulat >= 1').toInt(),
   query('limit').default(10).isInt({ min: 1, max: 100 }).withMessage('limit harus bilangan bulat 1-100').toInt(),
   query('search').optional().isString().withMessage('search harus berupa teks').trim(),

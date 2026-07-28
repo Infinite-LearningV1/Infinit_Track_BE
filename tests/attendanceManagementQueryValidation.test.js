@@ -28,6 +28,9 @@ test('normalizes the complete valid attendance query', async () => {
 });
 
 test.each([
+  ['empty page', '/attendance?page='],
+  ['empty limit', '/attendance?limit='],
+  ['empty page and limit', '/attendance?page=&limit='],
   ['page non-numeric', '/attendance?page=abc'],
   ['limit over maximum', '/attendance?limit=101'],
   ['impossible from date', '/attendance?from=2026-02-30'],
