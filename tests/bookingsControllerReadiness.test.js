@@ -64,6 +64,12 @@ describe('booking controller readiness regressions', () => {
         debug: jest.fn()
       }
     }));
+
+    jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
+      readWfaRequestConfig: jest.fn(),
+      resolveActiveWfaRequestReason: jest.fn(),
+      resolveActiveWfaRejectionReason: jest.fn()
+    }));
   }
 
   async function importBookingController(models, sequelizeMock = buildSequelizeMock()) {

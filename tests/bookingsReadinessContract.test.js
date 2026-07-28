@@ -64,6 +64,7 @@ const buildValidatorApp = () => {
 
 const validBookingPayload = {
   schedule_date: '2026-05-04',
+  request_reason_id: 1,
   latitude: -6.2,
   longitude: 106.8
 };
@@ -104,6 +105,45 @@ describe('bookings validator contract', () => {
     delete payload.schedule_date;
 
     await request(app).post('/bookings').send(payload).expect(400);
+  });
+
+  test.each(['10-08-2026', '08-10-2026', '2026-02-30'])(
+    'schedule_date %s returns INVALID_SCHEDULE_DATE',
+    async (scheduleDate) => {
+      const app = buildValidatorApp();
+
+      const res = await request(app)
+        .post('/bookings')
+        .send({ ...validBookingPayload, schedule_date: scheduleDate });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_SCHEDULE_DATE');
+    }
+  );
+
+  test('missing request_reason_id returns WFA_REQUEST_REASON_REQUIRED', async () => {
+    const app = buildValidatorApp();
+    const payload = { ...validBookingPayload };
+    delete payload.request_reason_id;
+
+    const res = await request(app).post('/bookings').send(payload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('WFA_REQUEST_REASON_REQUIRED');
+  });
+
+  test('accepts compatibility radius and suitability fields without trusting their shape', async () => {
+    const app = buildValidatorApp();
+
+    await request(app)
+      .post('/bookings')
+      .send({
+        ...validBookingPayload,
+        radius: 9999,
+        suitability_score: 999,
+        suitability_label: 'client-controlled'
+      })
+      .expect(201);
   });
 
   test.each([
