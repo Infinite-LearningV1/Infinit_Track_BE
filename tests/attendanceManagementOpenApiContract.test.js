@@ -16,7 +16,9 @@ test('documents every Management Attendance list query parameter', () => {
   ]);
   expect(params.limit.schema).toMatchObject({ default: 10, minimum: 1, maximum: 100 });
   expect(params.status.schema.enum).toEqual(['ontime', 'late', 'alpha', 'early']);
-  expect(operation.responses).toHaveProperty('400');
+  expect(operation.responses['400']).toEqual({
+    $ref: '#/components/responses/AttendanceValidationError'
+  });
 });
 
 test('documents GET attendance detail separately from DELETE', () => {
@@ -25,8 +27,32 @@ test('documents GET attendance detail separately from DELETE', () => {
   expect(pathItem.get).toBeDefined();
   expect(pathItem.delete).toBeDefined();
   const detail = pathItem.get.responses['200'].content['application/json'].schema;
-  expect(detail.properties.data.properties).toHaveProperty('booking_id');
-  expect(detail.properties.data.properties.user.properties).toHaveProperty('email');
-  expect(detail.properties.data.properties.location.nullable).toBe(true);
+  expect(detail.properties.data).toEqual({
+    $ref: '#/components/schemas/AttendanceAuditDetail'
+  });
+  expect(pathItem.get.responses['400']).toEqual({
+    $ref: '#/components/responses/AttendanceValidationError'
+  });
   expect(pathItem.get.responses).toHaveProperty('404');
+});
+
+test('documents the exact attendance validator error envelope', () => {
+  const response = api.components.responses.AttendanceValidationError;
+  const schema = response.content['application/json'].schema;
+
+  expect(schema.required).toEqual(['success', 'code', 'message', 'errors']);
+  expect(schema.properties.success).toMatchObject({ type: 'boolean', enum: [false] });
+  expect(schema.properties.code).toMatchObject({ type: 'string', enum: ['E_VALIDATION'] });
+  expect(schema.properties.message.type).toBe('string');
+  expect(schema.properties.errors).toMatchObject({ type: 'array' });
+  expect(schema.properties.errors.items.required).toEqual([
+    'type', 'value', 'msg', 'path', 'location'
+  ]);
+  expect(schema.properties.errors.items.properties).toMatchObject({
+    type: { type: 'string', enum: ['field'] },
+    value: {},
+    msg: { type: 'string' },
+    path: { type: 'string' },
+    location: { type: 'string', enum: ['query', 'params'] }
+  });
 });

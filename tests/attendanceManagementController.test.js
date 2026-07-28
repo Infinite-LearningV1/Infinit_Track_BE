@@ -33,8 +33,10 @@ describe('attendance management read controllers', () => {
     listManagementAttendances.mockResolvedValueOnce({ data: [], pagination: expectedPagination });
     const res = buildRes();
 
-    await getAllAttendances({ query: { page: 2, limit: 10 } }, res, jest.fn());
+    const query = { page: 2, limit: 10 };
+    await getAllAttendances({ query }, res, jest.fn());
 
+    expect(listManagementAttendances).toHaveBeenCalledWith(query);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       success: true,
@@ -55,6 +57,23 @@ describe('attendance management read controllers', () => {
       success: false,
       message: 'Data absensi tidak ditemukan.'
     });
+    expect(getManagementAttendanceDetail).toHaveBeenCalledWith(999);
+  });
+
+  it('forwards the detail ID and returns a successful detail envelope', async () => {
+    const data = { id_attendance: 42, notes: 'Verified' };
+    getManagementAttendanceDetail.mockResolvedValueOnce(data);
+    const res = buildRes();
+
+    await getAttendanceDetail({ params: { id: 42 } }, res, jest.fn());
+
+    expect(getManagementAttendanceDetail).toHaveBeenCalledWith(42);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      message: 'Detail absensi berhasil diambil',
+      data
+    });
   });
 
   it('forwards a list service error to the error handler', async () => {
@@ -66,6 +85,20 @@ describe('attendance management read controllers', () => {
     await getAllAttendances({ query: {} }, res, next);
 
     expect(next).toHaveBeenCalledWith(error);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it('forwards a detail service error without writing a response', async () => {
+    const error = new Error('database unavailable');
+    getManagementAttendanceDetail.mockRejectedValueOnce(error);
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getAttendanceDetail({ params: { id: 42 } }, res, next);
+
+    expect(next).toHaveBeenCalledWith(error);
+    expect(res.status).not.toHaveBeenCalled();
     expect(res.json).not.toHaveBeenCalled();
   });
 });

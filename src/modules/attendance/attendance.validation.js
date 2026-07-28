@@ -7,6 +7,19 @@ export const ATTENDANCE_LIST_QUERY_KEYS = [
 export const ATTENDANCE_SORT_KEYS = [
   'attendance_date', 'time_in', 'time_out', 'full_name', 'status', 'created_at'
 ];
+const MAX_LIMIT = 100;
+const MAX_SAFE_ATTENDANCE_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / MAX_LIMIT) + 1;
+const MYSQL_SIGNED_INTEGER_MAX = 2147483647;
+
+const isRawPositiveIntegerAtMost = (value, maximum) => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 && value <= maximum;
+  }
+  if (typeof value !== 'string' || !/^\+?\d+$/.test(value)) return false;
+
+  const parsed = BigInt(value);
+  return parsed > 0n && parsed <= BigInt(maximum);
+};
 
 const strictDateOnly = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -40,8 +53,11 @@ export const validateAttendanceListQuery = [
   rejectUnknownKeys,
   rejectNonScalarValues,
   rejectEmptyPaginationValues,
-  query('page').default(1).isInt({ min: 1 }).withMessage('page harus bilangan bulat >= 1').toInt(),
-  query('limit').default(10).isInt({ min: 1, max: 100 }).withMessage('limit harus bilangan bulat 1-100').toInt(),
+  query('page').default(1)
+    .custom((value) => isRawPositiveIntegerAtMost(value, MAX_SAFE_ATTENDANCE_PAGE))
+    .withMessage('page harus bilangan bulat >= 1')
+    .toInt(),
+  query('limit').default(10).isInt({ min: 1, max: MAX_LIMIT }).withMessage('limit harus bilangan bulat 1-100').toInt(),
   query('search').optional().isString().withMessage('search harus berupa teks').trim(),
   query('from').optional().isString().withMessage('from harus berupa teks')
     .custom(strictDateOnly).withMessage('from harus tanggal valid YYYY-MM-DD'),
@@ -63,5 +79,8 @@ export const validateAttendanceListQuery = [
 ];
 
 export const validateAttendanceId = [
-  param('id').isInt({ min: 1 }).withMessage('id harus bilangan bulat >= 1').toInt()
+  param('id')
+    .custom((value) => isRawPositiveIntegerAtMost(value, MYSQL_SIGNED_INTEGER_MAX))
+    .withMessage('id harus bilangan bulat >= 1')
+    .toInt()
 ];

@@ -6,7 +6,7 @@ import request from 'supertest';
  * Characterization coverage for the /api/attendance authorization matrix
  * (INF-252 Phase 0b).
  *
- * Attendance is the largest module -- 23 endpoints across a 2291-line
+ * Attendance is the largest module -- 24 endpoints across a 2291-line
  * controller -- and 14 of them had no behavioral test. Nine are operational
  * triggers that mutate final attendance state, so who may call them is exactly
  * the property that must not drift during extraction.
@@ -134,8 +134,8 @@ const PRIVILEGED = [
 
 describe('attendance route contract', () => {
   test('covers every registered endpoint except the lazy-loaded test trigger', () => {
-    // 23 routes are registered; test-weighted-prediction is asserted separately
-    // because it resolves its controller through a lazy dynamic import.
+    // 23 routes are enumerated here; the 24th (test-weighted-prediction) is
+    // asserted separately because it resolves its controller through a lazy import.
     expect(SELF_SERVICE.length + PRIVILEGED.length).toBe(23);
   });
 

@@ -27,11 +27,22 @@ test('normalizes the complete valid attendance query', async () => {
   });
 });
 
+test('accepts the largest page whose maximum-limit offset stays safe', async () => {
+  const response = await request(app).get('/attendance?page=90071992547410&limit=100');
+
+  expect(response.status).toBe(200);
+  expect(response.body.query).toMatchObject({ page: 90071992547410, limit: 100 });
+  expect(Number.isSafeInteger((response.body.query.page - 1) * 100)).toBe(true);
+});
+
 test.each([
   ['empty page', '/attendance?page='],
   ['empty limit', '/attendance?limit='],
   ['empty page and limit', '/attendance?page=&limit='],
   ['page non-numeric', '/attendance?page=abc'],
+  ['page whose maximum-limit offset would be unsafe', '/attendance?page=90071992547411'],
+  ['page above the JavaScript safe integer range', '/attendance?page=9007199254740993'],
+  ['page with a 400-digit decimal value', `/attendance?page=${'9'.repeat(400)}`],
   ['limit over maximum', '/attendance?limit=101'],
   ['impossible from date', '/attendance?from=2026-02-30'],
   ['reversed range', '/attendance?from=2026-07-31&to=2026-07-01'],
@@ -49,8 +60,14 @@ test.each([
   expect(response.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
 });
 
-test.each(['/attendance/0', '/attendance/abc'])('rejects invalid detail ID %s', async (path) => {
+test.each([
+  '/attendance/0',
+  '/attendance/abc',
+  '/attendance/2147483648',
+  '/attendance/9007199254740993',
+  `/attendance/${'9'.repeat(400)}`
+])('rejects invalid detail ID %s', async (path) => {
   const response = await request(app).get(path);
   expect(response.status).toBe(400);
-  expect(response.body.code).toBe('E_VALIDATION');
+  expect(response.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
 });

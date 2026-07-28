@@ -24,7 +24,11 @@ test('combines date, mode, status, checkout, search, and pagination in one graph
   expect(options.where.time_out[Op.not]).toBeNull();
   const userInclude = options.include.find((item) => item.as === 'user');
   expect(userInclude.required).toBe(true);
-  expect(userInclude.where[Op.or][0].full_name[Op.like]).toBe(String.raw`%100\%%`);
+  expect(userInclude.where[Op.or]).toEqual([
+    { full_name: { [Op.like]: String.raw`%100\%%` } },
+    { nip_nim: { [Op.like]: String.raw`%100\%%` } },
+    { email: { [Op.like]: String.raw`%100\%%` } }
+  ]);
 });
 
 test('uses the three-column stable default order', () => {

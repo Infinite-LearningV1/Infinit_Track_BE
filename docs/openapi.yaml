@@ -1617,6 +1617,7 @@ paths:
           schema:
             type: integer
             minimum: 1
+            maximum: 90071992547410
             default: 1
           description: Positive page number for pagination.
         - in: query
@@ -1695,7 +1696,7 @@ paths:
                   pagination:
                     $ref: '#/components/schemas/AttendanceAuditPagination'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/AttendanceValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2814,6 +2815,7 @@ paths:
           schema:
             type: integer
             minimum: 1
+            maximum: 2147483647
           description: Positive attendance record ID.
       responses:
         '200':
@@ -2831,77 +2833,9 @@ paths:
                     type: string
                     example: Detail absensi berhasil diambil
                   data:
-                    type: object
-                    required: [id_attendance, attendance_date, time_in, time_out, work_duration, mode, status, notes, booking_id, user, location]
-                    properties:
-                      id_attendance:
-                        type: integer
-                      attendance_date:
-                        type: string
-                        format: date
-                      time_in:
-                        type: string
-                        nullable: true
-                      time_out:
-                        type: string
-                        nullable: true
-                      work_duration:
-                        type: string
-                        nullable: true
-                      mode:
-                        $ref: '#/components/schemas/AttendanceAuditMode'
-                      status:
-                        $ref: '#/components/schemas/AttendanceAuditStatus'
-                      notes:
-                        type: string
-                      booking_id:
-                        type: integer
-                        nullable: true
-                      user:
-                        type: object
-                        required: [id, full_name, nip_nim, email, role]
-                        properties:
-                          id:
-                            type: integer
-                            nullable: true
-                          full_name:
-                            type: string
-                            nullable: true
-                          nip_nim:
-                            type: string
-                            nullable: true
-                          email:
-                            type: string
-                            format: email
-                            nullable: true
-                          role:
-                            type: string
-                            nullable: true
-                      location:
-                        type: object
-                        nullable: true
-                        required: [id, description, latitude, longitude, radius]
-                        properties:
-                          id:
-                            type: integer
-                            nullable: true
-                          description:
-                            type: string
-                            nullable: true
-                          latitude:
-                            type: number
-                            format: float
-                            nullable: true
-                          longitude:
-                            type: number
-                            format: float
-                            nullable: true
-                          radius:
-                            type: number
-                            format: float
-                            nullable: true
+                    $ref: '#/components/schemas/AttendanceAuditDetail'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/AttendanceValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7301,6 +7235,40 @@ components:
           example: false
 
   responses:
+    AttendanceValidationError:
+      description: Attendance query or path validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, code, message, errors]
+            properties:
+              success:
+                type: boolean
+                enum: [false]
+              code:
+                type: string
+                enum: [E_VALIDATION]
+              message:
+                type: string
+              errors:
+                type: array
+                items:
+                  type: object
+                  required: [type, value, msg, path, location]
+                  properties:
+                    type:
+                      type: string
+                      enum: [field]
+                    value: {}
+                    msg:
+                      type: string
+                    path:
+                      type: string
+                    location:
+                      type: string
+                      enum: [query, params]
+
     BadRequest:
       description: Bad request - Invalid input data
       content:
