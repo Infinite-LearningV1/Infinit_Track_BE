@@ -9,7 +9,14 @@ if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
 }
 
 const env = process.env.NODE_ENV || 'development';
-const corsOrigin = process.env.CORS_ORIGIN || (env === 'production' ? '' : '*');
+const rawCorsOrigin = process.env.CORS_ORIGIN || (env === 'production' ? '' : '*');
+const corsOrigin =
+  env === 'production' && rawCorsOrigin.includes(',')
+    ? rawCorsOrigin
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    : rawCorsOrigin;
 
 export default {
   port: process.env.PORT || 3000,
