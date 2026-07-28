@@ -18,6 +18,8 @@ import Booking from './booking.model.js';
 import BookingStatus from './bookingStatus.model.js';
 import LocationEvent from './locationEvent.model.js';
 import AuthSession from './authSession.model.js';
+import WfaRequestReason from './wfaRequestReason.model.js';
+import WfaRejectionReason from './wfaRejectionReason.model.js';
 
 // Jalankan relasi SETELAH define semua model
 User.belongsTo(Role, { foreignKey: 'id_roles', as: 'role' });
@@ -114,6 +116,22 @@ Booking.hasMany(Attendance, {
   foreignKey: 'booking_id',
   as: 'attendances'
 });
+Booking.belongsTo(WfaRequestReason, {
+  foreignKey: 'request_reason_id',
+  as: 'request_reason'
+});
+Booking.belongsTo(WfaRejectionReason, {
+  foreignKey: 'rejection_reason_id',
+  as: 'rejection_reason_detail'
+});
+WfaRequestReason.hasMany(Booking, {
+  foreignKey: 'request_reason_id',
+  as: 'bookings'
+});
+WfaRejectionReason.hasMany(Booking, {
+  foreignKey: 'rejection_reason_id',
+  as: 'bookings'
+});
 
 // BookingStatus relations
 BookingStatus.hasMany(Booking, {
@@ -139,5 +157,7 @@ export {
   Booking,
   BookingStatus,
   LocationEvent,
-  AuthSession
+  AuthSession,
+  WfaRequestReason,
+  WfaRejectionReason
 };
