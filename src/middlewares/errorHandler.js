@@ -5,7 +5,8 @@ import { toErrorResponse } from '../shared/http/toErrorResponse.js';
 
 const PUBLIC_ERROR_CODES = new Set([
   'E_OPERATIONAL_SETTINGS_INVALID',
-  'E_INVALID_REFERENCE_STATE'
+  'E_INVALID_REFERENCE_STATE',
+  'WFA_CONFIG_UNAVAILABLE'
 ]);
 
 export const errorHandler = (err, req, res, _next) => {

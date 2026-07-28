@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { getWfaRecommendations, getWfaAhpConfig, testFuzzyAhp } from '../controllers/wfa.controller.js';
+import { getWfaRequestConfig } from '../controllers/wfaSettings.controller.js';
 import { verifyToken } from '../middlewares/authJwt.js';
 import roleGuard from '../middlewares/roleGuard.js';
 
@@ -8,6 +9,8 @@ const router = express.Router();
 
 // All WFA routes require authentication
 router.use(verifyToken);
+
+router.get('/request-config', getWfaRequestConfig);
 
 // GET /api/wfa/recommendations - Get WFA recommendations based on user location
 router.get('/recommendations', getWfaRecommendations);
