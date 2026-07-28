@@ -3303,7 +3303,15 @@ paths:
       tags:
         - WFA Bookings
       summary: Create WFA booking
-      description: Create a new Work From Anywhere booking request
+      description: |
+        Create a pending Work From Anywhere booking request. The authenticated user, request radius,
+        suitability result, and initial status are owned by the backend. `schedule_date` must be a real
+        ISO calendar date. When the selected request reason has `is_other=true`, `request_other_reason`
+        is required; otherwise it must be omitted. Stable validation codes include
+        `INVALID_SCHEDULE_DATE`, `PAST_DATE_NOT_ALLOWED`, `SAME_DAY_NOT_ALLOWED`,
+        `WFA_REQUEST_REASON_REQUIRED`, `WFA_REQUEST_REASON_NOT_FOUND`,
+        `WFA_REQUEST_REASON_NOT_ACTIVE`, and `WFA_OTHER_REASON_REQUIRED`.
+        A same-user/same-date conflict returns `DUPLICATE_BOOKING`.
       requestBody:
         required: true
         content:
@@ -3312,13 +3320,24 @@ paths:
               type: object
               required:
                 - schedule_date
+                - request_reason_id
                 - latitude
                 - longitude
               properties:
                 schedule_date:
                   type: string
                   format: date
+                  pattern: '^\d{4}-\d{2}-\d{2}$'
                   example: '2026-04-29'
+                request_reason_id:
+                  type: integer
+                  minimum: 1
+                  example: 2
+                request_other_reason:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                  example: 'Client incident response'
                 latitude:
                   type: number
                   format: float
@@ -3327,9 +3346,6 @@ paths:
                   type: number
                   format: float
                   example: 106.816666
-                radius:
-                  type: number
-                  example: 100
                 description:
                   type: string
                   example: 'WFA smoke gate location'
@@ -3349,25 +3365,42 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: 'Booking WFA berhasil diajukan dan menunggu persetujuan.'
+                    example: 'Booking WFA berhasil dibuat.'
                   data:
                     type: object
+                    required:
+                      - booking_id
+                      - schedule_date
+                      - status
+                      - request_reason
+                      - location
+                      - radius_snapshot
+                      - created_at
                     properties:
                       booking_id:
                         type: integer
                       schedule_date:
                         type: string
-                      location_id:
-                        type: integer
                       status:
                         type: string
                         example: pending
+                      request_reason:
+                        $ref: '#/components/schemas/WfaRequestReasonProjection'
+                      location:
+                        $ref: '#/components/schemas/WfaBookingLocation'
+                      radius_snapshot:
+                        type: integer
+                        minimum: 1
+                        example: 100
                       suitability_score:
                         type: number
                         nullable: true
                       suitability_label:
                         type: string
                         nullable: true
+                      created_at:
+                        type: string
+                        format: date-time
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3484,7 +3517,11 @@ paths:
       tags:
         - WFA Bookings
       summary: Update booking status (Admin/Management only)
-      description: Approve or reject a WFA booking request
+      description: |
+        Approve or reject a WFA booking request. Rejection requires `rejection_reason_id`; when that
+        catalog item has `is_other=true`, `rejection_note` is required. Approval clears structured
+        rejection fields. Stable rejection codes are `REJECTION_REASON_REQUIRED`,
+        `REJECTION_REASON_NOT_FOUND`, `REJECTION_REASON_NOT_ACTIVE`, and `REJECTION_NOTE_REQUIRED`.
       parameters:
         - in: path
           name: id
@@ -3505,9 +3542,17 @@ paths:
                   type: string
                   enum: [approved, rejected]
                   example: 'approved'
-                admin_notes:
+                rejection_reason_id:
+                  type: integer
+                  minimum: 1
+                  nullable: true
+                  description: Required when status is rejected; must reference an active rejection reason.
+                rejection_note:
                   type: string
-                  example: 'Approved for client meeting'
+                  maxLength: 500
+                  nullable: true
+                  description: Required only when the selected rejection reason has is_other=true.
+                  example: 'The submitted location does not meet the current operational need.'
       responses:
         '200':
           description: Booking status updated successfully
@@ -3565,6 +3610,49 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/wfa/request-config:
+    get:
+      tags:
+        - WFA System
+      summary: Get WFA request configuration
+      description: Return the backend-authoritative request radius and active request-reason catalog.
+      responses:
+        '200':
+          description: WFA request configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - radius_meters
+                      - reasons
+                    properties:
+                      radius_meters:
+                        type: integer
+                        minimum: 1
+                        example: 100
+                      reasons:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WfaPublicReason'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: WFA configuration storage is missing or invalid (`WFA_CONFIG_UNAVAILABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
 
   # WFA Recommendations
   /api/wfa/recommendations:
@@ -5041,6 +5129,118 @@ paths:
         '500':
           $ref: '#/components/responses/OperationalSettingsIntegrityError'
 
+  /api/settings/wfa/request-reasons:
+    get:
+      tags: [Settings]
+      summary: List all WFA request reasons (Admin/Management only)
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Settings]
+      summary: Create a WFA request reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonCreateRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/settings/wfa/request-reasons/{id}:
+    patch:
+      tags: [Settings]
+      summary: Update a WFA request reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      parameters:
+        - $ref: '#/components/parameters/WfaReasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/settings/wfa/rejection-reasons:
+    get:
+      tags: [Settings]
+      summary: List all WFA rejection reasons (Admin/Management only)
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Settings]
+      summary: Create a WFA rejection reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonCreateRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/settings/wfa/rejection-reasons/{id}:
+    patch:
+      tags: [Settings]
+      summary: Update a WFA rejection reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      parameters:
+        - $ref: '#/components/parameters/WfaReasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # Reference Data Endpoints
   /api/roles:
     get:
@@ -5185,6 +5385,16 @@ components:
       in: cookie
       name: token
       description: Access token stored in the HTTP-only `token` cookie for browser flows.
+
+  parameters:
+    WfaReasonId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: WFA reason catalog item ID.
 
   schemas:
     LoginRequest:
@@ -5771,6 +5981,11 @@ components:
         This schema intentionally exposes only the approved operational settings. It does not include arbitrary
         settings-table rows or analysis configuration such as `AHP_CR_THRESHOLD`.
       properties:
+        wfaRequestRadiusM:
+          type: integer
+          minimum: 1
+          example: 100
+          description: Backend-authoritative radius in meters for every newly submitted WFA request.
         geofenceRadiusDefaultM:
           type: integer
           minimum: 1
@@ -5797,6 +6012,7 @@ components:
           example: '17:00:00'
           description: Default fallback shift end time normalized to HH:mm:ss.
       required:
+        - wfaRequestRadiusM
         - geofenceRadiusDefaultM
         - autoCheckoutIdleMin
         - autoCheckoutTBufferMin
@@ -5812,6 +6028,10 @@ components:
         Only the approved operational settings may be sent. `defaultShiftEnd` accepts `HH:mm` or `HH:mm:ss` on input
         and is normalized to `HH:mm:ss` in the success response.
       properties:
+        wfaRequestRadiusM:
+          type: integer
+          minimum: 1
+          example: 150
         geofenceRadiusDefaultM:
           type: integer
           minimum: 1
@@ -6621,6 +6841,150 @@ components:
           example: 100
           description: 'Geofence radius in meters'
 
+    WfaReason:
+      type: object
+      required: [id, label, is_other, is_active, sort_order, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          example: 2
+        label:
+          type: string
+          example: 'Client meeting'
+        is_other:
+          type: boolean
+          example: false
+        is_active:
+          type: boolean
+          example: true
+        sort_order:
+          type: integer
+          example: 20
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WfaPublicReason:
+      type: object
+      required: [id, label, is_other, sort_order]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          example: 2
+        label:
+          type: string
+          example: 'Client meeting'
+        is_other:
+          type: boolean
+          example: false
+        sort_order:
+          type: integer
+          example: 20
+
+    WfaReasonCreateRequest:
+      type: object
+      required: [label]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        is_other:
+          type: boolean
+          default: false
+        is_active:
+          type: boolean
+          default: true
+        sort_order:
+          type: integer
+          minimum: 0
+          default: 0
+
+    WfaReasonUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: `is_other` is immutable; deactivate a catalog item with `is_active=false` instead of deleting it.
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+          minimum: 0
+
+    WfaRequestReasonProjection:
+      type: object
+      required: [id, label, is_other, other_text]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        is_other:
+          type: boolean
+        other_text:
+          type: string
+          nullable: true
+
+    WfaRejectionReasonProjection:
+      type: object
+      nullable: true
+      required: [id, label, is_other, note]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        is_other:
+          type: boolean
+        note:
+          type: string
+          nullable: true
+
+    WfaBookingLocation:
+      type: object
+      required: [location_id, latitude, longitude, radius]
+      properties:
+        location_id:
+          type: integer
+        latitude:
+          type: number
+          format: float
+        longitude:
+          type: number
+          format: float
+        radius:
+          type: integer
+          minimum: 1
+        description:
+          type: string
+          nullable: true
+
+    WfaConfigUnavailableError:
+      type: object
+      required: [success, code, message]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: WFA_CONFIG_UNAVAILABLE
+        message:
+          type: string
+          example: 'WFA configuration is unavailable'
+
     Booking:
       type: object
       properties:
@@ -6630,13 +6994,20 @@ components:
         user_id:
           type: integer
           example: 1
-        date:
+        schedule_date:
           type: string
           format: date
-          example: '2025-07-10'
-        location_name:
-          type: string
-          example: 'Coffee Shop Downtown'
+          example: '2026-07-30'
+        request_reason:
+          $ref: '#/components/schemas/WfaRequestReasonProjection'
+        rejection_reason:
+          $ref: '#/components/schemas/WfaRejectionReasonProjection'
+        radius_snapshot:
+          type: integer
+          minimum: 1
+          example: 100
+        location:
+          $ref: '#/components/schemas/WfaBookingLocation'
         latitude:
           type: number
           format: float
@@ -6645,9 +7016,6 @@ components:
           type: number
           format: float
           example: 106.816666
-        reason:
-          type: string
-          example: 'Working on client presentation'
         notes:
           type: string
           nullable: true
@@ -6656,10 +7024,6 @@ components:
           type: string
           enum: [pending, approved, rejected]
           example: 'pending'
-        admin_notes:
-          type: string
-          nullable: true
-          example: 'Approved for client meeting'
         approved_by:
           type: integer
           nullable: true
@@ -6746,6 +7110,15 @@ components:
           format: date
           example: '2025-07-15'
           description: Scheduled WFA date
+        request_reason:
+          $ref: '#/components/schemas/WfaRequestReasonProjection'
+        rejection_reason:
+          $ref: '#/components/schemas/WfaRejectionReasonProjection'
+        radius_snapshot:
+          type: integer
+          minimum: 1
+          example: 100
+          description: Server-owned WFA request radius captured when the booking was submitted.
         status:
           type: string
           enum: [pending, approved, rejected]
@@ -6990,6 +7363,44 @@ components:
           example: false
 
   responses:
+    WfaReasonCatalogResponse:
+      description: WFA reason catalog retrieved successfully, including active and inactive entries.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, data]
+            properties:
+              success:
+                type: boolean
+                example: true
+              data:
+                type: object
+                required: [reasons]
+                properties:
+                  reasons:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WfaReason'
+
+    WfaReasonMutationResponse:
+      description: WFA reason catalog item saved successfully.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, data]
+            properties:
+              success:
+                type: boolean
+                example: true
+              data:
+                type: object
+                required: [reason]
+                properties:
+                  reason:
+                    $ref: '#/components/schemas/WfaReason'
+
     BadRequest:
       description: Bad request - Invalid input data
       content:

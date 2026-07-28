@@ -207,6 +207,7 @@ describe('resolveWfaBookings job idempotency and batching', () => {
         updated_at: expect.any(Date)
       })
     );
+    expect(expiredBooking.update.mock.calls[0][0]).not.toHaveProperty('rejection_reason_id');
     expect(result).toEqual({ success: false, error: 'bulk insert failed' });
   });
 

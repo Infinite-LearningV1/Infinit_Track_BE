@@ -1,12 +1,26 @@
 import { Op } from 'sequelize';
-import { isValid, parseISO, parse } from 'date-fns';
+import { isValid, parseISO } from 'date-fns';
 import axios from 'axios';
 
 import sequelize from '../config/database.js';
-import { Booking, Location, BookingStatus, User, Position, Role } from '../models/index.js';
+import {
+  Booking,
+  Location,
+  BookingStatus,
+  User,
+  Position,
+  Role,
+  WfaRequestReason,
+  WfaRejectionReason
+} from '../models/index.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import logger from '../utils/logger.js';
 import { getJakartaDateString } from '../utils/geofence.js';
+import {
+  readWfaRequestConfig,
+  resolveActiveWfaRequestReason,
+  resolveActiveWfaRejectionReason
+} from '../services/wfaSettings.service.js';
 
 const BOOKING_STATUS = Object.freeze({
   approved: { id: 1, label: 'Approved' },
@@ -26,6 +40,44 @@ const BOOKING_HISTORY_STATUS_FILTERS = Object.freeze({
   approved: BOOKING_STATUS.approved.id,
   rejected: BOOKING_STATUS.rejected.id,
   pending: BOOKING_STATUS.pending.id
+});
+
+const buildWfaReasonIncludes = () => [
+  {
+    model: WfaRequestReason,
+    as: 'request_reason',
+    attributes: ['id', 'label', 'is_other']
+  },
+  {
+    model: WfaRejectionReason,
+    as: 'rejection_reason_detail',
+    attributes: ['id', 'label', 'is_other']
+  }
+];
+
+const projectWfaReasonData = (booking) => ({
+  request_reason: booking.request_reason
+    ? {
+        id: booking.request_reason.id,
+        label: booking.request_reason.label,
+        is_other: Boolean(booking.request_reason.is_other),
+        other_text: booking.request_other_reason || null
+      }
+    : null,
+  rejection_reason: booking.rejection_reason_detail
+    ? {
+        id: booking.rejection_reason_detail.id,
+        label: booking.rejection_reason_detail.label,
+        is_other: Boolean(booking.rejection_reason_detail.is_other),
+        note: booking.rejection_note || null
+      }
+    : null,
+  radius_snapshot:
+    booking.radius_snapshot != null
+      ? Number(booking.radius_snapshot)
+      : booking.location?.radius != null
+        ? Number(booking.location.radius)
+        : null
 });
 
 function getBookingStatusPresentation(booking) {
@@ -145,63 +197,40 @@ export const createBooking = async (req, res, next) => {
     const userId = req.user.id;
     const {
       schedule_date,
+      request_reason_id,
+      request_other_reason,
       latitude,
       longitude,
-      radius = 100,
       description,
       notes = '',
-      suitability_score: provided_score,
-      suitability_label: provided_label,
       location_id
     } = req.body;
-    // A) Normalisasi & Sanitasi schedule_date (ISO YYYY-MM-DD only)
-    const errors = [];
     const isoPattern = /^\d{4}-\d{2}-\d{2}$/;
-    const mdyPattern = /^\d{2}-\d{2}-\d{4}$/; // MM-DD-YYYY
-    let scheduleDateISO = null;
-    let scheduleDateObj = null;
-    if (!schedule_date || typeof schedule_date !== 'string') {
-      errors.push({
-        field: 'schedule_date',
-        code: 'INVALID_DATE_FORMAT',
-        message: "schedule_date harus berformat 'YYYY-MM-DD' atau 'MM-DD-YYYY' yang valid."
-      });
-    } else if (isoPattern.test(schedule_date)) {
-      scheduleDateISO = schedule_date;
-      scheduleDateObj = parseISO(`${scheduleDateISO}T00:00:00Z`);
-      if (!isValid(scheduleDateObj)) {
-        errors.push({
-          field: 'schedule_date',
-          code: 'INVALID_DATE_VALUE',
-          message: 'schedule_date tidak valid.'
-        });
-      }
-    } else if (mdyPattern.test(schedule_date)) {
-      // Parse MM-DD-YYYY strictly and normalize to ISO YYYY-MM-DD
-      const parsed = parse(schedule_date, 'MM-dd-yyyy', new Date());
-      if (!isValid(parsed)) {
-        errors.push({
-          field: 'schedule_date',
-          code: 'INVALID_DATE_VALUE',
-          message: 'schedule_date tidak valid.'
-        });
-      } else {
-        const y = parsed.getFullYear();
-        const m = String(parsed.getMonth() + 1).padStart(2, '0');
-        const d = String(parsed.getDate()).padStart(2, '0');
-        scheduleDateISO = `${y}-${m}-${d}`;
-        scheduleDateObj = parseISO(`${scheduleDateISO}T00:00:00Z`);
-      }
-    } else {
-      errors.push({
-        field: 'schedule_date',
-        code: 'INVALID_DATE_FORMAT',
-        message: "schedule_date harus berformat 'YYYY-MM-DD' atau 'MM-DD-YYYY' yang valid."
+    const isStrictCalendarDate = (value) => {
+      if (typeof value !== 'string' || !isoPattern.test(value)) return false;
+      const [year, month, day] = value.split('-').map(Number);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+      );
+    };
+
+    if (!isStrictCalendarDate(schedule_date)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_SCHEDULE_DATE',
+        message: 'Tanggal WFA harus menggunakan format YYYY-MM-DD.',
+        errors: [{ field: 'schedule_date', code: 'INVALID_SCHEDULE_DATE' }]
       });
     }
 
     // Build today (Jakarta) string for comparisons
     const todayIso = getJakartaDateString();
+    const scheduleDateISO = schedule_date;
+    const errors = [];
 
     // B) Aturan Bisnis
     if (errors.length === 0) {
@@ -235,6 +264,13 @@ export const createBooking = async (req, res, next) => {
     // No hour-based H-1: next-day (scheduleDateISO > todayIso) is acceptable
 
     const formattedScheduleDate = scheduleDateISO;
+    const { radiusMeters } = await readWfaRequestConfig(transaction);
+    const { reason, normalizedOtherReason } = await resolveActiveWfaRequestReason({
+      reasonId: request_reason_id,
+      otherReasonText: request_other_reason,
+      transaction
+    });
+
     // Cek booking conflict pada tanggal yang sama (pending/approved)
     const existingBookingOnDate = await Booking.findOne({
       where: {
@@ -249,6 +285,7 @@ export const createBooking = async (req, res, next) => {
       await transaction.rollback();
       return res.status(409).json({
         success: false,
+        code: 'DUPLICATE_BOOKING',
         message: 'Validasi booking gagal.',
         errors: [
           {
@@ -260,26 +297,11 @@ export const createBooking = async (req, res, next) => {
       });
     }
 
-    // Langkah Tambahan: Hitung atau gunakan Suitability Score yang ada
-    let suitability_score;
-    let suitability_label;
-
-    if (provided_score && provided_label) {
-      // Gunakan skor dari rekomendasi jika tersedia
-      suitability_score = provided_score;
-      suitability_label = provided_label;
-      logger.info(
-        `Using provided suitability score: ${suitability_score} (${suitability_label}) for user ${userId}`
-      );
-    } else {
-      // Hitung skor untuk lokasi kustom (manual)
-      const scoreResult = await getSuitabilityScoreForCustomLocation(latitude, longitude);
-      suitability_score = scoreResult.suitability_score;
-      suitability_label = scoreResult.suitability_label;
-      logger.info(
-        `Calculated suitability score for custom location: ${suitability_score} (${suitability_label}) for user ${userId}`
-      );
-    }
+    const scoreResult = await getSuitabilityScoreForCustomLocation(latitude, longitude);
+    const { suitability_score, suitability_label } = scoreResult;
+    logger.info(
+      `Calculated suitability score for custom location: ${suitability_score} (${suitability_label}) for user ${userId}`
+    );
 
     // Proses Database: validasi lokasi (by id) atau buat baru dari koordinat (tanpa kebijakan jarak)
     let newLocation;
@@ -307,7 +329,7 @@ export const createBooking = async (req, res, next) => {
           id_attendance_categories: 3, // WFA category
           latitude: parseFloat(latitude),
           longitude: parseFloat(longitude),
-          radius: parseFloat(radius),
+          radius: radiusMeters,
           description: description || 'WFA Location'
         },
         { transaction }
@@ -319,10 +341,13 @@ export const createBooking = async (req, res, next) => {
         user_id: userId,
         schedule_date: formattedScheduleDate, // YYYY-MM-DD format
         location_id: newLocation.location_id,
-        notes: notes,
+        notes: typeof notes === 'string' ? notes.trim() : '',
         status: 3, // pending
-        suitability_score, // Simpan skor
-        suitability_label, // Simpan label
+        suitability_score,
+        suitability_label,
+        request_reason_id: reason.id,
+        request_other_reason: normalizedOtherReason,
+        radius_snapshot: radiusMeters,
         created_at: new Date()
       },
       { transaction }
@@ -330,17 +355,30 @@ export const createBooking = async (req, res, next) => {
 
     await transaction.commit();
 
-    // Respons Sukses
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Booking WFA berhasil diajukan dan menunggu persetujuan.',
+      message: 'Booking WFA berhasil dibuat.',
       data: {
         booking_id: newBooking.booking_id,
         schedule_date: newBooking.schedule_date,
-        location_id: newBooking.location_id,
         status: 'pending',
-        suitability_score: newBooking.suitability_score,
-        suitability_label: newBooking.suitability_label
+        request_reason: {
+          id: reason.id,
+          label: reason.label,
+          is_other: Boolean(reason.is_other),
+          other_text: normalizedOtherReason
+        },
+        location: {
+          location_id: newLocation.location_id,
+          latitude: Number(newLocation.latitude ?? latitude),
+          longitude: Number(newLocation.longitude ?? longitude),
+          radius: radiusMeters,
+          description: newLocation.description ?? description ?? null
+        },
+        radius_snapshot: radiusMeters,
+        suitability_score,
+        suitability_label,
+        created_at: newBooking.created_at
       }
     });
   } catch (error) {
@@ -355,7 +393,7 @@ export const updateBookingStatus = async (req, res, next) => {
 
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, rejection_reason_id, rejection_note } = req.body;
     const approvedBy = req.user.id;
 
     // Validasi: cari booking
@@ -369,7 +407,8 @@ export const updateBookingStatus = async (req, res, next) => {
         {
           model: Location,
           as: 'location'
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       transaction
     });
@@ -405,18 +444,34 @@ export const updateBookingStatus = async (req, res, next) => {
       });
     }
 
-    // Konversi status text ke ID
-    const statusId = status === 'approved' ? 1 : 2;
+    let rejectionDecision = { reason: null, normalizedNote: null };
+    if (status === 'rejected') {
+      rejectionDecision = await resolveActiveWfaRejectionReason({
+        reasonId: rejection_reason_id,
+        note: rejection_note,
+        transaction
+      });
+    }
+
+    const decisionPayload =
+      status === 'approved'
+        ? {
+            status: 1,
+            rejection_reason_id: null,
+            rejection_note: null,
+            approved_by: approvedBy,
+            processed_at: new Date()
+          }
+        : {
+            status: 2,
+            rejection_reason_id: rejectionDecision.reason.id,
+            rejection_note: rejectionDecision.normalizedNote,
+            approved_by: approvedBy,
+            processed_at: new Date()
+          };
 
     // Update record booking
-    await booking.update(
-      {
-        status: statusId,
-        approved_by: approvedBy,
-        processed_at: new Date()
-      },
-      { transaction }
-    );
+    await booking.update(decisionPayload, { transaction });
 
     await transaction.commit();
 
@@ -436,7 +491,8 @@ export const updateBookingStatus = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ]
     });
 
@@ -458,6 +514,16 @@ export const updateBookingStatus = async (req, res, next) => {
           radius: updatedBooking.location.radius,
           description: updatedBooking.location.description
         },
+        ...projectWfaReasonData(updatedBooking),
+        rejection_reason:
+          status === 'rejected'
+            ? {
+                id: rejectionDecision.reason.id,
+                label: rejectionDecision.reason.label,
+                is_other: Boolean(rejectionDecision.reason.is_other),
+                note: rejectionDecision.normalizedNote
+              }
+            : null,
         processed_at: updatedBooking.processed_at
       }
     });
@@ -614,7 +680,8 @@ export const getAllBookings = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       order: [
         // Urutan kustom untuk status: 3 (pending), 1 (approved), 2 (rejected)
@@ -648,7 +715,8 @@ export const getAllBookings = async (req, res, next) => {
       suitability_label: booking.suitability_label,
       created_at: booking.created_at,
       processed_at: booking.processed_at,
-      approved_by: booking.approved_by
+      approved_by: booking.approved_by,
+      ...projectWfaReasonData(booking)
     }));
 
     // Response dengan struktur data yang flattened
@@ -704,7 +772,8 @@ export const getMyBookings = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       order: [['created_at', 'DESC']],
       limit: parseInt(limit),
@@ -732,7 +801,8 @@ export const getMyBookings = async (req, res, next) => {
       suitability_label: booking.suitability_label,
       created_at: booking.created_at,
       processed_at: booking.processed_at,
-      approved_by: booking.approved_by
+      approved_by: booking.approved_by,
+      ...projectWfaReasonData(booking)
     }));
 
     res.status(200).json({
@@ -903,7 +973,8 @@ export const getBookingHistory = async (req, res, next) => {
           model: BookingStatus,
           as: 'booking_status',
           attributes: ['name_status']
-        }
+        },
+        ...buildWfaReasonIncludes()
       ],
       order: orderClause,
       limit: limitNum,
@@ -939,7 +1010,8 @@ export const getBookingHistory = async (req, res, next) => {
         suitability_label: booking.suitability_label,
         created_at: booking.created_at,
         processed_at: booking.processed_at,
-        approved_by: booking.approved_by
+        approved_by: booking.approved_by,
+        ...projectWfaReasonData(booking)
       };
     });
 

@@ -208,11 +208,30 @@ export const validateLogin = [
 export const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const rawErrors = errors.array();
+    const normalizedErrors = rawErrors.map((error) => {
+      if (!error.msg || typeof error.msg !== 'object') {
+        return error;
+      }
+
+      return {
+        ...error,
+        msg: error.msg.message,
+        code: error.msg.code
+      };
+    });
+    const typedCode =
+      rawErrors[0].msg && typeof rawErrors[0].msg === 'object' ? rawErrors[0].msg.code : null;
+    const message =
+      rawErrors[0].msg && typeof rawErrors[0].msg === 'object'
+        ? rawErrors[0].msg.message
+        : rawErrors[0].msg;
+
     return res.status(400).json({
       success: false,
-      code: 'E_VALIDATION',
-      message: errors.array()[0].msg,
-      errors: errors.array()
+      code: typedCode || 'E_VALIDATION',
+      message,
+      errors: normalizedErrors
     });
   }
   next();
@@ -488,7 +507,60 @@ export const checkInValidation = [
 
 // Booking validation rules
 export const createBookingValidation = [
-  body('schedule_date').notEmpty().withMessage('Tanggal jadwal wajib diisi'),
+  body('schedule_date')
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date wajib menggunakan format YYYY-MM-DD'
+    })
+    .bail()
+    .isString()
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date wajib menggunakan format YYYY-MM-DD'
+    })
+    .bail()
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date wajib menggunakan format YYYY-MM-DD'
+    })
+    .bail()
+    .custom((value) => {
+      const [year, month, day] = value.split('-').map(Number);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+      );
+    })
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+    }),
+
+  body('request_reason_id')
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'WFA_REQUEST_REASON_REQUIRED',
+      message: 'request_reason_id wajib diisi'
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage({
+      code: 'WFA_REQUEST_REASON_REQUIRED',
+      message: 'request_reason_id wajib berupa integer positif'
+    })
+    .toInt(),
+
+  body('request_other_reason')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('request_other_reason harus berupa string')
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('request_other_reason maksimal 500 karakter'),
 
   body('latitude')
     .notEmpty()
@@ -505,12 +577,6 @@ export const createBookingValidation = [
     .withMessage('Longitude tidak valid')
     .custom((value) => parseFloat(value) !== 0)
     .withMessage('Longitude tidak boleh 0'),
-
-  body('radius')
-    .optional()
-    .default(100)
-    .isFloat({ gt: 0 })
-    .withMessage('Radius harus lebih besar dari 0'),
 
   body('description')
     .optional()
@@ -532,7 +598,28 @@ export const updateStatusValidation = [
     .notEmpty()
     .withMessage('Status wajib diisi')
     .isIn(['approved', 'rejected'])
-    .withMessage('Status harus "approved" atau "rejected"')
+    .withMessage('Status harus "approved" atau "rejected"'),
+  body('rejection_reason_id')
+    .if(body('status').equals('rejected'))
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'REJECTION_REASON_REQUIRED',
+      message: 'rejection_reason_id wajib diisi untuk penolakan'
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage({
+      code: 'REJECTION_REASON_REQUIRED',
+      message: 'rejection_reason_id wajib berupa integer positif'
+    })
+    .toInt(),
+  body('rejection_note')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('rejection_note harus berupa string')
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('rejection_note maksimal 500 karakter')
 ];
 
 export const disciplineFahpValidation = [

@@ -79,6 +79,8 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Position: {},
   Photo: {},
   AuthSession: {},
+  WfaRequestReason: {},
+  WfaRejectionReason: {},
   sequelize: {}
 }));
 
