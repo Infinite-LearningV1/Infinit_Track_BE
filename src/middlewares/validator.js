@@ -598,7 +598,28 @@ export const updateStatusValidation = [
     .notEmpty()
     .withMessage('Status wajib diisi')
     .isIn(['approved', 'rejected'])
-    .withMessage('Status harus "approved" atau "rejected"')
+    .withMessage('Status harus "approved" atau "rejected"'),
+  body('rejection_reason_id')
+    .if(body('status').equals('rejected'))
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'REJECTION_REASON_REQUIRED',
+      message: 'rejection_reason_id wajib diisi untuk penolakan'
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage({
+      code: 'REJECTION_REASON_REQUIRED',
+      message: 'rejection_reason_id wajib berupa integer positif'
+    })
+    .toInt(),
+  body('rejection_note')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('rejection_note harus berupa string')
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('rejection_note maksimal 500 karakter')
 ];
 
 export const disciplineFahpValidation = [

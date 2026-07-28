@@ -178,10 +178,28 @@ describe('bookings validator contract', () => {
     await request(app).post('/bookings').send(payload).expect(400);
   });
 
-  test.each(['approved', 'rejected'])('status %s passes', async (status) => {
+  test('status approved passes without rejection fields', async () => {
     const app = buildValidatorApp();
 
-    await request(app).patch('/bookings/123').send({ status }).expect(200);
+    await request(app).patch('/bookings/123').send({ status: 'approved' }).expect(200);
+  });
+
+  test('status rejected requires rejection_reason_id', async () => {
+    const app = buildValidatorApp();
+
+    const res = await request(app).patch('/bookings/123').send({ status: 'rejected' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('REJECTION_REASON_REQUIRED');
+  });
+
+  test('status rejected accepts an integer reason and optional note', async () => {
+    const app = buildValidatorApp();
+
+    await request(app)
+      .patch('/bookings/123')
+      .send({ status: 'rejected', rejection_reason_id: 2, rejection_note: 'Konteks' })
+      .expect(200);
   });
 
   test('any other status returns 400', async () => {

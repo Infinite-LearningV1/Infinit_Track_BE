@@ -9,7 +9,8 @@ import logger from '../utils/logger.js';
 import { getJakartaDateString } from '../utils/geofence.js';
 import {
   readWfaRequestConfig,
-  resolveActiveWfaRequestReason
+  resolveActiveWfaRequestReason,
+  resolveActiveWfaRejectionReason
 } from '../services/wfaSettings.service.js';
 
 const BOOKING_STATUS = Object.freeze({
@@ -345,7 +346,7 @@ export const updateBookingStatus = async (req, res, next) => {
 
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, rejection_reason_id, rejection_note } = req.body;
     const approvedBy = req.user.id;
 
     // Validasi: cari booking
@@ -395,18 +396,34 @@ export const updateBookingStatus = async (req, res, next) => {
       });
     }
 
-    // Konversi status text ke ID
-    const statusId = status === 'approved' ? 1 : 2;
+    let rejectionDecision = { reason: null, normalizedNote: null };
+    if (status === 'rejected') {
+      rejectionDecision = await resolveActiveWfaRejectionReason({
+        reasonId: rejection_reason_id,
+        note: rejection_note,
+        transaction
+      });
+    }
+
+    const decisionPayload =
+      status === 'approved'
+        ? {
+            status: 1,
+            rejection_reason_id: null,
+            rejection_note: null,
+            approved_by: approvedBy,
+            processed_at: new Date()
+          }
+        : {
+            status: 2,
+            rejection_reason_id: rejectionDecision.reason.id,
+            rejection_note: rejectionDecision.normalizedNote,
+            approved_by: approvedBy,
+            processed_at: new Date()
+          };
 
     // Update record booking
-    await booking.update(
-      {
-        status: statusId,
-        approved_by: approvedBy,
-        processed_at: new Date()
-      },
-      { transaction }
-    );
+    await booking.update(decisionPayload, { transaction });
 
     await transaction.commit();
 
@@ -448,6 +465,15 @@ export const updateBookingStatus = async (req, res, next) => {
           radius: updatedBooking.location.radius,
           description: updatedBooking.location.description
         },
+        rejection_reason:
+          status === 'rejected'
+            ? {
+                id: rejectionDecision.reason.id,
+                label: rejectionDecision.reason.label,
+                is_other: Boolean(rejectionDecision.reason.is_other),
+                note: rejectionDecision.normalizedNote
+              }
+            : null,
         processed_at: updatedBooking.processed_at
       }
     });
