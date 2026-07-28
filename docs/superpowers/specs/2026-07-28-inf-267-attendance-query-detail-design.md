@@ -222,7 +222,7 @@ Each list row is intentionally limited to audit-table fields:
   },
   "time_in": "08:02",
   "time_out": "17:05",
-  "work_duration": "09:03:00",
+  "work_duration": "09:03",
   "mode": {
     "key": "wfo",
     "label": "WFO"
@@ -268,7 +268,7 @@ Success response:
     "attendance_date": "2026-07-28",
     "time_in": "08:02",
     "time_out": "17:05",
-    "work_duration": "09:03:00",
+    "work_duration": "09:03",
     "mode": {
       "key": "wfo",
       "label": "WFO"
