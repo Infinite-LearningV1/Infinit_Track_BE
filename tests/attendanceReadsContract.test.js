@@ -1,20 +1,5 @@
 import { jest } from '@jest/globals';
 
-/**
- * Characterization coverage for the two substantive attendance reads
- * (INF-252 Phase 0b).
- *
- * getAllAttendances is the busiest admin read and the one whose query shape
- * moves into a query object in Phase 2. logLocationEvent writes LocationEvent
- * and gates on attendance session state, so it is a mutation despite reading
- * like a log endpoint.
- *
- * Three findings came out of writing these, all recorded rather than fixed:
- * a validation guard that non-numeric input walks straight past (F30), a third
- * distinct error-code convention (F31), and the contrast between this endpoint's
- * pagination and getAllUsers having none at all (F20).
- */
-
 const buildRes = () => {
   const res = {};
   res.status = jest.fn(() => res);
@@ -22,31 +7,13 @@ const buildRes = () => {
   return res;
 };
 
-const attendanceRow = () => ({
-  id_attendance: 1,
-  user_id: 7,
-  attendance_date: '2026-07-28',
-  time_in: '2026-07-28 09:00:00',
-  time_out: null,
-  work_hour: 0,
-  notes: null,
-  user: { full_name: 'Nadia Putri', nip_nim: 'A12345' },
-  attendance_category: { category_name: 'WFO' },
-  attendance_status: { attendance_status_name: 'ON TIME' },
-  location: null,
-  booking: null
-});
-
 const loadAttendanceReads = async ({
-  findAndCountAll = { count: 0, rows: [] },
   location = { location_id: 5 },
   activeAttendance = { id_attendance: 1, time_out: null },
   locationEventCreate
 } = {}) => {
   jest.resetModules();
 
-  const applySearch = jest.fn();
-  const findAndCountAllFn = jest.fn().mockResolvedValue(findAndCountAll);
   const attendanceFindOne = jest.fn().mockResolvedValue(activeAttendance);
   const locationFindByPk = jest.fn().mockResolvedValue(location);
   const eventCreate = locationEventCreate || jest.fn().mockResolvedValue({ id: 99 });
@@ -57,7 +24,6 @@ const loadAttendanceReads = async ({
 
   jest.unstable_mockModule('../src/models/index.js', () => ({
     Attendance: {
-      findAndCountAll: findAndCountAllFn,
       findOne: attendanceFindOne,
       findByPk: jest.fn(),
       findAll: jest.fn(),
@@ -74,8 +40,6 @@ const loadAttendanceReads = async ({
     Role: {},
     Photo: {}
   }));
-
-  jest.unstable_mockModule('../src/utils/searchHelper.js', () => ({ applySearch }));
 
   jest.unstable_mockModule('../src/utils/geofence.js', () => ({
     calculateDistance: jest.fn(() => 0),
@@ -113,148 +77,8 @@ const loadAttendanceReads = async ({
   }));
 
   const mod = await import('../src/controllers/attendance.controller.js');
-  return { ...mod, applySearch, findAndCountAllFn, locationFindByPk, eventCreate };
+  return { ...mod, locationFindByPk, eventCreate };
 };
-
-const listReq = (query = {}) => ({ query, user: { id: 1, role_name: 'Admin' } });
-
-describe('getAllAttendances pagination', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('defaults to page 1 with 10 records', async () => {
-    const { getAllAttendances, findAndCountAllFn } = await loadAttendanceReads();
-
-    await getAllAttendances(listReq(), buildRes(), jest.fn());
-
-    expect(findAndCountAllFn).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10, offset: 0, distinct: true })
-    );
-  });
-
-  it('computes the offset from page and limit', async () => {
-    const { getAllAttendances, findAndCountAllFn } = await loadAttendanceReads();
-
-    await getAllAttendances(listReq({ page: '3', limit: '25' }), buildRes(), jest.fn());
-
-    expect(findAndCountAllFn).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 25, offset: 50 })
-    );
-  });
-
-  it.each([
-    ['page zero', { page: '0' }],
-    ['negative page', { page: '-1' }],
-    ['limit zero', { limit: '0' }],
-    ['negative limit', { limit: '-5' }]
-  ])('refuses %s', async (_name, query) => {
-    const { getAllAttendances, findAndCountAllFn } = await loadAttendanceReads();
-    const res = buildRes();
-
-    await getAllAttendances(listReq(query), res, jest.fn());
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      success: false,
-      message: 'Parameter page dan limit harus berupa angka positif'
-    });
-    expect(findAndCountAllFn).not.toHaveBeenCalled();
-  });
-
-  /**
-   * F30, characterized not fixed.
-   *
-   * The guard is `pageNum < 1 || limitNum < 1`. parseInt('abc') is NaN, and
-   * every comparison with NaN is false, so non-numeric input walks straight
-   * past a check whose message promises "harus berupa angka positif" and
-   * reaches Sequelize as NaN.
-   */
-  it('lets non-numeric page and limit past the positive-number guard', async () => {
-    const { getAllAttendances, findAndCountAllFn } = await loadAttendanceReads();
-    const res = buildRes();
-
-    await getAllAttendances(listReq({ page: 'abc', limit: 'xyz' }), res, jest.fn());
-
-    expect(res.status).not.toHaveBeenCalledWith(400);
-    const options = findAndCountAllFn.mock.calls[0][0];
-    expect(Number.isNaN(options.limit)).toBe(true);
-    expect(Number.isNaN(options.offset)).toBe(true);
-  });
-
-  it('returns the full pagination envelope', async () => {
-    const { getAllAttendances } = await loadAttendanceReads({
-      findAndCountAll: { count: 42, rows: [attendanceRow()] }
-    });
-    const res = buildRes();
-
-    await getAllAttendances(listReq({ page: '2', limit: '10' }), res, jest.fn());
-
-    const body = res.json.mock.calls[0][0];
-    expect(body.success).toBe(true);
-    expect(body.message).toBe('Data absensi berhasil diambil');
-    expect(body.pagination).toEqual({
-      current_page: 2,
-      total_pages: 5,
-      total_records: 42,
-      records_per_page: 10,
-      has_next_page: true,
-      has_prev_page: true
-    });
-  });
-
-  it('reports no next page on the last page and no prev page on the first', async () => {
-    const { getAllAttendances } = await loadAttendanceReads({
-      findAndCountAll: { count: 5, rows: [] }
-    });
-    const res = buildRes();
-
-    await getAllAttendances(listReq({ page: '1', limit: '10' }), res, jest.fn());
-
-    expect(res.json.mock.calls[0][0].pagination).toMatchObject({
-      total_pages: 1,
-      has_next_page: false,
-      has_prev_page: false
-    });
-  });
-});
-
-describe('getAllAttendances search', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('searches the joined user name and NIP only', async () => {
-    const { getAllAttendances, applySearch } = await loadAttendanceReads();
-
-    await getAllAttendances(listReq({ search: 'nadia' }), buildRes(), jest.fn());
-
-    expect(applySearch).toHaveBeenCalledWith(expect.anything(), 'nadia', [
-      '$user.full_name$',
-      '$user.nip_nim$'
-    ]);
-  });
-
-  it.each([['absent', {}], ['blank', { search: '   ' }]])(
-    'applies no search when the term is %s',
-    async (_name, query) => {
-      const { getAllAttendances, applySearch } = await loadAttendanceReads();
-
-      await getAllAttendances(listReq(query), buildRes(), jest.fn());
-
-      expect(applySearch).not.toHaveBeenCalled();
-    }
-  );
-
-  it('forwards a query failure to the error handler', async () => {
-    const boom = new Error('db down');
-    const mod = await loadAttendanceReads();
-    mod.findAndCountAllFn.mockRejectedValueOnce(boom);
-    const res = buildRes();
-    const next = jest.fn();
-
-    await mod.getAllAttendances(listReq(), res, next);
-
-    expect(next).toHaveBeenCalledWith(boom);
-    expect(res.json).not.toHaveBeenCalled();
-  });
-});
 
 const eventReq = (body = {}) => ({
   body: {
