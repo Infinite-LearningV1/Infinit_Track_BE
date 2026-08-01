@@ -112,19 +112,20 @@ describe('F13 — the schema cannot be built from migrations', () => {
   const migrations = readdirSync(migrationsDir).filter((f) => f.endsWith('.cjs'));
 
   /**
-   * The original wording claimed zero createTable calls. There are two, both
-   * in the newest migrations. The conclusion is unchanged -- an empty database
+   * The original wording claimed zero createTable calls. There are now three migrations
+   * with createTable calls, all from 2026. The conclusion is unchanged -- an empty database
    * still cannot be built -- but the evidence had to be corrected, and this
    * pins the corrected version.
    */
-  it('creates exactly two tables, both from 2026 migrations', () => {
+  it('creates tables only in the known 2026 migrations', () => {
     const creating = migrations.filter((f) =>
       readFileSync(path.join(migrationsDir, f), 'utf8').includes('createTable')
     );
 
     expect(creating.sort()).toEqual([
       '20260511000000-create-auth-sessions.cjs',
-      '20260707010000-create-attendance-session-states.cjs'
+      '20260707010000-create-attendance-session-states.cjs',
+      '20260728010000-add-wfa-request-policy.cjs'
     ]);
   });
 
@@ -136,7 +137,12 @@ describe('F13 — the schema cannot be built from migrations', () => {
         .map((m) => m[1])
     );
 
-    const created = new Set(['auth_sessions', 'attendance_session_states']);
+    const created = new Set([
+      'auth_sessions',
+      'attendance_session_states',
+      'wfa_request_reasons',
+      'wfa_rejection_reasons'
+    ]);
     const fromBaselineOnly = [...modelled].filter((t) => !created.has(t));
 
     // Includes users, attendance, bookings, locations — the entire core.

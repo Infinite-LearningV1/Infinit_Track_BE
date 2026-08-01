@@ -46,7 +46,8 @@ describe('operational settings accessor', () => {
       { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '12' },
       { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '45' },
       { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '20' },
-      { setting_key: 'checkout.fallback_time', setting_value: '18:30:00' }
+      { setting_key: 'checkout.fallback_time', setting_value: '18:30:00' },
+      { setting_key: 'wfa.request.radius_m', setting_value: '100' }
     ]);
 
     const settings = await getOperationalSettings();
@@ -65,7 +66,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 12,
       autoCheckoutTBufferMin: 45,
       lateCheckoutToleranceMin: 20,
-      defaultShiftEnd: '18:30:00'
+      defaultShiftEnd: '18:30:00',
+      wfaRequestRadiusM: 100
     });
   });
 
@@ -124,7 +126,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 10,
       autoCheckoutTBufferMin: 30,
       lateCheckoutToleranceMin: 15,
-      defaultShiftEnd: '17:00:00'
+      defaultShiftEnd: '17:00:00',
+      wfaRequestRadiusM: 100
     });
   });
 
@@ -134,7 +137,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 'attendance.auto_checkout.idle_min',
       autoCheckoutTBufferMin: 'attendance.auto_checkout.tbuffer_min',
       lateCheckoutToleranceMin: 'attendance.auto_checkout.late_tolerance_min',
-      defaultShiftEnd: 'checkout.fallback_time'
+      defaultShiftEnd: 'checkout.fallback_time',
+      wfaRequestRadiusM: 'wfa.request.radius_m'
     });
 
     expect(OPERATIONAL_SETTING_DEFAULTS).toEqual({
@@ -142,7 +146,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 10,
       autoCheckoutTBufferMin: 30,
       lateCheckoutToleranceMin: 15,
-      defaultShiftEnd: '17:00:00'
+      defaultShiftEnd: '17:00:00',
+      wfaRequestRadiusM: 100
     });
 
     expect(OPERATIONAL_SETTING_FIELDS).toEqual([
@@ -150,15 +155,20 @@ describe('operational settings accessor', () => {
       'autoCheckoutIdleMin',
       'autoCheckoutTBufferMin',
       'lateCheckoutToleranceMin',
-      'defaultShiftEnd'
+      'defaultShiftEnd',
+      'wfaRequestRadiusM'
     ]);
     expect(OPERATIONAL_SETTING_INTEGER_FIELDS).toEqual([
       'geofenceRadiusDefaultM',
       'autoCheckoutIdleMin',
       'autoCheckoutTBufferMin',
-      'lateCheckoutToleranceMin'
+      'lateCheckoutToleranceMin',
+      'wfaRequestRadiusM'
     ]);
     expect(OPERATIONAL_SETTING_TIME_FIELDS).toEqual(['defaultShiftEnd']);
+    expect(OPERATIONAL_SETTING_KEYS.wfaRequestRadiusM).toBe('wfa.request.radius_m');
+    expect(OPERATIONAL_SETTING_DEFAULTS.wfaRequestRadiusM).toBe(100);
+    expect(OPERATIONAL_SETTING_INTEGER_FIELDS).toContain('wfaRequestRadiusM');
   });
 
   it('normalizes and serializes operational setting values consistently', () => {
@@ -171,6 +181,8 @@ describe('operational settings accessor', () => {
     expect(normalizeOperationalSettingValue('defaultShiftEnd', '19:15')).toBe('19:15:00');
     expect(normalizeOperationalSettingValue('defaultShiftEnd', '19:15:30')).toBe('19:15:30');
     expect(normalizeOperationalSettingValue('defaultShiftEnd', '19')).toBeNull();
+    expect(normalizeOperationalSettingValue('wfaRequestRadiusM', '150')).toBe(150);
+    expect(normalizeOperationalSettingValue('wfaRequestRadiusM', 0)).toBeNull();
 
     expect(serializeOperationalSettingValue('autoCheckoutIdleMin', 12)).toBe('12');
     expect(serializeOperationalSettingValue('defaultShiftEnd', '19:15')).toBe('19:15:00');
@@ -188,7 +200,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 22,
       autoCheckoutTBufferMin: 30,
       lateCheckoutToleranceMin: 15,
-      defaultShiftEnd: '19:30:00'
+      defaultShiftEnd: '19:30:00',
+      wfaRequestRadiusM: 100
     });
   });
 
@@ -215,14 +228,16 @@ describe('operational settings accessor', () => {
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '10' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ])
       .mockResolvedValueOnce([
         { setting_key: 'attendance.geofence.radius_default_m', setting_value: 'not-a-number' },
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '12' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ]);
 
     mockSettingsFindByPk.mockImplementation(async (settingKey) => {
@@ -273,14 +288,16 @@ describe('operational settings accessor', () => {
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '10' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ])
       .mockResolvedValueOnce([
         { setting_key: 'attendance.geofence.radius_default_m', setting_value: '100' },
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '12' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ]);
 
     mockSettingsFindByPk.mockImplementation(async (settingKey) => {
@@ -296,7 +313,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 12,
       autoCheckoutTBufferMin: 30,
       lateCheckoutToleranceMin: 15,
-      defaultShiftEnd: '17:00:00'
+      defaultShiftEnd: '17:00:00',
+      wfaRequestRadiusM: 100
     });
 
     expect(existingIdleSetting.update).toHaveBeenCalledWith(
@@ -314,14 +332,16 @@ describe('operational settings accessor', () => {
         { setting_key: 'attendance.geofence.radius_default_m', setting_value: '100' },
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '10' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
-        { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' }
+        { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ])
       .mockResolvedValueOnce([
         { setting_key: 'attendance.geofence.radius_default_m', setting_value: '100' },
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '10' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '18:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '18:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ]);
 
     mockSettingsFindByPk.mockResolvedValueOnce(null);
@@ -332,7 +352,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 10,
       autoCheckoutTBufferMin: 30,
       lateCheckoutToleranceMin: 15,
-      defaultShiftEnd: '18:00:00'
+      defaultShiftEnd: '18:00:00',
+      wfaRequestRadiusM: 100
     });
 
     expect(mockSettingsCreate).toHaveBeenCalledWith(
@@ -355,14 +376,16 @@ describe('operational settings accessor', () => {
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '10' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ])
       .mockResolvedValueOnce([
         { setting_key: 'attendance.geofence.radius_default_m', setting_value: '100' },
         { setting_key: 'attendance.auto_checkout.idle_min', setting_value: '10' },
         { setting_key: 'attendance.auto_checkout.tbuffer_min', setting_value: '30' },
         { setting_key: 'attendance.auto_checkout.late_tolerance_min', setting_value: '15' },
-        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' }
+        { setting_key: 'checkout.fallback_time', setting_value: '17:00:00' },
+        { setting_key: 'wfa.request.radius_m', setting_value: '100' }
       ]);
 
     await expect(
@@ -372,7 +395,8 @@ describe('operational settings accessor', () => {
       autoCheckoutIdleMin: 10,
       autoCheckoutTBufferMin: 30,
       lateCheckoutToleranceMin: 15,
-      defaultShiftEnd: '17:00:00'
+      defaultShiftEnd: '17:00:00',
+      wfaRequestRadiusM: 100
     });
 
     expect(mockSettingsFindByPk).not.toHaveBeenCalled();

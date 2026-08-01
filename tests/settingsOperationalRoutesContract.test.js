@@ -59,6 +59,7 @@ const buildOperationalSettings = (overrides = {}) => ({
   autoCheckoutTBufferMin: 30,
   lateCheckoutToleranceMin: 15,
   defaultShiftEnd: '17:00:00',
+  wfaRequestRadiusM: 100,
   ...overrides
 });
 
@@ -152,6 +153,20 @@ describe('settings operational routes contract', () => {
     );
   });
 
+  it('allows management to update the global WFA request radius', async () => {
+    currentRole = 'Management';
+    const payload = { wfaRequestRadiusM: 150 };
+    mockUpdateOperationalSettings.mockResolvedValue(
+      buildOperationalSettings({ wfaRequestRadiusM: 150 })
+    );
+
+    const res = await request(scopedApp).patch('/api/settings/operational').send(payload);
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateOperationalSettings).toHaveBeenCalledWith(payload);
+    expect(res.body.wfaRequestRadiusM).toBe(150);
+  });
+
   it('returns 401 when authentication fails before the handler', async () => {
     mockVerifyToken.mockImplementationOnce((_req, res, _next) => {
       res.status(401).json({ message: 'Invalid token' });
@@ -235,6 +250,22 @@ describe('settings operational routes contract', () => {
         code: 'E_VALIDATION',
         message: 'autoCheckoutIdleMin must be a positive integer',
         errors: expect.any(Array)
+      })
+    );
+  });
+
+  it.each([0, -1, 1.5])('rejects invalid WFA radius value %p', async (value) => {
+    const res = await request(scopedApp)
+      .patch('/api/settings/operational')
+      .send({ wfaRequestRadiusM: value });
+
+    expect(res.status).toBe(400);
+    expect(mockUpdateOperationalSettings).not.toHaveBeenCalled();
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        success: false,
+        code: 'E_VALIDATION',
+        message: 'wfaRequestRadiusM must be a positive integer'
       })
     );
   });

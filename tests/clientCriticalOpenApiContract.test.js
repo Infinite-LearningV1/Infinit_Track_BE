@@ -253,12 +253,20 @@ describe('client-critical OpenAPI contract', () => {
   test('documents booking creation request payload in the public OpenAPI contract', () => {
     const bookingSchema = jsonRequestSchema(openapi.paths['/api/bookings'].post);
 
-    expect(bookingSchema.required).toEqual(['schedule_date', 'latitude', 'longitude']);
+    expect(bookingSchema.required).toEqual([
+      'schedule_date',
+      'request_reason_id',
+      'latitude',
+      'longitude'
+    ]);
     expect(bookingSchema.properties).toMatchObject({
       schedule_date: {
         type: 'string',
-        format: 'date'
+        format: 'date',
+        pattern: '^\\d{4}-\\d{2}-\\d{2}$'
       },
+      request_reason_id: { type: 'integer', minimum: 1 },
+      request_other_reason: { type: 'string', nullable: true },
       latitude: {
         type: 'number',
         format: 'float'
@@ -267,13 +275,15 @@ describe('client-critical OpenAPI contract', () => {
         type: 'number',
         format: 'float'
       },
-      radius: { type: 'number' },
       description: { type: 'string' },
       notes: { type: 'string' }
     });
     expect(bookingSchema.properties).not.toHaveProperty('date');
     expect(bookingSchema.properties).not.toHaveProperty('location_name');
     expect(bookingSchema.properties).not.toHaveProperty('reason');
+    expect(bookingSchema.properties).not.toHaveProperty('radius');
+    expect(bookingSchema.properties).not.toHaveProperty('status');
+    expect(bookingSchema.properties).not.toHaveProperty('suitability_score');
   });
 
   test('documents booking admin list query filters exposed to clients', () => {
@@ -296,14 +306,13 @@ describe('client-critical OpenAPI contract', () => {
       success: { type: 'boolean', example: true },
       message: {
         type: 'string',
-        example: 'Booking WFA berhasil diajukan dan menunggu persetujuan.'
+        example: 'Booking WFA berhasil dibuat.'
       },
       data: { type: 'object' }
     });
     expect(dataSchema.properties).toMatchObject({
       booking_id: { type: 'integer' },
       schedule_date: { type: 'string' },
-      location_id: { type: 'integer' },
       status: {
         type: 'string',
         example: 'pending'
@@ -315,7 +324,11 @@ describe('client-critical OpenAPI contract', () => {
       suitability_label: {
         type: 'string',
         nullable: true
-      }
+      },
+      request_reason: { $ref: '#/components/schemas/WfaRequestReasonProjection' },
+      location: { $ref: '#/components/schemas/WfaBookingLocation' },
+      radius_snapshot: { type: 'integer', minimum: 1 },
+      created_at: { type: 'string', format: 'date-time' }
     });
   });
 

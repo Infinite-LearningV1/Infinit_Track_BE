@@ -41,7 +41,9 @@ describe('booking controller readiness regressions', () => {
       BookingStatus: {},
       User: {},
       Position: {},
-      Role: {}
+      Role: {},
+      WfaRequestReason: {},
+      WfaRejectionReason: {}
     };
   }
 
@@ -63,6 +65,12 @@ describe('booking controller readiness regressions', () => {
         error: jest.fn(),
         debug: jest.fn()
       }
+    }));
+
+    jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
+      readWfaRequestConfig: jest.fn(),
+      resolveActiveWfaRequestReason: jest.fn(),
+      resolveActiveWfaRejectionReason: jest.fn()
     }));
   }
 
