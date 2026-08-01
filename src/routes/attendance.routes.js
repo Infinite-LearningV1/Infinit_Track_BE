@@ -8,6 +8,7 @@ import {
   debugCheckInTime,
   deleteAttendance,
   getAllAttendances,
+  getAttendanceDetail,
   manualAutoCheckout,
   getAutoCheckoutSettings,
   manualResolveWfaBookings,
@@ -30,6 +31,10 @@ import {
 import { verifyToken } from '../middlewares/authJwt.js';
 import roleGuard from '../middlewares/roleGuard.js';
 import {
+  validateAttendanceId,
+  validateAttendanceListQuery
+} from '../modules/attendance/attendance.validation.js';
+import {
   checkInValidation,
   checkOutValidation,
   validate,
@@ -47,7 +52,13 @@ router.use(verifyToken);
 router.post('/location-event', locationEventValidation, validate, logLocationEvent);
 
 // GET / - Get all attendances for admin/management with search and pagination
-router.get('/', roleGuard(['Admin', 'Management']), getAllAttendances);
+router.get(
+  '/',
+  roleGuard(['Admin', 'Management']),
+  validateAttendanceListQuery,
+  validate,
+  getAllAttendances
+);
 router.get(
   '/today-locations',
   roleGuard(['Admin', 'Management']),
@@ -128,6 +139,13 @@ router.get(
   '/enhanced-auto-checkout-settings',
   roleGuard(['Admin', 'Management']),
   getEnhancedAutoCheckoutSettings
+);
+router.get(
+  '/:id',
+  roleGuard(['Admin', 'Management']),
+  validateAttendanceId,
+  validate,
+  getAttendanceDetail
 );
 
 export default router;

@@ -11,7 +11,6 @@ import {
   AttendanceStatus,
   BookingStatus,
   User,
-  Role,
   LocationEvent
 } from '../models/index.js';
 import {
@@ -21,7 +20,6 @@ import {
   getCurrentTimeForDB
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
-import { applySearch } from '../utils/searchHelper.js';
 import { getOperationalSettings } from '../utils/settings.js';
 import {
   ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
@@ -46,6 +44,10 @@ import {
   renderMyAttendanceReportPdf
 } from '../utils/pdfReportRenderer.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
+import {
+  getManagementAttendanceDetail,
+  listManagementAttendances
+} from '../modules/attendance/attendanceRead.service.js';
 
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
@@ -1622,114 +1624,31 @@ export const getGeofenceEvidence = async (req, res, next) => {
 
 export const getAllAttendances = async (req, res, next) => {
   try {
-    // Get query parameters with defaults
-    const { search, page = 1, limit = 10 } = req.query;
-
-    // Validate pagination parameters
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-
-    if (pageNum < 1 || limitNum < 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'Parameter page dan limit harus berupa angka positif'
-      });
-    }
-
-    // Calculate offset for pagination
-    const offset = (pageNum - 1) * limitNum;
-
-    // Build query options
-    const queryOptions = {
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id_users', 'full_name', 'nip_nim', 'email'],
-          include: [
-            {
-              model: Role,
-              as: 'role',
-              attributes: ['role_name']
-            }
-          ]
-        },
-        {
-          model: Location,
-          as: 'location',
-          attributes: ['location_id', 'description', 'latitude', 'longitude'],
-          required: false
-        },
-        {
-          model: AttendanceStatus,
-          as: 'status',
-          attributes: ['attendance_status_name']
-        },
-        {
-          model: AttendanceCategory,
-          as: 'attendance_category',
-          attributes: ['category_name']
-        }
-      ],
-      order: [['id_attendance', 'DESC']],
-      limit: limitNum,
-      offset: offset,
-      distinct: true // Important for correct count with includes
-    };
-
-    // Apply search if provided
-    if (search && search.trim()) {
-      applySearch(queryOptions, search, ['$user.full_name$', '$user.nip_nim$']);
-    }
-
-    // Execute query
-    const { count, rows } = await Attendance.findAndCountAll(queryOptions);
-
-    // Transform data response
-    const transformedData = rows.map((att) => {
-      // Format work hour using utility
-      const formattedWorkHour = formatWorkHour(att.work_hour);
-
-      return {
-        id_attendance: att.id_attendance,
-        id: att.user?.id_users || null,
-        full_name: att.user?.full_name || 'Unknown User',
-        nip_nim: att.user?.nip_nim || null,
-        role_name: att.user?.role?.role_name || null,
-        time_in: formatTimeOnly(att.time_in),
-        time_out: formatTimeOnly(att.time_out),
-        work_hour: formattedWorkHour,
-        attendance_date: att.attendance_date,
-        location: att.location
-          ? {
-              location_id: att.location.location_id,
-              description: att.location.description,
-              latitude: parseFloat(att.location.latitude),
-              longitude: parseFloat(att.location.longitude)
-            }
-          : null,
-        status: att.status?.attendance_status_name || 'Unknown',
-        information: att.attendance_category?.category_name || 'Unknown',
-        notes: att.notes
-      };
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(count / limitNum);
-
-    // Send success response
-    res.status(200).json({
+    const result = await listManagementAttendances(req.query);
+    return res.status(200).json({
       success: true,
       message: 'Data absensi berhasil diambil',
-      data: transformedData,
-      pagination: {
-        current_page: pageNum,
-        total_pages: totalPages,
-        total_records: count,
-        records_per_page: limitNum,
-        has_next_page: pageNum < totalPages,
-        has_prev_page: pageNum > 1
-      }
+      data: result.data,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAttendanceDetail = async (req, res, next) => {
+  try {
+    const data = await getManagementAttendanceDetail(req.params.id);
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: 'Data absensi tidak ditemukan.'
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'Detail absensi berhasil diambil',
+      data
     });
   } catch (error) {
     next(error);

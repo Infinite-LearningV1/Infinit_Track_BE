@@ -6,7 +6,7 @@ import request from 'supertest';
  * Characterization coverage for the /api/attendance authorization matrix
  * (INF-252 Phase 0b).
  *
- * Attendance is the largest module -- 23 endpoints across a 2291-line
+ * Attendance is the largest module -- 24 endpoints across a 2291-line
  * controller -- and 14 of them had no behavioral test. Nine are operational
  * triggers that mutate final attendance state, so who may call them is exactly
  * the property that must not drift during extraction.
@@ -24,6 +24,7 @@ const ATTENDANCE_CONTROLLER_FNS = [
   'debugCheckInTime',
   'deleteAttendance',
   'getAllAttendances',
+  'getAttendanceDetail',
   'manualAutoCheckout',
   'getAutoCheckoutSettings',
   'manualResolveWfaBookings',
@@ -88,6 +89,11 @@ const buildApp = async ({ role = 'Admin', verifyTokenImpl } = {}) => {
     validate: (req, res, next) => next()
   }));
 
+  jest.unstable_mockModule('../src/modules/attendance/attendance.validation.js', () => ({
+    validateAttendanceListQuery: [(req, res, next) => next()],
+    validateAttendanceId: [(req, res, next) => next()]
+  }));
+
   const { default: attendanceRoutes } = await import('../src/routes/attendance.routes.js');
   const app = express();
   app.use(express.json());
@@ -109,6 +115,7 @@ const SELF_SERVICE = [
 /** Endpoints restricted to Admin and Management. */
 const PRIVILEGED = [
   ['get', '/api/attendance', 'getAllAttendances'],
+  ['get', '/api/attendance/1', 'getAttendanceDetail'],
   ['get', '/api/attendance/today-locations', 'getTodayLocations'],
   ['get', '/api/attendance/geofence-evidence', 'getGeofenceEvidence'],
   ['get', '/api/attendance/debug-checkin-time', 'debugCheckInTime'],
@@ -127,9 +134,9 @@ const PRIVILEGED = [
 
 describe('attendance route contract', () => {
   test('covers every registered endpoint except the lazy-loaded test trigger', () => {
-    // 23 routes are registered; test-weighted-prediction is asserted separately
-    // because it resolves its controller through a lazy dynamic import.
-    expect(SELF_SERVICE.length + PRIVILEGED.length).toBe(22);
+    // 23 routes are enumerated here; the 24th (test-weighted-prediction) is
+    // asserted separately because it resolves its controller through a lazy import.
+    expect(SELF_SERVICE.length + PRIVILEGED.length).toBe(23);
   });
 
   test.each(SELF_SERVICE)('routes %s %s to its controller for a plain User', async (
@@ -169,6 +176,7 @@ describe('attendance route contract', () => {
     await request(app).post('/api/attendance/check-in').send({}).expect(401);
     await request(app).get('/api/attendance/status-today').expect(401);
     await request(app).get('/api/attendance').expect(401);
+    await request(app).get('/api/attendance/1').expect(401);
     await request(app).delete('/api/attendance/1').expect(401);
     await request(app).post('/api/attendance/manual-general-alpha').send({}).expect(401);
   });
