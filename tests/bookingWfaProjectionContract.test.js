@@ -26,6 +26,12 @@ jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
   resolveActiveWfaRequestReason: jest.fn(),
   resolveActiveWfaRejectionReason: jest.fn()
 }));
+jest.unstable_mockModule('../src/services/wfaEligibility.service.js', () => ({
+  assertWfaEligibility: jest.fn()
+}));
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  scoreBookingLocation: jest.fn()
+}));
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({ default: {} }));
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   default: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
@@ -91,6 +97,8 @@ describe('WFA booking read projection', () => {
         {
           ...commonBooking,
           booking_id: 32,
+          suitability_score: null,
+          suitability_label: null,
           request_reason: null,
           request_other_reason: null,
           rejection_reason_detail: null,
@@ -130,7 +138,9 @@ describe('WFA booking read projection', () => {
     expect(response.data.bookings[1]).toMatchObject({
       request_reason: null,
       rejection_reason: null,
-      radius_snapshot: 100
+      radius_snapshot: 100,
+      suitability_score: null,
+      suitability_label: null
     });
     expect(next).not.toHaveBeenCalled();
   });

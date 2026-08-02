@@ -758,15 +758,16 @@ describe('backend runtime config contract', () => {
     expect(k8sDeployment).not.toContain('<your-dockerhub-username>/infinit-track-backend:latest');
   });
 
-  test('redacts Geoapify API key in booking suitability diagnostics', () => {
+  test('keeps Geoapify credentials and diagnostics out of booking orchestration', () => {
     const bookingController = fs.readFileSync(
       path.resolve(repoRoot, 'src/controllers/booking.controller.js'),
       'utf8'
     );
 
-    expect(bookingController).toContain("const diagnosticParams = { ...params, apiKey: '[REDACTED]' };");
-    expect(bookingController).toContain('JSON.stringify(diagnosticParams)');
-    expect(bookingController).not.toContain('JSON.stringify(params)');
+    expect(bookingController).toContain("import { scoreBookingLocation } from '../services/wfaRecommendation.service.js';");
+    expect(bookingController).not.toContain('process.env.GEOAPIFY_API_KEY');
+    expect(bookingController).not.toContain('process.env.GEOAPIFY_KEY');
+    expect(bookingController).not.toContain('apiKey');
   });
 
   test('documents BACKEND_IMAGE_TAG in env example for operators', () => {
