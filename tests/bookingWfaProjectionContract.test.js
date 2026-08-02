@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 
 const mockFindAndCountAll = jest.fn();
+const mockFindAll = jest.fn();
 const WfaRequestReason = { modelName: 'WfaRequestReason' };
 const WfaRejectionReason = { modelName: 'WfaRejectionReason' };
 
@@ -12,7 +13,7 @@ jest.unstable_mockModule('../src/config/database.js', () => ({
   }
 }));
 jest.unstable_mockModule('../src/models/index.js', () => ({
-  Booking: { findAndCountAll: mockFindAndCountAll },
+  Booking: { findAndCountAll: mockFindAndCountAll, findAll: mockFindAll },
   Location: {},
   BookingStatus: {},
   User: {},
@@ -37,7 +38,9 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
   default: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 
-const { getAllBookings } = await import('../src/controllers/booking.controller.js');
+const { getAllBookings, getMyBookings, getBookingHistory } = await import(
+  '../src/controllers/booking.controller.js'
+);
 
 const commonBooking = {
   user: {
@@ -143,5 +146,38 @@ describe('WFA booking read projection', () => {
       suitability_label: null
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('preserves numeric zero suitability across all booking read projections', async () => {
+    const zeroBooking = {
+      ...commonBooking,
+      booking_id: 33,
+      status: 3,
+      suitability_score: '0.00',
+      suitability_label: 'Tidak Direkomendasikan',
+      request_reason: null,
+      rejection_reason_detail: null,
+      radius_snapshot: 100
+    };
+    mockFindAll.mockResolvedValue([]);
+    mockFindAndCountAll
+      .mockResolvedValueOnce({ count: 1, rows: [zeroBooking] })
+      .mockResolvedValueOnce({ count: 1, rows: [{ ...zeroBooking, suitability_score: 0 }] })
+      .mockResolvedValueOnce({ count: 1, rows: [zeroBooking] });
+    const allRes = buildRes();
+    const myRes = buildRes();
+    const historyRes = buildRes();
+
+    await getAllBookings({ query: {} }, allRes, jest.fn());
+    await getMyBookings({ user: { id: 9 }, query: {} }, myRes, jest.fn());
+    await getBookingHistory(
+      { user: { id: 9 }, query: { status: 'all', page: '1', limit: '10' } },
+      historyRes,
+      jest.fn()
+    );
+
+    expect(allRes.json.mock.calls[0][0].data.bookings[0].suitability_score).toBe(0);
+    expect(myRes.json.mock.calls[0][0].data.bookings[0].suitability_score).toBe(0);
+    expect(historyRes.json.mock.calls[0][0].data.bookings[0].suitability_score).toBe(0);
   });
 });

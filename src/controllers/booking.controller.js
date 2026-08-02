@@ -41,6 +41,36 @@ const BOOKING_HISTORY_STATUS_FILTERS = Object.freeze({
   pending: BOOKING_STATUS.pending.id
 });
 
+const BOOKING_ELIGIBILITY_ERROR_CODES = new Set([
+  'INVALID_SCHEDULE_DATE',
+  'PAST_DATE_NOT_ALLOWED',
+  'SAME_DAY_NOT_ALLOWED',
+  'DUPLICATE_BOOKING'
+]);
+
+const respondBookingValidationError = (res, error) => {
+  const details = Array.isArray(error.details) && error.details.length > 0
+    ? error.details
+    : [{ field: 'schedule_date', code: error.code }];
+
+  return res.status(error.status || 400).json({
+    success: false,
+    code: error.code,
+    message: 'Validasi booking gagal.',
+    errors: details.map((detail) => ({
+      ...detail,
+      message: error.message
+    }))
+  });
+};
+
+const toNullableFiniteNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const buildWfaReasonIncludes = () => [
   {
     model: WfaRequestReason,
@@ -129,11 +159,19 @@ export const createBooking = async (req, res, next) => {
       location_id
     } = req.body;
 
-    const formattedScheduleDate = await assertWfaEligibility({
-      userId,
-      scheduleDate: schedule_date,
-      checkDuplicate: true
-    });
+    let formattedScheduleDate;
+    try {
+      formattedScheduleDate = await assertWfaEligibility({
+        userId,
+        scheduleDate: schedule_date,
+        checkDuplicate: true
+      });
+    } catch (error) {
+      if (BOOKING_ELIGIBILITY_ERROR_CODES.has(error?.code)) {
+        return respondBookingValidationError(res, error);
+      }
+      throw error;
+    }
 
     // Fail fast on server-owned policy before provider work and before opening a write transaction.
     await readWfaRequestConfig();
@@ -142,12 +180,20 @@ export const createBooking = async (req, res, next) => {
       otherReasonText: request_other_reason
     });
 
-    const scoreResult = await scoreBookingLocation({
-      userId,
-      latitude,
-      longitude,
-      scheduleDate: formattedScheduleDate
-    });
+    let scoreResult;
+    try {
+      scoreResult = await scoreBookingLocation({
+        userId,
+        latitude,
+        longitude,
+        scheduleDate: formattedScheduleDate
+      });
+    } catch (error) {
+      if (BOOKING_ELIGIBILITY_ERROR_CODES.has(error?.code)) {
+        return respondBookingValidationError(res, error);
+      }
+      throw error;
+    }
     const {
       status: suitabilityStatus,
       suitabilityScore: suitability_score,
@@ -158,6 +204,13 @@ export const createBooking = async (req, res, next) => {
     );
 
     transaction = await sequelize.transaction();
+
+    // Serialize booking writes per authenticated user using the stable user row.
+    await User.findByPk(userId, {
+      attributes: ['id_users'],
+      lock: transaction.LOCK.UPDATE,
+      transaction
+    });
 
     // Repeat policy reads inside the transaction so persistence uses authoritative values.
     const { radiusMeters } = await readWfaRequestConfig(transaction);
@@ -174,29 +227,33 @@ export const createBooking = async (req, res, next) => {
         schedule_date: formattedScheduleDate,
         status: { [Op.in]: [1, 3] } // approved (1) atau pending (3)
       },
+      lock: transaction.LOCK.UPDATE,
       transaction
     });
 
     if (existingBookingOnDate) {
       await transaction.rollback();
-      return res.status(409).json({
-        success: false,
+      return respondBookingValidationError(res, {
+        status: 409,
         code: 'DUPLICATE_BOOKING',
-        message: 'Validasi booking gagal.',
-        errors: [
-          {
-            field: 'schedule_date',
-            code: 'DUPLICATE_BOOKING',
-            message: 'Anda sudah memiliki booking pada tanggal tersebut.'
-          }
-        ]
+        message: 'Anda sudah memiliki booking pada tanggal tersebut.',
+        details: [{ field: 'schedule_date', code: 'DUPLICATE_BOOKING' }]
       });
     }
 
     // Proses Database: validasi lokasi (by id) atau buat baru dari koordinat (tanpa kebijakan jarak)
     let newLocation;
     if (location_id) {
-      const existingLocation = await Location.findByPk(location_id, { transaction });
+      const existingLocation = await Location.findOne({
+        where: {
+          location_id,
+          user_id: userId,
+          id_attendance_categories: 3,
+          latitude: Number(latitude),
+          longitude: Number(longitude)
+        },
+        transaction
+      });
       if (!existingLocation) {
         await transaction.rollback();
         return res.status(404).json({
@@ -605,7 +662,7 @@ export const getAllBookings = async (req, res, next) => {
         description: booking.location.description
       },
       notes: booking.notes,
-      suitability_score: parseFloat(booking.suitability_score) || null,
+      suitability_score: toNullableFiniteNumber(booking.suitability_score),
       suitability_label: booking.suitability_label,
       created_at: booking.created_at,
       processed_at: booking.processed_at,
@@ -691,7 +748,7 @@ export const getMyBookings = async (req, res, next) => {
         description: booking.location.description
       },
       notes: booking.notes,
-      suitability_score: parseFloat(booking.suitability_score) || null,
+      suitability_score: toNullableFiniteNumber(booking.suitability_score),
       suitability_label: booking.suitability_label,
       created_at: booking.created_at,
       processed_at: booking.processed_at,
@@ -900,7 +957,7 @@ export const getBookingHistory = async (req, res, next) => {
           description: booking.location.description
         },
         notes: booking.notes,
-        suitability_score: parseFloat(booking.suitability_score) || null,
+        suitability_score: toNullableFiniteNumber(booking.suitability_score),
         suitability_label: booking.suitability_label,
         created_at: booking.created_at,
         processed_at: booking.processed_at,
