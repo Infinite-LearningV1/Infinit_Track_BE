@@ -115,10 +115,10 @@ function buildBookingHistorySummary(summaryRows) {
 
 /**
  * Fetches place details from Geoapify and calculates its suitability score.
- * If no data is found, returns a default score.
+ * If no data is found, returns an explicit unavailable state without a fabricated score.
  * @param {number} latitude - The latitude of the location.
  * @param {number} longitude - The longitude of the location.
- * @returns {Promise<{suitability_score: number, suitability_label: string}>}
+ * @returns {Promise<{suitability_score: number|null, suitability_label: string}>}
  */
 async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
   try {
@@ -131,8 +131,8 @@ async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
     if (!geoapifyApiKey) {
       logger.error('Geoapify API key not found for booking suitability scoring. Set GEOAPIFY_API_KEY.');
       return {
-        suitability_score: 50,
-        suitability_label: 'Lokasi tidak terdaftar'
+        suitability_score: null,
+        suitability_label: 'Lokasi tidak tersedia'
       };
     }
 
@@ -156,8 +156,8 @@ async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
     if (!features || features.length === 0) {
       logger.warn(`No Geoapify data found for coords: ${latitude},${longitude}`);
       return {
-        suitability_score: 50,
-        suitability_label: 'Lokasi tidak terdaftar'
+        suitability_score: null,
+        suitability_label: 'Lokasi tidak tersedia'
       };
     }
 
@@ -174,11 +174,7 @@ async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
     };
 
     // Hitung skor menggunakan Fuzzy AHP Engine
-    const scoreResult = await fuzzyEngine.calculateWfaScore({
-      locationTypeScore: fuzzyEngine.getLocationTypeScore(mockPlaceDetails),
-      distanceScore: fuzzyEngine.getDistanceFactorScore(mockPlaceDetails.properties?.distance),
-      facilityScore: mockPlaceDetails.properties?.facility_score
-    });
+    const scoreResult = await fuzzyEngine.calculateLegacyWfaAmenityScore(mockPlaceDetails);
 
     return {
       suitability_score: scoreResult.score,
@@ -186,10 +182,10 @@ async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
     };
   } catch (error) {
     logger.error(`Failed to get suitability score for custom location: ${error.message}`);
-    // Jika ada error, kembalikan nilai default
+    // Do not manufacture a numeric suitability score when evidence is unavailable.
     return {
-      suitability_score: 50,
-      suitability_label: 'Lokasi tidak terdaftar'
+      suitability_score: null,
+      suitability_label: 'Lokasi tidak tersedia'
     };
   }
 }

@@ -55,6 +55,17 @@ const loadWfa = async ({
         weights: [0.5, 0.2, 0.3],
         breakdown: {}
       })),
+      getLegacyWfaAmenityWeights: () => ({
+        location_type: 0.5,
+        amenity_score: 0.3,
+        distance_factor: 0.2,
+        consistency_ratio: 0.05
+      }),
+      calculateLegacyWfaAmenityScore: jest.fn(async () => ({
+        score: 78,
+        label: 'SANGAT SESUAI',
+        breakdown: {}
+      })),
       getWfaScoreLabel: () => 'SANGAT SESUAI',
       getLocationTypeScore: () => 100,
       getDistanceFactorScore: () => 90,

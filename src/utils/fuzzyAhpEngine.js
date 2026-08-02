@@ -13,6 +13,7 @@ import {
 
 // Simple memoization for FAHP weights
 let cachedWfaWeights = null;
+let cachedWfaWeightingMethod = null;
 let cachedFacilityWeights = null;
 let cachedDiscWeights = null;
 let cachedSmartAcWeights = null;
@@ -28,7 +29,9 @@ function selectWeights(matrixTFN) {
 
 const selectWfaWeights = () => {
   const extentWeights = selectWeights(WFA_PAIRWISE_TFN);
-  if (extentWeights.every((weight) => weight > 0)) return extentWeights;
+  if (extentWeights.every((weight) => weight > 0)) {
+    return { values: extentWeights, method: 'chang_extent' };
+  }
 
   // Chang's possibility comparison can collapse a valid lowest-ranked criterion
   // to zero. Preserve the configured TFN judgments while using the standard
@@ -37,7 +40,10 @@ const selectWfaWeights = () => {
     Math.pow(row.reduce((product, value) => product * value, 1), 1 / row.length)
   );
   const sum = geometricMeans.reduce((total, value) => total + value, 0);
-  return geometricMeans.map((value) => value / sum);
+  return {
+    values: geometricMeans.map((value) => value / sum),
+    method: 'row_geometric_mean_fallback'
+  };
 };
 
 // --- Time utilities for Smart Auto Checkout weighted prediction ---
@@ -88,19 +94,34 @@ function getWfaAhpWeights() {
       location_type: cachedWfaWeights[0],
       distance_factor: cachedWfaWeights[1],
       facility_score: cachedWfaWeights[2],
-      consistency_ratio: cachedWfaCR
+      consistency_ratio: cachedWfaCR,
+      weighting_method: cachedWfaWeightingMethod
     };
   }
-  const weights = selectWfaWeights();
+  const { values: weights, method } = selectWfaWeights();
   const crisp = defuzzifyMatrixTFN(WFA_PAIRWISE_TFN);
   const { CR } = computeCR(crisp);
   cachedWfaWeights = weights;
   cachedWfaCR = CR;
+  cachedWfaWeightingMethod = method;
   return {
     location_type: weights[0],
     distance_factor: weights[1],
     facility_score: weights[2],
-    consistency_ratio: CR
+    consistency_ratio: CR,
+    weighting_method: method
+  };
+}
+
+function getLegacyWfaAmenityWeights() {
+  const weights = selectWeights(WFA_PAIRWISE_TFN);
+  const { CR } = computeCR(defuzzifyMatrixTFN(WFA_PAIRWISE_TFN));
+  return {
+    location_type: weights[0],
+    distance_factor: weights[1],
+    amenity_score: weights[2],
+    consistency_ratio: CR,
+    weighting_method: 'chang_extent_legacy_amenity'
   };
 }
 
@@ -178,6 +199,39 @@ function getDistanceFactorScore(distanceMeters) {
     throw new Error('distance must be numeric');
   }
   return minMax(distanceMeters, 0, 3000, 'cost') * 100;
+}
+
+const parseLegacyNumber = (value, fallback) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+
+function calculateLegacyWfaAmenityScore(placeDetails, ahpWeights = null) {
+  const weights = ahpWeights || selectWeights(WFA_PAIRWISE_TFN);
+  const locationScore = getLocationTypeScore(placeDetails);
+  const distanceMeters = parseLegacyNumber(placeDetails?.properties?.distance, 1000);
+  const distanceScore = getDistanceFactorScore(distanceMeters);
+  const amenityScore = Math.max(0, Math.min(100, parseLegacyNumber(placeDetails?.properties?.amenity_score, 50)));
+  const score01 = weights.reduce(
+    (sum, weight, index) => sum + (weight * [locationScore, distanceScore, amenityScore][index]) / 100,
+    0
+  );
+
+  return {
+    score: +(score01 * 100).toFixed(2),
+    label: labelEqualInterval(score01),
+    breakdown: {
+      location_score: locationScore,
+      distance_score: +distanceScore.toFixed(2),
+      amenity_score: amenityScore
+    },
+    weights: [...weights],
+    legacy_compatibility: true
+  };
 }
 
 async function calculateWfaScore(input, ahpWeights = null) {
@@ -359,10 +413,12 @@ function getCategoryDisplayName(category) {
 export default {
   // Main functions
   calculateWfaScore,
+  calculateLegacyWfaAmenityScore,
   calculateDisciplineIndex,
 
   // Weights
   getWfaAhpWeights,
+  getLegacyWfaAmenityWeights,
   getFacilityAhpWeights,
   getDisciplineAhpWeights,
   getSmartAcAhpWeights,

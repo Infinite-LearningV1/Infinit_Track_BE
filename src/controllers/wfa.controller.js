@@ -132,11 +132,9 @@ export const getWfaRecommendations = async (req, res, next) => {
     const geoapifyResponse = await makeGeoapifyRequest();
     const candidates = geoapifyResponse.data.features || [];
 
-    logger.info(`Geoapify returned ${candidates.length} candidates`); // Scoring with FAHP weights (no FIS)
-    // Dapatkan bobot AHP untuk kriteria WFA
-    const ahpWeights = fuzzyEngine.getWfaAhpWeights();
-
-    logger.info('Using FAHP weights:', ahpWeights); // Score setiap kandidat menggunakan mesin terpusat
+    logger.info(`Geoapify returned ${candidates.length} candidates`);
+    logger.info('Using legacy amenity compatibility scoring until facility enrichment is available');
+    const ahpWeights = fuzzyEngine.getLegacyWfaAmenityWeights();
     const scoredRecommendations = [];
     const processedPlaces = new Set(); // Track places dengan multiple identifiers
     const duplicateWarnings = new Set(); // Track warning messages untuk mencegah spam
@@ -170,19 +168,14 @@ export const getWfaRecommendations = async (req, res, next) => {
         }
 
         processedPlaces.add(placeKey);
-        // Add user location for distance calculation
-        place.userLocation = { lat: latitude, lon: longitude };
+        // Legacy path is intentionally isolated from canonical facility scoring.
         const distanceMeters =
           place.properties?.distance ||
           calculateDistance(latitude, longitude, place.geometry.coordinates[1], place.geometry.coordinates[0]);
-        const scoreResult = await fuzzyEngine.calculateWfaScore(
-          {
-            locationTypeScore: fuzzyEngine.getLocationTypeScore(place),
-            distanceScore: fuzzyEngine.getDistanceFactorScore(distanceMeters),
-            facilityScore: place.properties?.facility_score
-          },
-          ahpWeights
-        );
+        const scoreResult = await fuzzyEngine.calculateLegacyWfaAmenityScore({
+          ...place,
+          properties: { ...(place.properties || {}), distance: distanceMeters }
+        });
 
         // Add additional metadata for response
         const scoredPlace = {
@@ -198,16 +191,7 @@ export const getWfaRecommendations = async (req, res, next) => {
         scoredRecommendations.push(scoredPlace);
       } catch (error) {
         logger.warn(`Failed to score place ${place.properties?.name || 'unknown'}:`, error.message);
-        const fallbackScore = 25;
-        scoredRecommendations.push({
-          ...place,
-          scoring_details: {
-            final_score: fallbackScore,
-            label: fuzzyEngine.getWfaScoreLabel(fallbackScore),
-            breakdown: { error: error.message },
-            distance_meters: place.properties?.distance || 1000
-          }
-        });
+        continue;
       }
     }
     logger.info(`Scored ${scoredRecommendations.length} places using FAHP (no FIS)`);
@@ -390,7 +374,10 @@ export const getWfaAhpConfig = async (req, res, next) => {
         },
         consistency_ratio: ahpWeights.consistency_ratio,
         is_consistent: ahpWeights.consistency_ratio <= 0.1,
-        method: 'Fuzzy AHP dengan Chang’s Extent Analysis',
+        method:
+          ahpWeights.weighting_method === 'row_geometric_mean_fallback'
+            ? 'Fuzzy AHP dengan fallback geometric mean'
+            : 'Fuzzy AHP dengan Chang’s Extent Analysis',
         criteria_explanation: {
           location_type:
             'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)',
@@ -398,7 +385,10 @@ export const getWfaAhpConfig = async (req, res, next) => {
             'Penilaian komprehensif fasilitas: WiFi, informasi bisnis, brand recognition, payment options, aksesibilitas, dan keragaman kategori',
           distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
         },
-        weight_calculation: 'Pembobotan kriteria berbasis pairwise TFN dengan Chang’s Extent Analysis',
+        weight_calculation:
+          ahpWeights.weighting_method === 'row_geometric_mean_fallback'
+            ? 'Pembobotan pairwise TFN dengan row geometric mean fallback karena Chang menghasilkan bobot nol'
+            : 'Pembobotan kriteria berbasis pairwise TFN dengan Chang’s Extent Analysis',
         scoring_method: 'Weighted scoring model dengan normalisasi 0-100'
       },
       message: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'

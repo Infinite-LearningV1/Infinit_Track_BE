@@ -62,10 +62,32 @@ test('higher facility evidence increases the main WFA score', async () => {
   expect(highFacility.score).toBeGreaterThan(lowFacility.score);
 });
 
+test('main WFA weights disclose the non-zero fallback method', () => {
+  const weights = fuzzyEngine.getWfaAhpWeights();
+
+  expect(weights.weighting_method).toBe('row_geometric_mean_fallback');
+  expect(weights.location_type).toBeCloseTo(0.633524839963704, 12);
+  expect(weights.distance_factor).toBeCloseTo(0.2604011016177943, 12);
+  expect(weights.facility_score).toBeCloseTo(0.10607405841850168, 12);
+});
+
 test('main WFA score does not accept legacy place payloads', async () => {
   await expect(
     fuzzyEngine.calculateWfaScore({
       properties: { name: 'Coffee Lab', categories: ['cafe'], distance: 200, amenity_score: 90 }
     })
   ).rejects.toThrow('location_type must be numeric');
+});
+
+test('legacy amenity compatibility keeps missing evidence in the legacy breakdown', async () => {
+  const result = await fuzzyEngine.calculateLegacyWfaAmenityScore({
+    properties: { name: 'Coffee Lab', categories: ['cafe'], distance: 200 }
+  });
+
+  expect(result.breakdown).toEqual({
+    location_score: 100,
+    distance_score: expect.any(Number),
+    amenity_score: 50
+  });
+  expect(result.breakdown).not.toHaveProperty('facility_score');
 });

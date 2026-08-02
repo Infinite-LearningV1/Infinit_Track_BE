@@ -436,9 +436,9 @@ export const buildWfaFahpPayload = async ({ lat, lon, radiusMeters }) => {
   const longitude = Number(lon);
   const searchRadiusMeters = Number(radiusMeters ?? 5000);
   const places = await fetchGeoapifyPlaces({ latitude, longitude, radiusMeters: searchRadiusMeters });
-  const weightsObj = fuzzyEngine.getWfaAhpWeights();
-  const criteria = ['location_type', 'distance_factor', 'facility_score'];
-  const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.facility_score];
+  const weightsObj = fuzzyEngine.getLegacyWfaAmenityWeights();
+  const criteria = ['location_type', 'distance_factor', 'amenity_score'];
+  const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.amenity_score];
   const consistency = buildConsistency({
     CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
     CI: 0,
@@ -480,24 +480,21 @@ export const buildWfaFahpPayload = async ({ lat, lon, radiusMeters }) => {
     const distanceMeters = getGeoapifyDistanceMeters({ place, latitude, longitude });
     if (!Number.isFinite(distanceMeters)) continue;
 
-    const facilityScore = deriveGeoapifyAmenityScore(place);
+    const amenityScore = deriveGeoapifyAmenityScore(place);
     const placeForScoring = {
       ...place,
       properties: {
         ...(place.properties || {}),
         distance: distanceMeters,
-        facility_score: facilityScore
+        amenity_score: amenityScore
       },
       userLocation: { lat: latitude, lon: longitude }
     };
-    const result = await fuzzyEngine.calculateWfaScore(
-      {
-        locationTypeScore: fuzzyEngine.getLocationTypeScore(placeForScoring),
-        distanceScore: fuzzyEngine.getDistanceFactorScore(distanceMeters),
-        facilityScore
-      },
-      weightsObj
-    );
+    const result = await fuzzyEngine.calculateLegacyWfaAmenityScore(placeForScoring, [
+      weightsObj.location_type,
+      weightsObj.distance_factor,
+      weightsObj.amenity_score
+    ]);
 
     ranking.push({
       place_id: getGeoapifyPlaceId(place, index),
@@ -508,7 +505,7 @@ export const buildWfaFahpPayload = async ({ lat, lon, radiusMeters }) => {
       breakdown: {
         location_type: fuzzyEngine.categorizePlace(placeForScoring),
         distance_m: distanceMeters,
-        facility_score: facilityScore
+        amenity_score: amenityScore
       }
     });
   }
@@ -527,9 +524,9 @@ export const buildWfaFahpPayload = async ({ lat, lon, radiusMeters }) => {
 };
 
 export const buildWfaAnalysis = async ({ startAt, endAt } = {}) => {
-  const weightsObj = fuzzyEngine.getWfaAhpWeights();
-  const criteria = ['location_type', 'distance_factor', 'facility_score'];
-  const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.facility_score];
+  const weightsObj = fuzzyEngine.getLegacyWfaAmenityWeights();
+  const criteria = ['location_type', 'distance_factor', 'amenity_score'];
+  const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.amenity_score];
   const buildEmptyResult = () => ({
     entity_kind: 'place',
     consistency: buildConsistency({
@@ -586,7 +583,7 @@ export const buildWfaAnalysis = async ({ startAt, endAt } = {}) => {
     const placeDetails = {
       properties: {
         name: place.description,
-        facility_score: 50,
+        amenity_score: 50,
         distance: 1000
       },
       geometry: {
@@ -594,14 +591,11 @@ export const buildWfaAnalysis = async ({ startAt, endAt } = {}) => {
       }
     };
 
-    const result = await fuzzyEngine.calculateWfaScore(
-      {
-        locationTypeScore: fuzzyEngine.getLocationTypeScore(placeDetails),
-        distanceScore: fuzzyEngine.getDistanceFactorScore(placeDetails.properties.distance),
-        facilityScore: placeDetails.properties.facility_score
-      },
-      weightsObj
-    );
+    const result = await fuzzyEngine.calculateLegacyWfaAmenityScore(placeDetails, [
+      weightsObj.location_type,
+      weightsObj.distance_factor,
+      weightsObj.amenity_score
+    ]);
     ranking.push({
       id: place.location_id,
       name: place.description,
@@ -609,7 +603,7 @@ export const buildWfaAnalysis = async ({ startAt, endAt } = {}) => {
       label: result.label,
       breakdown: {
         location_type: fuzzyEngine.categorizePlace(placeDetails),
-        facility_score: 50,
+        amenity_score: 50,
         distance: 1000
       }
     });
@@ -970,7 +964,7 @@ const DASHBOARD_CRITERIA_DISPLAY_LABELS = {
   work_focus: 'Fokus Kerja',
   location_type: 'Tipe Lokasi',
   distance_factor: 'Faktor Jarak',
-  facility_score: 'Skor Fasilitas',
+  amenity_score: 'Skor Fasilitas',
   attendance: 'Attendance'
 };
 

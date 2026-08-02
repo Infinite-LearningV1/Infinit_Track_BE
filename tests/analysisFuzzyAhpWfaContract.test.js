@@ -27,6 +27,8 @@ const mockFuzzyEngine = {
   calculateDisciplineIndex: jest.fn(),
   getWfaAhpWeights: jest.fn(),
   calculateWfaScore: jest.fn(),
+  getLegacyWfaAmenityWeights: jest.fn(),
+  calculateLegacyWfaAmenityScore: jest.fn(),
   getLocationTypeScore: jest.fn(),
   getDistanceFactorScore: jest.fn(),
   categorizePlace: jest.fn()
@@ -74,24 +76,22 @@ describe('analysis WFA fuzzy ahp contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.GEOAPIFY_API_KEY = 'test-geoapify-key';
-    mockFuzzyEngine.getWfaAhpWeights.mockReturnValue({
+    mockFuzzyEngine.getLegacyWfaAmenityWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
-      facility_score: 0.2,
+      amenity_score: 0.2,
       consistency_ratio: 0.042
     });
     mockFuzzyEngine.categorizePlace.mockReturnValue('cafe');
-    mockFuzzyEngine.calculateWfaScore.mockResolvedValue({
+    mockFuzzyEngine.calculateLegacyWfaAmenityScore.mockResolvedValue({
       score: 87.25,
       label: 'Sangat Tinggi',
       breakdown: {
-        location_type: 100,
-        distance_factor: 95,
-        facility_score: 80
+        location_score: 100,
+        distance_score: 95,
+        amenity_score: 80
       }
     });
-    mockFuzzyEngine.getLocationTypeScore.mockReturnValue(100);
-    mockFuzzyEngine.getDistanceFactorScore.mockReturnValue(95);
   });
 
   afterAll(() => {
@@ -145,13 +145,13 @@ describe('analysis WFA fuzzy ahp contract', () => {
         breakdown: {
           location_type: 'cafe',
           distance_m: 123,
-          facility_score: 100
+          amenity_score: 100
         }
       }
     ]);
     expect(res.body.data.ranking[0].breakdown).not.toMatchObject({
       distance_m: 1000,
-      facility_score: 50
+      amenity_score: 50
     });
     expect(mockAxiosGet).toHaveBeenCalledWith(
       'https://api.geoapify.com/v2/places',

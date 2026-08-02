@@ -13,6 +13,7 @@ const mockLocationCreate = jest.fn();
 const mockReadWfaRequestConfig = jest.fn();
 const mockResolveActiveWfaRequestReason = jest.fn();
 const mockCalculateWfaScore = jest.fn();
+const mockAxiosGet = jest.fn();
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
   default: {
@@ -39,6 +40,7 @@ jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
   default: {
     calculateWfaScore: mockCalculateWfaScore,
+    calculateLegacyWfaAmenityScore: mockCalculateWfaScore,
     getLocationTypeScore: jest.fn(() => 100),
     getDistanceFactorScore: jest.fn(() => 90)
   }
@@ -56,16 +58,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
 }));
 jest.unstable_mockModule('axios', () => ({
   default: {
-    get: jest.fn().mockResolvedValue({
-      data: {
-        features: [
-          {
-            properties: { name: 'Lokasi server', distance: 100, facility_score: 90 },
-            geometry: { type: 'Point', coordinates: [119.87, -0.9] }
-          }
-        ]
-      }
-    })
+    get: mockAxiosGet
   }
 }));
 
@@ -95,6 +88,16 @@ describe('server-authoritative WFA booking creation', () => {
       description: 'Lokasi klien'
     });
     mockCalculateWfaScore.mockResolvedValue({ score: 82, label: 'Direkomendasikan' });
+    mockAxiosGet.mockResolvedValue({
+      data: {
+        features: [
+          {
+            properties: { name: 'Lokasi server', distance: 100 },
+            geometry: { type: 'Point', coordinates: [119.87, -0.9] }
+          }
+        ]
+      }
+    });
     mockBookingCreate.mockImplementation(async (payload) => ({
       booking_id: 30,
       ...payload
@@ -173,6 +176,29 @@ describe('server-authoritative WFA booking creation', () => {
         location: expect.objectContaining({ location_id: 20, radius: 150 })
       })
     });
+  });
+
+  it('does not fabricate a numeric suitability score when Geoapify returns no place', async () => {
+    mockAxiosGet.mockResolvedValue({ data: { features: [] } });
+    const req = {
+      user: { id: 9 },
+      body: {
+        schedule_date: '2026-08-10',
+        request_reason_id: 1,
+        notes: 'Pertemuan project',
+        latitude: -0.9,
+        longitude: 119.87,
+        description: 'Lokasi klien'
+      }
+    };
+    const res = buildRes();
+
+    await createBooking(req, res, jest.fn());
+
+    expect(mockBookingCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ suitability_score: null, suitability_label: 'Lokasi tidak tersedia' }),
+      { transaction }
+    );
   });
 
   it('returns INVALID_SCHEDULE_DATE before reading policy for an impossible date', async () => {
