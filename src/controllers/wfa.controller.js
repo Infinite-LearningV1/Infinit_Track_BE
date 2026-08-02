@@ -382,7 +382,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
           location_type:
             'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)',
           facility_score:
-            'Penilaian komprehensif fasilitas: WiFi, informasi bisnis, brand recognition, payment options, aksesibilitas, dan keragaman kategori',
+            'Penilaian berdasarkan internet_access, air_conditioning, toilets, opening_hours, dan wheelchair accessibility.',
           distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
         },
         weight_calculation:

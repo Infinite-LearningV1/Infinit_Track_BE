@@ -302,6 +302,12 @@ describe('getWfaAhpConfig', () => {
     expect(body.data.consistency_ratio).toBe(0.05);
     // is_consistent is the controller's own rule: ratio <= 0.1
     expect(body.data.is_consistent).toBe(true);
+    expect(body.data.criteria_explanation.facility_score).toBe(
+      'Penilaian berdasarkan internet_access, air_conditioning, toilets, opening_hours, dan wheelchair accessibility.'
+    );
+    expect(body.data.criteria_explanation.facility_score).not.toMatch(
+      /brand recognition|payment options|keragaman kategori/i
+    );
   });
 });
 
