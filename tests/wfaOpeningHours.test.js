@@ -73,3 +73,24 @@ test('evaluates the WIB Sunday window correctly in a process initialized with a 
 
   expect(output.trim()).toBe('1');
 });
+
+test('evaluates a WIB spring-forward-gap window in a process initialized with a DST timezone', () => {
+  const evaluatorUrl = new URL('../src/utils/wfaOpeningHours.js', import.meta.url).href;
+  const script = `
+    import { evaluateOpeningHoursCoverage } from ${JSON.stringify(evaluatorUrl)};
+    console.log(evaluateOpeningHoursCoverage({
+      expression: 'Su 00:00-24:00',
+      scheduleDate: '2026-03-08',
+      startTime: '02:30:00',
+      endTime: '03:30:00'
+    }));
+  `;
+
+  const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: { ...process.env, TZ: 'America/New_York' }
+  });
+
+  expect(output.trim()).toBe('1');
+});
