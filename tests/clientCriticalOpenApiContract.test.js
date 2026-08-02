@@ -299,7 +299,8 @@ describe('client-critical OpenAPI contract', () => {
   });
 
   test('documents booking creation success response shape from the runtime controller', () => {
-    const bookingSuccessSchema = schemaAt(openapi.paths['/api/bookings'].post, '201');
+    const bookingOperation = openapi.paths['/api/bookings'].post;
+    const bookingSuccessSchema = schemaAt(bookingOperation, '201');
     const dataSchema = bookingSuccessSchema.properties.data;
 
     expect(bookingSuccessSchema.properties).toMatchObject({
@@ -325,10 +326,22 @@ describe('client-critical OpenAPI contract', () => {
         type: 'string',
         nullable: true
       },
+      suitability_status: {
+        type: 'string',
+        enum: ['ranked', 'insufficient_facility_data']
+      },
       request_reason: { $ref: '#/components/schemas/WfaRequestReasonProjection' },
       location: { $ref: '#/components/schemas/WfaBookingLocation' },
       radius_snapshot: { type: 'integer', minimum: 1 },
       created_at: { type: 'string', format: 'date-time' }
+    });
+    expect(schemaAt(bookingOperation, '503').properties).toMatchObject({
+      success: { type: 'boolean', example: false },
+      code: { type: 'string', example: 'WFA_SCORING_UNAVAILABLE' },
+      message: { type: 'string' }
+    });
+    expect(bookingOperation.responses['500']).toEqual({
+      $ref: '#/components/responses/WfaConfigUnavailableError'
     });
   });
 
@@ -761,18 +774,90 @@ describe('client-critical OpenAPI contract', () => {
     expect(description).not.toMatch(/is semantically equivalent/i);
     expect(description).not.toMatch(/same contract as the dedicated/i);
     expect(responseContent.example).toBeUndefined();
-    expect(Object.keys(responseContent.examples)).toEqual(expect.arrayContaining(['discipline', 'wfa', 'smart_ac']));
+    expect(Object.keys(responseContent.examples)).toEqual(expect.arrayContaining(['discipline', 'smart_ac']));
+    expect(responseContent.examples).not.toHaveProperty('wfa');
   });
 
-  test('documents WFA query validation and provider boundary contract', () => {
-    const operation = openapi.paths['/api/analysis/fuzzy-ahp/wfa'].get;
-    const params = Object.fromEntries(operation.parameters.map((param) => [param.name, param]));
+  test('documents canonical WFA facility-scoring query, candidates, and failure envelopes', () => {
+    const recommendationOperation = openapi.paths['/api/wfa/recommendations'].get;
+    const analysisOperation = openapi.paths['/api/analysis/fuzzy-ahp/wfa'].get;
+    const recommendationParams = Object.fromEntries(
+      recommendationOperation.parameters.map((param) => [param.name, param])
+    );
+    const analysisParams = Object.fromEntries(analysisOperation.parameters.map((param) => [param.name, param]));
+    const candidateSchema = componentSchema(openapi, 'WFARecommendation');
 
-    expect(params.lat.required).toBe(true);
-    expect(params.lon.required).toBe(true);
-    expect(params.radius_meters.schema).toMatchObject({ type: 'integer', minimum: 100, maximum: 50000, default: 5000 });
-    expect(operation.responses['503'].description).toContain('Geoapify');
-    expect(operation.responses['503'].content['application/json'].schema.properties).toHaveProperty('provider');
+    expect(schemaAt(recommendationOperation).properties.data.properties.recommendations.items).toEqual({
+      $ref: '#/components/schemas/WFARecommendation'
+    });
+    expect(schemaAt(analysisOperation).properties.data.properties.candidates.items).toEqual({
+      $ref: '#/components/schemas/WFARecommendation'
+    });
+
+    expect(Object.keys(recommendationParams)).toEqual(['lat', 'lng', 'schedule_date']);
+    expect(Object.keys(analysisParams)).toEqual(['lat', 'lon', 'schedule_date', 'radius_meters']);
+    expect(recommendationParams.schedule_date).toMatchObject({
+      required: true,
+      schema: { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+    });
+    expect(analysisParams.schedule_date).toMatchObject({
+      required: true,
+      schema: { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+    });
+    expect(analysisParams.radius_meters.schema).toMatchObject({
+      type: 'integer', minimum: 100, maximum: 50000, default: 5000
+    });
+
+    expect(candidateSchema.properties).toMatchObject({
+        place_id: { type: 'string' },
+        status: {
+          type: 'string',
+          enum: ['ranked', 'insufficient_facility_data', 'facility_enrichment_failed']
+        },
+        distance_meters: { type: 'number' },
+        location_type: { type: 'string' },
+        facility_score: { type: 'number', nullable: true },
+        facility_confidence: { type: 'number', nullable: true },
+        facilities: { type: 'object' },
+        final_score: { type: 'number', nullable: true },
+        final_label: { type: 'string', nullable: true },
+        rank: { type: 'integer', nullable: true }
+    });
+    expect(candidateSchema.properties.facilities.properties).toMatchObject({
+        internet_access: { type: 'integer', enum: [0, 1], nullable: true },
+        air_conditioning: { type: 'integer', enum: [0, 1], nullable: true },
+        toilets: { type: 'integer', enum: [0, 1], nullable: true },
+        opening_hours: { type: 'integer', enum: [0, 1], nullable: true },
+        wheelchair_accessibility: { type: 'integer', enum: [0, 1], nullable: true }
+    });
+    expect(candidateSchema.properties).not.toHaveProperty('amenity_score');
+
+    for (const operation of [recommendationOperation, analysisOperation]) {
+      const failureSchema = schemaAt(operation, '503');
+      expect(failureSchema.properties).toMatchObject({
+        success: { type: 'boolean', example: false },
+        code: { type: 'string' },
+        message: { type: 'string' }
+      });
+    }
+    expect(schemaAt(recommendationOperation, '503').properties.code.example).toBe('WFA_PROVIDER_UNAVAILABLE');
+    expect(schemaAt(analysisOperation, '503').properties.code.example).toBe('WFA_PROVIDER_UNAVAILABLE');
+  });
+
+  test('documents exact 410 migration bodies for retired WFA analysis variants', () => {
+    for (const pathName of ['/api/analysis/fuzzy-ahp', '/api/analysis/fuzzy-ahp/dashboard']) {
+      const operation = openapi.paths[pathName].get;
+      const movedSchema = schemaAt(operation, '410');
+
+      expect(movedSchema.properties).toMatchObject({
+        success: { type: 'boolean', example: false },
+        code: { type: 'string', example: 'WFA_ANALYSIS_MOVED' },
+        message: {
+          type: 'string',
+          example: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+        }
+      });
+    }
   });
 
   test('documents Smart AC evidence sufficiency fields', () => {

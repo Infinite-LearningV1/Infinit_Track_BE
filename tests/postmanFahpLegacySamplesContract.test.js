@@ -14,10 +14,6 @@ describe('INF-170 legacy thesis samples', () => {
       type: 'discipline'
     },
     {
-      file: 'postman/samples/legacy-wfa-monthly.json',
-      type: 'wfa'
-    },
-    {
       file: 'postman/samples/legacy-smart-ac-monthly.json',
       type: 'smart_ac'
     }
@@ -35,5 +31,13 @@ describe('INF-170 legacy thesis samples', () => {
     expect(body.data).toHaveProperty('generated_at');
     expect(body.data).toHaveProperty('window');
     expect(body.data).toHaveProperty('timezone', 'Asia/Jakarta');
+  });
+
+  test('records the retired combined WFA request as the exact migration response', () => {
+    expect(readJson('postman/samples/legacy-wfa-monthly.json')).toEqual({
+      success: false,
+      code: 'WFA_ANALYSIS_MOVED',
+      message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+    });
   });
 });

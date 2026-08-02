@@ -164,3 +164,20 @@ describe('the two list endpoints disagree with each other', () => {
     expect(attendance).not.toContain('totalPages:');
   });
 });
+
+describe('WFA facility scoring contract versus runtime', () => {
+  it('documents schedule_date on both canonical WFA request surfaces', () => {
+    expect(operationBlock('/api/wfa/recommendations', 'get')).toContain('name: schedule_date');
+    expect(operationBlock('/api/analysis/fuzzy-ahp/wfa', 'get')).toContain('name: schedule_date');
+  });
+
+  it('documents the migration response instead of the retired combined WFA payload', () => {
+    const combined = operationBlock('/api/analysis/fuzzy-ahp', 'get');
+    const dashboard = operationBlock('/api/analysis/fuzzy-ahp/dashboard', 'get');
+
+    expect(combined).toContain("'410':");
+    expect(dashboard).toContain("'410':");
+    expect(combined).toContain('WFA_ANALYSIS_MOVED');
+    expect(dashboard).toContain('WFA_ANALYSIS_MOVED');
+  });
+});

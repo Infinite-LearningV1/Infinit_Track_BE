@@ -9,9 +9,10 @@
       "sampleFile": "postman/samples/legacy-discipline-monthly.json"
     },
     {
-      "name": "Thesis / Legacy Combined / WFA Monthly",
+      "name": "Migration / Legacy Combined / WFA",
       "endpoint": "/api/analysis/fuzzy-ahp?type=wfa&period=monthly",
-      "purpose": "thesis_comparison",
+      "purpose": "migration_check",
+      "expectedStatus": 410,
       "sampleFile": "postman/samples/legacy-wfa-monthly.json"
     },
     {
@@ -24,7 +25,7 @@
       "name": "Validation / Dedicated / WFA Live",
       "endpoint": "/api/analysis/fuzzy-ahp/wfa",
       "purpose": "live_validation",
-      "queryVariables": ["wfa_lat", "wfa_lon", "wfa_radius_meters"],
+      "queryVariables": ["wfa_lat", "wfa_lon", "wfa_schedule_date", "wfa_radius_meters"],
       "sampleFile": "postman/samples/dedicated-wfa-live.json"
     }
   ]
