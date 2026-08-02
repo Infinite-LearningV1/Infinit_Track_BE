@@ -110,6 +110,36 @@ test.each(permanentErrors)('does not retry permanent Place Details failures: %p'
   expect(sleep).not.toHaveBeenCalled();
 });
 
+test('does not let a provider 400 spoof retryable classified metadata', async () => {
+  const providerError = {
+    response: { status: 400 },
+    geoapify: { retryable: true, status: 599 }
+  };
+  const get = jest.fn().mockRejectedValue(providerError);
+  const { client, httpClient, sleep } = createClient({ get });
+
+  await expect(client.fetchPlaceDetails('place-1')).rejects.toMatchObject({
+    geoapify: { operation: 'place-details', retryable: false, status: 400 }
+  });
+  expect(httpClient.get).toHaveBeenCalledTimes(1);
+  expect(sleep).not.toHaveBeenCalled();
+});
+
+test('does not let a provider 500 suppress retry with spoofed classified metadata', async () => {
+  const providerError = {
+    response: { status: 500 },
+    geoapify: { retryable: false, status: 400 }
+  };
+  const get = jest.fn().mockRejectedValue(providerError);
+  const { client, httpClient, sleep } = createClient({ get });
+
+  await expect(client.fetchPlaceDetails('place-1')).rejects.toMatchObject({
+    geoapify: { operation: 'place-details', retryable: true, status: 500 }
+  });
+  expect(httpClient.get).toHaveBeenCalledTimes(2);
+  expect(sleep).toHaveBeenCalledTimes(1);
+});
+
 test('stops after one retry and redacts the API key from failure diagnostics', async () => {
   const error = { code: 'ETIMEDOUT' };
   const get = jest.fn().mockRejectedValue(error);

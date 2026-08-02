@@ -40,19 +40,18 @@ class GeoapifyRequestError extends Error {
 }
 
 const classifyGeoapifyError = (error, operation) => {
-  const classifiedRetryable = error?.geoapify?.retryable;
-  const classifiedStatus = error?.geoapify?.status;
-  const responseStatus = error?.response?.status;
+  if (error instanceof GeoapifyRequestError) {
+    return new GeoapifyRequestError({
+      operation,
+      retryable: error.geoapify.retryable,
+      status: error.geoapify.status
+    });
+  }
 
   return new GeoapifyRequestError({
     operation,
-    retryable:
-      typeof classifiedRetryable === 'boolean' ? classifiedRetryable : isTransientGeoapifyError(error),
-    status: Number.isInteger(classifiedStatus)
-      ? classifiedStatus
-      : Number.isInteger(responseStatus)
-        ? responseStatus
-        : null
+    retryable: isTransientGeoapifyError(error),
+    status: Number.isInteger(error?.response?.status) ? error.response.status : null
   });
 };
 
