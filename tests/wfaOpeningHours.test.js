@@ -94,3 +94,38 @@ test('evaluates a WIB spring-forward-gap window in a process initialized with a 
 
   expect(output.trim()).toBe('1');
 });
+
+test.each([
+  ['Aug 03 07:00-18:00', 1],
+  ['Mo-Su 07:00-18:00; Aug 03 off', 0]
+])('evaluates date-specific scheduled-WIB rules for %p', (expression, expected) => {
+  expect(
+    evaluateOpeningHoursCoverage({
+      expression,
+      scheduleDate: '2026-08-03',
+      startTime: '08:00:00',
+      endTime: '17:00:00'
+    })
+  ).toBe(expected);
+});
+
+test('evaluates a date-specific rule through a DST-host spring gap', () => {
+  const evaluatorUrl = new URL('../src/utils/wfaOpeningHours.js', import.meta.url).href;
+  const script = `
+    import { evaluateOpeningHoursCoverage } from ${JSON.stringify(evaluatorUrl)};
+    console.log(evaluateOpeningHoursCoverage({
+      expression: 'Mar 08 00:00-24:00',
+      scheduleDate: '2026-03-08',
+      startTime: '02:30:00',
+      endTime: '03:30:00'
+    }));
+  `;
+
+  const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: { ...process.env, TZ: 'America/New_York' }
+  });
+
+  expect(output.trim()).toBe('1');
+});
