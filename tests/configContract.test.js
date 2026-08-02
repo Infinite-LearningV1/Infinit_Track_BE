@@ -790,6 +790,17 @@ describe('backend runtime config contract', () => {
     expect(deployReadme).not.toMatch(/\bGEOAPIFY_KEY\b/);
   });
 
+  test('keeps the compatibility Geoapify key fallback scoped to the injectable WFA client', () => {
+    const geoapifyClient = fs.readFileSync(
+      path.resolve(repoRoot, 'src/services/geoapifyWfa.client.js'),
+      'utf8'
+    );
+
+    expect(geoapifyClient).toContain('process.env.GEOAPIFY_API_KEY');
+    expect(geoapifyClient).toContain('process.env.GEOAPIFY_KEY');
+    expect(geoapifyClient).toContain('Using legacy GEOAPIFY_KEY fallback for WFA Geoapify client');
+  });
+
   test('keeps legacy deployment references non-authoritative and environment-specific', () => {
     const stagingSpec = readDoDeploySpec('app.yaml');
     const productionSpec = readDoDeploySpec('app-production.yaml');
