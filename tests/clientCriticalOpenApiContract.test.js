@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import Ajv from 'ajv';
 import { load as loadStrictYaml } from 'js-yaml';
 
 function schemaAt(operation, statusCode = '200') {
@@ -408,7 +409,6 @@ describe('client-critical OpenAPI contract', () => {
     ]);
     expect(expressValidatorError.properties.errors.items.properties).toMatchObject({
       type: { type: 'string', enum: ['field'] },
-      value: { type: 'string', nullable: true, example: '2026-02-30' },
       msg: {
         type: 'string',
         example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
@@ -417,6 +417,11 @@ describe('client-critical OpenAPI contract', () => {
       location: { type: 'string', enum: ['body'] },
       code: { type: 'string', nullable: true, example: 'INVALID_SCHEDULE_DATE' }
     });
+    expect(expressValidatorError.properties.errors.items.properties.value).toMatchObject({
+      description: 'Any original JSON request value preserved by Express Validator; omitted when the request-body field is missing.',
+      example: '2026-02-30'
+    });
+    expect(expressValidatorError.properties.errors.items.properties.value).not.toHaveProperty('type');
     expect(eligibilityError.required).toEqual(['success', 'code', 'message', 'errors']);
     expect(eligibilityError.properties.errors.items.required).toEqual(['field', 'code', 'message']);
     expect(requestReasonError.required).toEqual(['success', 'code', 'message']);
@@ -1084,11 +1089,11 @@ describe('client-critical OpenAPI contract', () => {
         rank: { type: 'integer', nullable: true }
     });
     expect(candidateSchema.properties.facilities.properties).toMatchObject({
-        internet_access: { type: 'integer', enum: [0, 1], nullable: true },
-        air_conditioning: { type: 'integer', enum: [0, 1], nullable: true },
-        toilets: { type: 'integer', enum: [0, 1], nullable: true },
-        opening_hours: { type: 'integer', enum: [0, 1], nullable: true },
-        wheelchair_accessibility: { type: 'integer', enum: [0, 1], nullable: true }
+        internet_access: { type: 'integer', enum: [0, 1, null], nullable: true },
+        air_conditioning: { type: 'integer', enum: [0, 1, null], nullable: true },
+        toilets: { type: 'integer', enum: [0, 1, null], nullable: true },
+        opening_hours: { type: 'integer', enum: [0, 1, null], nullable: true },
+        wheelchair_accessibility: { type: 'integer', enum: [0, 1, null], nullable: true }
     });
     expect(candidateSchema.required).toEqual(
       expect.arrayContaining(['place_id', 'name', 'address', 'latitude', 'longitude', 'facilities'])
@@ -1168,6 +1173,39 @@ describe('client-critical OpenAPI contract', () => {
       });
     }
     expect(schemaAt(recommendationOperation, '409').properties.code.example).toBe('DUPLICATE_BOOKING');
+  });
+
+  test('validates canonical WFA facility-evidence examples against their OAS schemas', () => {
+    const recommendationOperation = openapi.paths['/api/wfa/recommendations'].get;
+    const analysisOperation = openapi.paths['/api/analysis/fuzzy-ahp/wfa'].get;
+    const candidateSchema = componentSchema(openapi, 'WFARecommendation');
+    const validateCandidate = new Ajv({ allErrors: true, nullable: true, format: false })
+      .compile(candidateSchema);
+
+    for (const [operation, candidateKey] of [
+      [recommendationOperation, 'recommendations'],
+      [analysisOperation, 'candidates']
+    ]) {
+      const examples = operation.responses['200'].content['application/json'].examples;
+      for (const exampleName of ['ranked', 'insufficient_facility_data', 'facility_enrichment_failed']) {
+        const candidate = examples[exampleName].value.data[candidateKey][0];
+        expect(validateCandidate(candidate)).toBe(true);
+      }
+    }
+
+    const examples = recommendationOperation.responses['200'].content['application/json'].examples;
+
+    expect(examples.ranked.value.data.recommendations[0].facilities).toEqual({
+      internet_access: 1,
+      air_conditioning: 1,
+      toilets: 1,
+      opening_hours: 1,
+      wheelchair_accessibility: 0
+    });
+    expect(examples.insufficient_facility_data.value.data.recommendations[0].facilities)
+      .toEqual(expect.objectContaining({ air_conditioning: null }));
+    expect(examples.facility_enrichment_failed.value.data.recommendations[0].facilities)
+      .toEqual(expect.objectContaining({ internet_access: null }));
   });
 
   test('documents exact 410 migration bodies for retired WFA analysis variants', () => {

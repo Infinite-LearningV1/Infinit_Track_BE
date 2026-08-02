@@ -1,5 +1,9 @@
 import { jest } from '@jest/globals';
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import Ajv from 'ajv';
+import { load as loadStrictYaml } from 'js-yaml';
 import request from 'supertest';
 
 import {
@@ -67,6 +71,20 @@ const validBookingPayload = {
   request_reason_id: 1,
   latitude: -6.2,
   longitude: 106.8
+};
+
+const validateBookingValidationEnvelope = (body) => {
+  const openapi = loadStrictYaml(
+    fs.readFileSync(path.resolve(process.cwd(), 'docs/openapi.yaml'), 'utf8')
+  );
+  const schema = openapi.paths['/api/bookings'].post.responses['400']
+    .content['application/json'].schema;
+  const validateSchema = new Ajv({ allErrors: true, nullable: true }).compile({
+    components: openapi.components,
+    ...schema
+  });
+
+  expect(validateSchema(body)).toBe(true);
 };
 
 describe('bookings route contract', () => {
@@ -140,7 +158,30 @@ describe('bookings validator contract', () => {
         code: 'INVALID_SCHEDULE_DATE'
       }]
     });
+    validateBookingValidationEnvelope(response.body);
   });
+
+  test.each([
+    ['latitude', 0, 'E_VALIDATION', 'Latitude tidak boleh 0'],
+    ['request_reason_id', 0, 'WFA_REQUEST_REASON_REQUIRED', 'request_reason_id wajib diisi'],
+    ['request_reason_id', null, 'WFA_REQUEST_REASON_REQUIRED', 'request_reason_id wajib diisi']
+  ])(
+    'preserves original %s input in the documented booking validation envelope',
+    async (field, value, code, message) => {
+      const response = await request(buildValidatorApp())
+        .post('/bookings')
+        .send({ ...validBookingPayload, [field]: value })
+        .expect(400);
+
+      expect(response.body).toMatchObject({
+        success: false,
+        code,
+        message,
+        errors: [{ type: 'field', value, msg: message, path: field, location: 'body' }]
+      });
+      validateBookingValidationEnvelope(response.body);
+    }
+  );
 
   test('missing request_reason_id returns WFA_REQUEST_REASON_REQUIRED', async () => {
     const app = buildValidatorApp();

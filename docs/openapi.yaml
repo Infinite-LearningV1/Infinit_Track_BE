@@ -7518,9 +7518,7 @@ components:
                 type: string
                 enum: [field]
               value:
-                type: string
-                nullable: true
-                description: Omitted when the request-body field is missing.
+                description: Any original JSON request value preserved by Express Validator; omitted when the request-body field is missing.
                 example: '2026-02-30'
               msg:
                 type: string
@@ -7830,23 +7828,23 @@ components:
           properties:
             internet_access:
               type: integer
-              enum: [0, 1]
+              enum: [0, 1, null]
               nullable: true
             air_conditioning:
               type: integer
-              enum: [0, 1]
+              enum: [0, 1, null]
               nullable: true
             toilets:
               type: integer
-              enum: [0, 1]
+              enum: [0, 1, null]
               nullable: true
             opening_hours:
               type: integer
-              enum: [0, 1]
+              enum: [0, 1, null]
               nullable: true
             wheelchair_accessibility:
               type: integer
-              enum: [0, 1]
+              enum: [0, 1, null]
               nullable: true
         final_score:
           type: number
