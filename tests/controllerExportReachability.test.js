@@ -36,8 +36,7 @@ const KNOWN_UNREACHABLE = [
   'auth.controller.js::register',
   'booking.controller.js::getMyBookings',
   'user.controller.js::getProfile',
-  'user.controller.js::updateProfile',
-  'wfa.controller.js::debugGeoapifyApi'
+  'user.controller.js::updateProfile'
 ];
 
 const collectJsFiles = (dir) => {

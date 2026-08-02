@@ -130,6 +130,15 @@ describe('FAHP Dynamic Test Endpoint', () => {
     });
   });
 
+  it('POST /api/wfa/test-ahp rejects the retired amenity_score input', async () => {
+    const res = await request(app)
+      .post('/api/wfa/test-ahp')
+      .send({ place_data: { properties: { amenity_score: 90, distance: 200 } } });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
+  });
+
   it('POST /api/discipline/test-ahp returns compact evidence payload', async () => {
     const body = {
       scenario: 'Discipline - Baik',
