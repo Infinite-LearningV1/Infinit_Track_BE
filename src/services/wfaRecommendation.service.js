@@ -79,6 +79,21 @@ const candidateCoordinates = (feature) => {
   return isValidCoordinate(latitude, longitude) ? { latitude, longitude } : null;
 };
 
+const candidateFallbackKey = (feature, { latitude, longitude }) => {
+  const placeName =
+    typeof feature.properties?.name === 'string' && feature.properties.name
+      ? feature.properties.name.trim()
+      : 'unknown';
+  const normalizedName = placeName
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^\w\s]/g, '')
+    .trim();
+  const coordinateKey = `${Math.round(latitude * 10000)},${Math.round(longitude * 10000)}`;
+
+  return `${normalizedName}|${coordinateKey}`;
+};
+
 const candidateName = (feature) => {
   const name = feature.properties?.name || feature.properties?.address_line1;
   return typeof name === 'string' && name.trim() ? name.trim() : 'Tempat Tidak Diketahui';
@@ -151,12 +166,16 @@ export const createWfaRecommendationService = (dependencies = {}) => {
 
   const prepareCandidates = ({ features, latitude, longitude, wfaWeights }) => {
     const seenPlaceIds = new Set();
+    const seenFallbackKeys = new Set();
     const denominator = wfaWeights.location_type + wfaWeights.distance_factor;
 
     return features.flatMap((feature) => {
       const placeId = candidateIdentity(feature);
       const coordinates = candidateCoordinates(feature);
-      if (!placeId || !coordinates || seenPlaceIds.has(placeId)) return [];
+      if (!placeId || !coordinates) return [];
+
+      const fallbackKey = candidateFallbackKey(feature, coordinates);
+      if (seenPlaceIds.has(placeId) || seenFallbackKeys.has(fallbackKey)) return [];
 
       const distanceMeters = resolved.calculateDistance(
         latitude,
@@ -169,6 +188,7 @@ export const createWfaRecommendationService = (dependencies = {}) => {
       }
 
       seenPlaceIds.add(placeId);
+      seenFallbackKeys.add(fallbackKey);
       const locationTypeScore = resolved.fuzzyEngine.getLocationTypeScore(feature);
       const distanceScore = resolved.fuzzyEngine.getDistanceFactorScore(distanceMeters);
       const preliminaryScore =

@@ -225,6 +225,51 @@ test('rejects invalid candidates, requires a stable place ID, and deduplicates b
   expect(result.candidates.map(({ place_id: id }) => id)).toEqual(['valid-a', 'valid-b']);
 });
 
+test('deduplicates different place IDs by normalized name and rounded coordinates only', async () => {
+  const harness = createHarness({
+    features: [
+      place({
+        id: 'retained',
+        name: '  Cafe   Baru!  ',
+        latitude: 2.000041,
+        longitude: 1.000041
+      }),
+      place({
+        id: 'duplicate-provider-id',
+        name: 'cafe baru',
+        latitude: 2.000049,
+        longitude: 1.000049
+      }),
+      place({
+        id: 'nearby-distinct-coordinate',
+        name: 'Cafe Baru',
+        latitude: 2.000051,
+        longitude: 1.000051
+      }),
+      place({
+        id: 'distinct-name',
+        name: 'Cafe Lama',
+        latitude: 2.000041,
+        longitude: 1.000041
+      })
+    ]
+  });
+
+  const result = await harness.service.analyze({ latitude: 0, longitude: 0, scheduleDate });
+  const enrichedIds = harness.geoapifyClient.fetchPlaceDetails.mock.calls.map(([id]) => id);
+
+  expect(enrichedIds).toHaveLength(3);
+  expect(enrichedIds).toContain('retained');
+  expect(enrichedIds).not.toContain('duplicate-provider-id');
+  expect(enrichedIds).toContain('nearby-distinct-coordinate');
+  expect(enrichedIds).toContain('distinct-name');
+  expect(result.candidates.map(({ place_id: id }) => id)).toEqual([
+    'distinct-name',
+    'retained',
+    'nearby-distinct-coordinate'
+  ]);
+});
+
 test('enriches candidate details with concurrency exactly five', async () => {
   const deferred = [];
   let active = 0;
