@@ -112,28 +112,48 @@ describe('analysis WFA fuzzy ahp route validation', () => {
   });
 
   it('returns 400 when lat is missing', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lon=119.872&radius_meters=100');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lon=119.872&schedule_date=2099-08-03&radius_meters=100'
+    );
   });
 
   it('returns 400 when lon is missing', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&radius_meters=100');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&schedule_date=2099-08-03&radius_meters=100'
+    );
+  });
+
+  it('returns 400 when schedule_date is missing', async () => {
+    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872');
+  });
+
+  it('returns 400 when schedule_date is not a strict future date', async () => {
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-02-30'
+    );
   });
 
   it('returns 400 when radius_meters is below minimum', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=99');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=99'
+    );
   });
 
   it('returns 400 when radius_meters is above maximum', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=50001');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=50001'
+    );
   });
 
   it('returns 400 when radius_meters is not an integer', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100.5');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100.5'
+    );
   });
 
   it('returns 401 when caller is unauthenticated', async () => {
     const res = await request(app).get(
-      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100'
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100'
     );
 
     expect(res.status).toBe(401);
@@ -144,7 +164,9 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
   it('returns 403 for non-admin callers', async () => {
     const res = await request(app)
-      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100')
+      .get(
+        '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100'
+      )
       .set('Authorization', 'Bearer test-token')
       .set('x-test-role', 'User');
 
@@ -156,7 +178,9 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
   it('returns 200 for Management callers with valid WFA parameters', async () => {
     const res = await request(app)
-      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100')
+      .get(
+        '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100'
+      )
       .set('Authorization', 'Bearer test-token')
       .set('x-test-role', 'Management');
 
@@ -176,7 +200,7 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
   it('defaults radius_meters to 5000 when omitted', async () => {
     const res = await request(app)
-      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872')
+      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03')
       .set('Authorization', 'Bearer test-token')
       .set('x-test-role', 'Management');
 

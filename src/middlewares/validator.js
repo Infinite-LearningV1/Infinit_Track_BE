@@ -2,6 +2,7 @@ import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { assertFutureWibScheduleDate } from '../services/wfaEligibility.service.js';
 import { validateHistoricalDateWindowQuery } from '../utils/historicalDateWindow.js';
 import { assertSafeUrl } from '../utils/url.js';
 
@@ -51,6 +52,16 @@ const parseStrictDateOnly = (value) => {
 
   return parsed;
 };
+
+const strictFutureScheduleDateQuery = (field) =>
+  query(field)
+    .exists()
+    .withMessage(`${field} is required`)
+    .bail()
+    .custom((value) => {
+      assertFutureWibScheduleDate(value);
+      return true;
+    });
 
 const validateTodayLocationsQueryKeys = (_value, { req }) => {
   const unsupportedQueryKey = Object.keys(req.query ?? {}).find((key) => key !== 'limit');
@@ -668,10 +679,27 @@ export const wfaFahpValidation = [
     .bail()
     .isFloat({ min: -180, max: 180 })
     .withMessage('lon must be a valid longitude'),
+  strictFutureScheduleDateQuery('schedule_date'),
   query('radius_meters')
     .default(5000)
     .isInt({ min: 100, max: 50000 })
     .withMessage('radius_meters must be an integer between 100 and 50000')
+];
+
+export const wfaRecommendationValidation = [
+  query('lat')
+    .exists()
+    .withMessage('lat is required')
+    .bail()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('lat must be a valid latitude'),
+  query('lng')
+    .exists()
+    .withMessage('lng is required')
+    .bail()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('lng must be a valid longitude'),
+  strictFutureScheduleDateQuery('schedule_date')
 ];
 
 export const fuzzyAhpDashboardRecapValidation = [
