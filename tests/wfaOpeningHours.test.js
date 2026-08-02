@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+
 const previousTimezone = process.env.TZ;
 process.env.TZ = 'Asia/Jakarta';
 
@@ -38,4 +40,36 @@ test('evaluates an overnight configured window against the Monday opening interv
       endTime: '01:00:00'
     })
   ).toBe(1);
+});
+
+test('keeps parser-unknown opening intervals unknown instead of open', () => {
+  expect(
+    evaluateOpeningHoursCoverage({
+      expression: 'Mo 08:00-17:00 unknown',
+      scheduleDate: '2026-08-03',
+      startTime: '08:00:00',
+      endTime: '17:00:00'
+    })
+  ).toBeNull();
+});
+
+test('evaluates the WIB Sunday window correctly in a process initialized with a DST timezone', () => {
+  const evaluatorUrl = new URL('../src/utils/wfaOpeningHours.js', import.meta.url).href;
+  const script = `
+    import { evaluateOpeningHoursCoverage } from ${JSON.stringify(evaluatorUrl)};
+    console.log(evaluateOpeningHoursCoverage({
+      expression: 'Su 08:00-17:00',
+      scheduleDate: '2026-11-01',
+      startTime: '08:00:00',
+      endTime: '17:00:00'
+    }));
+  `;
+
+  const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: { ...process.env, TZ: 'America/New_York' }
+  });
+
+  expect(output.trim()).toBe('1');
 });

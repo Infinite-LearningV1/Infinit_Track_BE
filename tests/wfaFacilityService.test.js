@@ -146,3 +146,19 @@ test('does not invent facility availability from unapproved details fields or ob
     facilityCr: 0
   });
 });
+
+test('keeps parser-unknown opening hours as unknown facility evidence', () => {
+  const result = scoreFacilityEvidence({
+    detailsProperties: { opening_hours: 'Mo 08:00-17:00 unknown' },
+    scheduleDate: '2026-08-03',
+    checkinWindow: { startTime: '08:00:00', endTime: '17:00:00' },
+    weights: equalWeights
+  });
+
+  expect(result).toMatchObject({
+    facilities: { opening_hours: null },
+    knownFields: 0,
+    facilityConfidence: 0,
+    facilityScore: null
+  });
+});

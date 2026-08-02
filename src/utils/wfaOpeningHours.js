@@ -1,11 +1,31 @@
 import OpeningHours from 'opening_hours';
 
-const WIB_OFFSET = '+07:00';
-const DAY_MS = 24 * 60 * 60 * 1000;
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
 
-const buildInstant = (date, time) => new Date(`${date}T${time}${WIB_OFFSET}`);
+const buildWibWallClock = (date, time) => {
+  const dateMatch = typeof date === 'string' ? date.match(DATE_PATTERN) : null;
+  const timeMatch = typeof time === 'string' ? time.match(TIME_PATTERN) : null;
 
-const toWibWallClock = (date) => new Date(date.getTime() + (date.getTimezoneOffset() + 7 * 60) * 60 * 1000);
+  if (!dateMatch || !timeMatch) return new Date(Number.NaN);
+
+  const [year, month, day] = dateMatch.slice(1).map(Number);
+  const [hours, minutes, seconds] = timeMatch.slice(1).map(Number);
+  const result = new Date(year, month - 1, day, hours, minutes, seconds);
+
+  if (
+    result.getFullYear() !== year ||
+    result.getMonth() !== month - 1 ||
+    result.getDate() !== day ||
+    result.getHours() !== hours ||
+    result.getMinutes() !== minutes ||
+    result.getSeconds() !== seconds
+  ) {
+    return new Date(Number.NaN);
+  }
+
+  return result;
+};
 
 const mergeContiguousIntervals = (intervals) => {
   return intervals
@@ -28,18 +48,21 @@ export const evaluateOpeningHoursCoverage = ({ expression, scheduleDate, startTi
   if (typeof expression !== 'string' || expression.trim() === '') return null;
 
   try {
-    const start = buildInstant(scheduleDate, startTime);
-    let end = buildInstant(scheduleDate, endTime);
+    const start = buildWibWallClock(scheduleDate, startTime);
+    const end = buildWibWallClock(scheduleDate, endTime);
 
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-    if (end <= start) end = new Date(end.getTime() + DAY_MS);
+    if (end <= start) end.setDate(end.getDate() + 1);
 
-    const parserStart = toWibWallClock(start);
-    const parserEnd = toWibWallClock(end);
-    const intervals = new OpeningHours(expression).getOpenIntervals(parserStart, parserEnd);
-    const mergedIntervals = mergeContiguousIntervals(intervals);
+    const intervals = new OpeningHours(expression).getOpenIntervals(start, end);
+    const hasUnknownCoverage = intervals.some(
+      ([from, to, unknown]) => unknown === true && from < end && to > start
+    );
+    if (hasUnknownCoverage) return null;
 
-    return mergedIntervals.some(([from, to]) => from <= parserStart && to >= parserEnd) ? 1 : 0;
+    const mergedIntervals = mergeContiguousIntervals(intervals.filter(([, , unknown]) => unknown !== true));
+
+    return mergedIntervals.some(([from, to]) => from <= start && to >= end) ? 1 : 0;
   } catch (_error) {
     return null;
   }
