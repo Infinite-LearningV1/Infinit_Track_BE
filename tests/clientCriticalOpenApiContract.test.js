@@ -14,6 +14,35 @@ function componentSchema(openapi, name) {
   return openapi.components.schemas[name];
 }
 
+function resolveLocalRef(openapi, ref) {
+  return ref
+    .slice(2)
+    .split('/')
+    .reduce((node, token) => node?.[token.replace(/~1/g, '/').replace(/~0/g, '~')], openapi);
+}
+
+function responseAt(openapi, operation, statusCode) {
+  const response = operation.responses[statusCode];
+  return response.$ref ? resolveLocalRef(openapi, response.$ref) : response;
+}
+
+function responseSchemaAt(openapi, operation, statusCode) {
+  const schema = responseAt(openapi, operation, statusCode).content['application/json'].schema;
+  return schema.$ref ? resolveLocalRef(openapi, schema.$ref) : schema;
+}
+
+function collectLocalRefs(node, refs = []) {
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectLocalRefs(item, refs));
+    return refs;
+  }
+  if (!node || typeof node !== 'object') return refs;
+
+  if (typeof node.$ref === 'string' && node.$ref.startsWith('#/')) refs.push(node.$ref);
+  Object.values(node).forEach((value) => collectLocalRefs(value, refs));
+  return refs;
+}
+
 describe('client-critical OpenAPI contract', () => {
   const openapi = yaml.parse(
     fs.readFileSync(path.resolve(process.cwd(), 'docs/openapi.yaml'), 'utf8')
@@ -340,9 +369,38 @@ describe('client-critical OpenAPI contract', () => {
       code: { type: 'string', example: 'WFA_SCORING_UNAVAILABLE' },
       message: { type: 'string' }
     });
-    expect(bookingOperation.responses['500']).toEqual({
-      $ref: '#/components/responses/WfaConfigUnavailableError'
+    expect(responseSchemaAt(openapi, bookingOperation, '500').properties).toMatchObject({
+      success: { type: 'boolean', example: false },
+      code: { type: 'string', example: 'WFA_CONFIG_UNAVAILABLE' },
+      message: { type: 'string' }
     });
+    expect(responseAt(openapi, bookingOperation, '500').content['application/json'].example).toEqual({
+      success: false,
+      code: 'WFA_CONFIG_UNAVAILABLE',
+      message: 'Konfigurasi WFA belum tersedia.'
+    });
+    expect(dataSchema.required).toEqual(
+      expect.arrayContaining(['suitability_score', 'suitability_label', 'suitability_status'])
+    );
+    expect(bookingOperation.responses['201'].content['application/json'].examples.insufficient_facility_data)
+      .toMatchObject({
+        value: {
+          success: true,
+          data: {
+            suitability_score: null,
+            suitability_label: null,
+            suitability_status: 'insufficient_facility_data'
+          }
+        }
+      });
+  });
+
+  test('resolves every local OpenAPI reference', () => {
+    const unresolved = [...new Set(collectLocalRefs(openapi))].filter(
+      (ref) => resolveLocalRef(openapi, ref) === undefined
+    );
+
+    expect(unresolved).toEqual([]);
   });
 
   test('documents dashboard analytics as cockpit aggregate only in the public OpenAPI contract', () => {
@@ -786,6 +844,7 @@ describe('client-critical OpenAPI contract', () => {
     );
     const analysisParams = Object.fromEntries(analysisOperation.parameters.map((param) => [param.name, param]));
     const candidateSchema = componentSchema(openapi, 'WFARecommendation');
+    const analysisData = schemaAt(analysisOperation).properties.data;
 
     expect(schemaAt(recommendationOperation).properties.data.properties.recommendations.items).toEqual({
       $ref: '#/components/schemas/WFARecommendation'
@@ -793,6 +852,13 @@ describe('client-critical OpenAPI contract', () => {
     expect(schemaAt(analysisOperation).properties.data.properties.candidates.items).toEqual({
       $ref: '#/components/schemas/WFARecommendation'
     });
+    expect(analysisData.required).toEqual(['candidates', 'searchCriteria', 'methodology']);
+    expect(analysisData.properties).toMatchObject({
+      searchCriteria: { type: 'object' },
+      methodology: { type: 'object' }
+    });
+    expect(analysisData.properties).not.toHaveProperty('search_criteria');
+    expect(analysisData.properties).not.toHaveProperty('fahp_methodology');
 
     expect(Object.keys(recommendationParams)).toEqual(['lat', 'lng', 'schedule_date']);
     expect(Object.keys(analysisParams)).toEqual(['lat', 'lon', 'schedule_date', 'radius_meters']);
@@ -830,7 +896,37 @@ describe('client-critical OpenAPI contract', () => {
         opening_hours: { type: 'integer', enum: [0, 1], nullable: true },
         wheelchair_accessibility: { type: 'integer', enum: [0, 1], nullable: true }
     });
+    expect(candidateSchema.required).toEqual(
+      expect.arrayContaining(['place_id', 'name', 'address', 'latitude', 'longitude', 'facilities'])
+    );
+    expect(candidateSchema.properties.facilities.required).toEqual([
+      'internet_access',
+      'air_conditioning',
+      'toilets',
+      'opening_hours',
+      'wheelchair_accessibility'
+    ]);
     expect(candidateSchema.properties).not.toHaveProperty('amenity_score');
+
+    for (const operation of [recommendationOperation, analysisOperation]) {
+      const data = schemaAt(operation).properties.data;
+      const searchCriteria = data.properties.search_criteria ?? data.properties.searchCriteria;
+      const methodology = data.properties.fahp_methodology ?? data.properties.methodology;
+
+      expect(searchCriteria.properties.categories_searched.example).toEqual([
+        'catering',
+        'accommodation',
+        'office',
+        'education'
+      ]);
+      expect(methodology.properties.criteria_weights.properties).toMatchObject({
+        location_type: { type: 'number' },
+        distance_factor: { type: 'number' },
+        facility_score: { type: 'number' },
+        consistency_ratio: { type: 'number', example: 0.0576 },
+        weighting_method: { type: 'string', example: 'row_geometric_mean_fallback' }
+      });
+    }
 
     for (const operation of [recommendationOperation, analysisOperation]) {
       const failureSchema = schemaAt(operation, '503');
@@ -842,6 +938,16 @@ describe('client-critical OpenAPI contract', () => {
     }
     expect(schemaAt(recommendationOperation, '503').properties.code.example).toBe('WFA_PROVIDER_UNAVAILABLE');
     expect(schemaAt(analysisOperation, '503').properties.code.example).toBe('WFA_PROVIDER_UNAVAILABLE');
+    for (const operation of [recommendationOperation, analysisOperation]) {
+      expect(responseSchemaAt(openapi, operation, '500').properties.code.example)
+        .toBe('WFA_CONFIG_UNAVAILABLE');
+      expect(responseAt(openapi, operation, '500').content['application/json'].example).toEqual({
+        success: false,
+        code: 'WFA_CONFIG_UNAVAILABLE',
+        message: 'Konfigurasi jam check-in WFA belum tersedia.'
+      });
+    }
+    expect(schemaAt(recommendationOperation, '409').properties.code.example).toBe('DUPLICATE_BOOKING');
   });
 
   test('documents exact 410 migration bodies for retired WFA analysis variants', () => {

@@ -819,13 +819,13 @@ paths:
                     example: true
                   data:
                     type: object
-                    required: [candidates, search_criteria, fahp_methodology]
+                    required: [candidates, searchCriteria, methodology]
                     properties:
                       candidates:
                         type: array
                         items:
                           $ref: '#/components/schemas/WFARecommendation'
-                      search_criteria:
+                      searchCriteria:
                         type: object
                         properties:
                           center_latitude:
@@ -841,11 +841,12 @@ paths:
                             type: array
                             items:
                               type: string
+                            example: [catering, accommodation, office, education]
                           total_candidates_found:
                             type: integer
                           recommendations_returned:
                             type: integer
-                      fahp_methodology:
+                      methodology:
                         type: object
                         properties:
                           approach:
@@ -860,6 +861,12 @@ paths:
                                 type: number
                               facility_score:
                                 type: number
+                              consistency_ratio:
+                                type: number
+                                example: 0.0576
+                              weighting_method:
+                                type: string
+                                example: row_geometric_mean_fallback
                   message:
                     type: string
                     example: WFA Fuzzy AHP analysis retrieved successfully
@@ -884,8 +891,8 @@ paths:
                           final_score: 78.4
                           final_label: Tinggi
                           rank: 1
-                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering.cafe], total_candidates_found: 1, recommendations_returned: 1 }
-                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.5, distance_factor: 0.3, facility_score: 0.2 } }
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
                     message: WFA Fuzzy AHP analysis retrieved successfully
                 insufficient_facility_data:
                   summary: Discovery succeeded but facility evidence is insufficient to rank.
@@ -907,8 +914,8 @@ paths:
                           final_score: null
                           final_label: null
                           rank: null
-                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering.cafe], total_candidates_found: 1, recommendations_returned: 1 }
-                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.5, distance_factor: 0.3, facility_score: 0.2 } }
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
                     message: WFA Fuzzy AHP analysis retrieved successfully
                 facility_enrichment_failed:
                   summary: Candidate details could not be enriched; no score is fabricated.
@@ -930,8 +937,8 @@ paths:
                           final_score: null
                           final_label: null
                           rank: null
-                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering.cafe], total_candidates_found: 1, recommendations_returned: 1 }
-                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.5, distance_factor: 0.3, facility_score: 0.2 } }
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
                     message: WFA Fuzzy AHP analysis retrieved successfully
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -960,6 +967,17 @@ paths:
                 success: false
                 code: WFA_PROVIDER_UNAVAILABLE
                 message: 'Layanan Geoapify tidak tersedia.'
+
+        '500':
+          description: WFA check-in-window configuration is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+              example:
+                success: false
+                code: WFA_CONFIG_UNAVAILABLE
+                message: 'Konfigurasi jam check-in WFA belum tersedia.'
 
   /api/analysis/fuzzy-ahp/smart-ac:
     get:
@@ -3395,6 +3413,8 @@ paths:
                       - request_reason
                       - location
                       - radius_snapshot
+                      - suitability_score
+                      - suitability_label
                       - suitability_status
                       - created_at
                     properties:
@@ -3426,6 +3446,23 @@ paths:
                       created_at:
                         type: string
                         format: date-time
+              examples:
+                insufficient_facility_data:
+                  summary: Booking is created when discovery succeeds but facility evidence cannot support ranking.
+                  value:
+                    success: true
+                    message: 'Booking WFA berhasil dibuat.'
+                    data:
+                      booking_id: 123
+                      schedule_date: '2099-08-10'
+                      status: pending
+                      request_reason: { id: 2, label: 'Client meeting', is_other: false, other_text: null }
+                      location: { location_id: 45, latitude: -0.8917, longitude: 119.8707, radius: 100, description: 'WFA Location' }
+                      radius_snapshot: 100
+                      suitability_score: null
+                      suitability_label: null
+                      suitability_status: insufficient_facility_data
+                      created_at: '2026-08-02T00:00:00.000Z'
         '400':
           description: Booking validation failed, including INVALID_SCHEDULE_DATE or an inactive/missing WFA request reason.
           content:
@@ -3825,6 +3862,7 @@ paths:
                             type: array
                             items:
                               type: string
+                            example: [catering, accommodation, office, education]
                           total_candidates_found:
                             type: integer
                           recommendations_returned:
@@ -3844,10 +3882,49 @@ paths:
                                 type: number
                               facility_score:
                                 type: number
+                              consistency_ratio:
+                                type: number
+                                example: 0.0576
+                              weighting_method:
+                                type: string
+                                example: row_geometric_mean_fallback
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The authenticated user already has a pending or approved booking on schedule_date.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message, details]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: DUPLICATE_BOOKING
+                  message:
+                    type: string
+                    example: 'Anda sudah memiliki booking pada tanggal tersebut.'
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                          example: schedule_date
+                        code:
+                          type: string
+                          example: DUPLICATE_BOOKING
+              example:
+                success: false
+                code: DUPLICATE_BOOKING
+                message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+                details: [{ field: schedule_date, code: DUPLICATE_BOOKING }]
         '503':
           description: Geoapify provider discovery is unavailable; no result is fabricated.
           content:
@@ -3869,6 +3946,16 @@ paths:
                 success: false
                 code: WFA_PROVIDER_UNAVAILABLE
                 message: 'Layanan Geoapify tidak tersedia.'
+        '500':
+          description: WFA check-in-window configuration is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+              example:
+                success: false
+                code: WFA_CONFIG_UNAVAILABLE
+                message: 'Konfigurasi jam check-in WFA belum tersedia.'
 
   /api/wfa/ahp-config:
     get:
@@ -7285,7 +7372,7 @@ components:
           example: WFA_CONFIG_UNAVAILABLE
         message:
           type: string
-          example: 'WFA configuration is unavailable'
+          example: 'Konfigurasi WFA belum tersedia.'
 
     Booking:
       type: object
@@ -7499,7 +7586,7 @@ components:
     WFARecommendation:
       type: object
       description: Canonical WFA candidate. Scores are null whenever facility evidence is insufficient or enrichment fails; no fallback score is generated.
-      required: [place_id, status, distance_meters, location_type, facility_score, facility_confidence, facilities, final_score, final_label, rank]
+      required: [place_id, name, address, latitude, longitude, status, distance_meters, location_type, facility_score, facility_confidence, facilities, final_score, final_label, rank]
       properties:
         place_id:
           type: string
@@ -7533,6 +7620,7 @@ components:
           nullable: true
         facilities:
           type: object
+          required: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]
           properties:
             internet_access:
               type: integer
@@ -7587,6 +7675,17 @@ components:
           example: false
 
   responses:
+    WfaConfigUnavailableError:
+      description: WFA configuration is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WfaConfigUnavailableError'
+          example:
+            success: false
+            code: WFA_CONFIG_UNAVAILABLE
+            message: 'Konfigurasi WFA belum tersedia.'
+
     AttendanceValidationError:
       description: Attendance query or path validation failed
       content:
