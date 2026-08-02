@@ -395,11 +395,18 @@ describe('client-critical OpenAPI contract', () => {
       });
 
     const validationSchema = schemaAt(bookingOperation, '400');
-    expect(validationSchema.required).toEqual(['success', 'code', 'message', 'errors']);
-    expect(validationSchema.properties.errors.items.required).toEqual([
+    expect(validationSchema.oneOf).toEqual([
+      { $ref: '#/components/schemas/BookingExpressValidatorError' },
+      { $ref: '#/components/schemas/BookingEligibilityError' },
+      { $ref: '#/components/schemas/BookingRequestReasonError' }
+    ]);
+    const [expressValidatorError, eligibilityError, requestReasonError] = validationSchema.oneOf
+      .map(({ $ref }) => resolveLocalRef(openapi, $ref));
+    expect(expressValidatorError.required).toEqual(['success', 'code', 'message', 'errors']);
+    expect(expressValidatorError.properties.errors.items.required).toEqual([
       'type', 'msg', 'path', 'location'
     ]);
-    expect(validationSchema.properties.errors.items.properties).toMatchObject({
+    expect(expressValidatorError.properties.errors.items.properties).toMatchObject({
       type: { type: 'string', enum: ['field'] },
       value: { type: 'string', nullable: true, example: '2026-02-30' },
       msg: {
@@ -410,6 +417,10 @@ describe('client-critical OpenAPI contract', () => {
       location: { type: 'string', enum: ['body'] },
       code: { type: 'string', nullable: true, example: 'INVALID_SCHEDULE_DATE' }
     });
+    expect(eligibilityError.required).toEqual(['success', 'code', 'message', 'errors']);
+    expect(eligibilityError.properties.errors.items.required).toEqual(['field', 'code', 'message']);
+    expect(requestReasonError.required).toEqual(['success', 'code', 'message']);
+    expect(requestReasonError.properties).not.toHaveProperty('errors');
     expect(bookingOperation.responses['400'].content['application/json'].examples.invalid_schedule_date)
       .toMatchObject({
         value: {
@@ -426,6 +437,34 @@ describe('client-critical OpenAPI contract', () => {
           }]
         }
       });
+    expect(bookingOperation.responses['400'].content['application/json'].examples.past_date_not_allowed)
+      .toMatchObject({
+        value: {
+          success: false,
+          code: 'PAST_DATE_NOT_ALLOWED',
+          message: 'Validasi booking gagal.',
+          errors: [{
+            field: 'schedule_date',
+            code: 'PAST_DATE_NOT_ALLOWED',
+            message: 'Tanggal booking tidak boleh di masa lalu.'
+          }]
+        }
+      });
+    expect(bookingOperation.responses['400'].content['application/json'].examples.request_reason_not_found)
+      .toMatchObject({
+        value: {
+          success: false,
+          code: 'WFA_REQUEST_REASON_NOT_FOUND',
+          message: 'Alasan pengajuan WFA tidak ditemukan.'
+        }
+      });
+    expect(bookingOperation.responses['400'].content['application/json'].examples.request_reason_not_found.value)
+      .not.toHaveProperty('errors');
+
+    const scheduleDateExample = bookingOperation.requestBody.content['application/json']
+      .schema.properties.schedule_date.example;
+    expect(scheduleDateExample).toBe('2099-12-31');
+    expect(Number(scheduleDateExample.slice(0, 4))).toBeGreaterThanOrEqual(2099);
 
     const duplicateSchema = schemaAt(bookingOperation, '409');
     expect(duplicateSchema.properties.message).toMatchObject({

@@ -3374,7 +3374,7 @@ paths:
                   type: string
                   format: date
                   pattern: '^\d{4}-\d{2}-\d{2}$'
-                  example: '2026-04-29'
+                  example: '2099-12-31'
                 request_reason_id:
                   type: integer
                   minimum: 1
@@ -3472,47 +3472,14 @@ paths:
                       suitability_status: insufficient_facility_data
                       created_at: '2026-08-02T00:00:00.000Z'
         '400':
-          description: Booking validation failed, including INVALID_SCHEDULE_DATE or an inactive/missing WFA request reason.
+          description: 'Booking validation can fail in one of three runtime envelopes: Express Validator input errors, eligibility date errors, or request-reason service errors.'
           content:
             application/json:
               schema:
-                type: object
-                required: [success, code, message, errors]
-                properties:
-                  success:
-                    type: boolean
-                    example: false
-                  code:
-                    type: string
-                    example: INVALID_SCHEDULE_DATE
-                  message:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      required: [type, msg, path, location]
-                      properties:
-                        type:
-                          type: string
-                          enum: [field]
-                        value:
-                          type: string
-                          nullable: true
-                          example: '2026-02-30'
-                        msg:
-                          type: string
-                          example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
-                        path:
-                          type: string
-                          example: schedule_date
-                        location:
-                          type: string
-                          enum: [body]
-                        code:
-                          type: string
-                          nullable: true
-                          example: INVALID_SCHEDULE_DATE
+                oneOf:
+                  - $ref: '#/components/schemas/BookingExpressValidatorError'
+                  - $ref: '#/components/schemas/BookingEligibilityError'
+                  - $ref: '#/components/schemas/BookingRequestReasonError'
               examples:
                 invalid_schedule_date:
                   summary: The supplied date matches YYYY-MM-DD but is not a real calendar date.
@@ -3527,6 +3494,22 @@ paths:
                         path: schedule_date
                         location: body
                         code: INVALID_SCHEDULE_DATE
+                past_date_not_allowed:
+                  summary: Eligibility rejects a real calendar date in the past before policy reads.
+                  value:
+                    success: false
+                    code: PAST_DATE_NOT_ALLOWED
+                    message: 'Validasi booking gagal.'
+                    errors:
+                      - field: schedule_date
+                        code: PAST_DATE_NOT_ALLOWED
+                        message: 'Tanggal booking tidak boleh di masa lalu.'
+                request_reason_not_found:
+                  summary: Request-reason service errors use the legacy 400 envelope without errors.
+                  value:
+                    success: false
+                    code: WFA_REQUEST_REASON_NOT_FOUND
+                    message: 'Alasan pengajuan WFA tidak ditemukan.'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -7510,6 +7493,92 @@ components:
         message:
           type: string
           example: 'Internal server error'
+
+    BookingExpressValidatorError:
+      type: object
+      description: Booking request-body validation failure emitted by Express Validator before the controller runs.
+      required: [success, code, message, errors]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          example: INVALID_SCHEDULE_DATE
+        message:
+          type: string
+          example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+        errors:
+          type: array
+          items:
+            type: object
+            required: [type, msg, path, location]
+            properties:
+              type:
+                type: string
+                enum: [field]
+              value:
+                type: string
+                nullable: true
+                description: Omitted when the request-body field is missing.
+                example: '2026-02-30'
+              msg:
+                type: string
+                example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+              path:
+                type: string
+                example: schedule_date
+              location:
+                type: string
+                enum: [body]
+              code:
+                type: string
+                nullable: true
+                description: Present when the validator rule uses a typed WFA code.
+                example: INVALID_SCHEDULE_DATE
+
+    BookingEligibilityError:
+      type: object
+      description: Controller eligibility failure for invalid, past, or same-day WFA schedule dates.
+      required: [success, code, message, errors]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+        message:
+          type: string
+          enum: ['Validasi booking gagal.']
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field:
+                type: string
+                enum: [schedule_date]
+              code:
+                type: string
+                enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+              message:
+                type: string
+
+    BookingRequestReasonError:
+      type: object
+      description: Request-reason service 400 forwarded through the legacy error handler without an errors array.
+      required: [success, code, message]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [WFA_REQUEST_REASON_NOT_FOUND, WFA_REQUEST_REASON_NOT_ACTIVE, WFA_OTHER_REASON_REQUIRED]
+        message:
+          type: string
 
     Booking:
       type: object

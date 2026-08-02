@@ -68,6 +68,7 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
   }
 }));
 const { createBooking } = await import('../src/controllers/booking.controller.js');
+const { errorHandler } = await import('../src/middlewares/errorHandler.js');
 
 const buildRes = () => {
   const res = {};
@@ -97,6 +98,17 @@ const buildApp = () => {
     const { status, body } = toErrorResponse(error, { env: 'test' });
     return res.status(status).json(body);
   });
+  return app;
+};
+
+const buildRuntimeErrorHandlerApp = () => {
+  const app = express();
+  app.use(express.json());
+  app.post('/api/bookings', (req, res, next) => {
+    req.user = { id: 9 };
+    return createBooking(req, res, next);
+  });
+  app.use(errorHandler);
   return app;
 };
 
@@ -513,6 +525,56 @@ describe('server-authoritative WFA booking creation', () => {
     expect(mockBookingCreate).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(transaction.rollback).not.toHaveBeenCalled();
+  });
+
+  it('returns PAST_DATE_NOT_ALLOWED in the documented eligibility envelope before reading policy', async () => {
+    mockAssertWfaEligibility.mockRejectedValue(
+      new AppError('Tanggal booking tidak boleh di masa lalu.', {
+        code: 'PAST_DATE_NOT_ALLOWED',
+        status: 400,
+        details: [{ field: 'schedule_date', code: 'PAST_DATE_NOT_ALLOWED' }]
+      })
+    );
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send({ ...validPayload, schedule_date: '2026-08-02' })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'PAST_DATE_NOT_ALLOWED',
+      message: 'Validasi booking gagal.',
+      errors: [{
+        field: 'schedule_date',
+        code: 'PAST_DATE_NOT_ALLOWED',
+        message: 'Tanggal booking tidak boleh di masa lalu.'
+      }]
+    });
+    expect(mockReadWfaRequestConfig).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('lets a request-reason service 400 use the runtime error handler envelope without errors', async () => {
+    const error = new Error('Alasan pengajuan WFA tidak ditemukan.');
+    error.status = 400;
+    error.code = 'WFA_REQUEST_REASON_NOT_FOUND';
+    error.details = [{ field: 'request_reason_id', code: 'WFA_REQUEST_REASON_NOT_FOUND' }];
+    mockResolveActiveWfaRequestReason.mockRejectedValueOnce(error);
+
+    const response = await request(buildRuntimeErrorHandlerApp())
+      .post('/api/bookings')
+      .send(validPayload)
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'WFA_REQUEST_REASON_NOT_FOUND',
+      message: 'Alasan pengajuan WFA tidak ditemukan.'
+    });
+    expect(response.body).not.toHaveProperty('errors');
+    expect(mockScoreBookingLocation).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it('returns early DUPLICATE_BOOKING in the same envelope as the transaction recheck', async () => {

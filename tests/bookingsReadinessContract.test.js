@@ -121,6 +121,27 @@ describe('bookings validator contract', () => {
     }
   );
 
+  test('returns the documented Express Validator item for a calendar-invalid booking date', async () => {
+    const response = await request(buildValidatorApp())
+      .post('/bookings')
+      .send({ ...validBookingPayload, schedule_date: '2026-02-30' })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid',
+      errors: [{
+        type: 'field',
+        value: '2026-02-30',
+        msg: 'schedule_date tidak merepresentasikan tanggal kalender yang valid',
+        path: 'schedule_date',
+        location: 'body',
+        code: 'INVALID_SCHEDULE_DATE'
+      }]
+    });
+  });
+
   test('missing request_reason_id returns WFA_REQUEST_REASON_REQUIRED', async () => {
     const app = buildValidatorApp();
     const payload = { ...validBookingPayload };
