@@ -3,7 +3,11 @@ import { AppError } from '../shared/errors/AppError.js';
 import { calculateDistance } from '../utils/geofence.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 import { assertWfaEligibility } from './wfaEligibility.service.js';
-import { createGeoapifyWfaClient, mapWithConcurrency } from './geoapifyWfa.client.js';
+import {
+  createGeoapifyWfaClient,
+  GEOAPIFY_WFA_CATEGORIES,
+  mapWithConcurrency
+} from './geoapifyWfa.client.js';
 import { readStrictWfaCheckinWindow, scoreFacilityEvidence } from './wfaFacility.service.js';
 
 const DEFAULT_SEARCH_RADIUS_METERS = 5000;
@@ -133,6 +137,26 @@ const publicCandidate = (candidate, {
   final_score: finalScore,
   final_label: finalLabel,
   rank
+});
+
+const recommendationSearchCriteria = ({
+  latitude,
+  longitude,
+  radiusMeters,
+  totalCandidatesFound,
+  recommendationsReturned
+}) => ({
+  center_latitude: latitude,
+  center_longitude: longitude,
+  search_radius_meters: radiusMeters,
+  categories_searched: GEOAPIFY_WFA_CATEGORIES.split(','),
+  total_candidates_found: totalCandidatesFound,
+  recommendations_returned: recommendationsReturned
+});
+
+const recommendationMethodology = (wfaWeights) => ({
+  approach: 'Fuzzy AHP facility-evidence scoring',
+  criteria_weights: { ...wfaWeights }
 });
 
 const compareFinalCandidates = (left, right) => {
@@ -277,6 +301,7 @@ export const createWfaRecommendationService = (dependencies = {}) => {
     });
     const wfaWeights = resolved.fuzzyEngine.getWfaAhpWeights();
     const candidates = prepareCandidates({ features, latitude, longitude, wfaWeights });
+    const methodology = recommendationMethodology(wfaWeights);
     const shortlist = candidates
       .sort(
         nearestOnly
@@ -286,7 +311,19 @@ export const createWfaRecommendationService = (dependencies = {}) => {
       )
       .slice(0, candidateLimit);
 
-    if (!shortlist.length) return { candidates: [] };
+    if (!shortlist.length) {
+      return {
+        candidates: [],
+        searchCriteria: recommendationSearchCriteria({
+          latitude,
+          longitude,
+          radiusMeters,
+          totalCandidatesFound: features.length,
+          recommendationsReturned: 0
+        }),
+        methodology
+      };
+    }
 
     const checkinWindow = await resolved.facility.readStrictWfaCheckinWindow();
     const enriched = await mapWithConcurrency(shortlist, DETAILS_CONCURRENCY, (candidate) =>
@@ -298,7 +335,17 @@ export const createWfaRecommendationService = (dependencies = {}) => {
       rank: candidate.status === 'ranked' ? (rank += 1) : null
     }));
 
-    return { candidates: ranked };
+    return {
+      candidates: ranked,
+      searchCriteria: recommendationSearchCriteria({
+        latitude,
+        longitude,
+        radiusMeters,
+        totalCandidatesFound: features.length,
+        recommendationsReturned: ranked.length
+      }),
+      methodology
+    };
   };
 
   const recommendForUser = async ({ userId, latitude, longitude, scheduleDate }) => {

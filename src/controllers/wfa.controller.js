@@ -87,7 +87,13 @@ export const testFuzzyAhp = async (req, res, next) => {
       });
     }
 
-    if (Object.hasOwn(properties, 'amenity_score') || !Number.isFinite(properties.facility_score)) {
+    if (
+      Object.hasOwn(properties, 'amenity_score') ||
+      (custom_weights &&
+        typeof custom_weights === 'object' &&
+        Object.hasOwn(custom_weights, 'amenity_score')) ||
+      !Number.isFinite(properties.facility_score)
+    ) {
       return res.status(400).json({
         success: false,
         code: 'E_VALIDATION',

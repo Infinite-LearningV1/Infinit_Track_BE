@@ -139,6 +139,23 @@ describe('FAHP Dynamic Test Endpoint', () => {
     expect(res.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
   });
 
+  it('POST /api/wfa/test-ahp rejects retired amenity_score custom weights', async () => {
+    const res = await request(app)
+      .post('/api/wfa/test-ahp')
+      .send({
+        custom_weights: {
+          location_type: 0.4,
+          distance_factor: 0.35,
+          facility_score: 0.25,
+          amenity_score: 0.1
+        },
+        place_data: { properties: { facility_score: 90, distance: 200 } }
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
+  });
+
   it('POST /api/discipline/test-ahp returns compact evidence payload', async () => {
     const body = {
       scenario: 'Discipline - Baik',

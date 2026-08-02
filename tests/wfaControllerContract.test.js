@@ -141,4 +141,28 @@ describe('testFuzzyAhp', () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: 'E_VALIDATION' });
   });
+
+  it('rejects legacy amenity_score custom weights even with canonical facility evidence', async () => {
+    const { testFuzzyAhp } = await loadWfa();
+    const res = buildRes();
+
+    await testFuzzyAhp(
+      {
+        body: {
+          custom_weights: {
+            location_type: 0.4,
+            distance_factor: 0.35,
+            facility_score: 0.25,
+            amenity_score: 0.1
+          },
+          place_data: { properties: { facility_score: 90, distance: 100 } }
+        }
+      },
+      res,
+      jest.fn()
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: 'E_VALIDATION' });
+  });
 });

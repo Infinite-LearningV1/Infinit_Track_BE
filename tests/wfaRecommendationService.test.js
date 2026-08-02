@@ -386,9 +386,9 @@ test('orders equal final scores by distance and then stable place ID', async () 
 });
 
 test('recommendations require duplicate eligibility and the configured search radius', async () => {
-  const harness = createHarness();
+  const harness = createHarness({ features: [place({ id: 'metadata-place', distance: 25 })] });
 
-  await harness.service.recommendForUser({
+  const result = await harness.service.recommendForUser({
     userId: 41,
     latitude: -0.8917,
     longitude: 119.8707,
@@ -405,6 +405,23 @@ test('recommendations require duplicate eligibility and the configured search ra
     latitude: -0.8917,
     longitude: 119.8707,
     radiusMeters: 5000
+  });
+  expect(result.searchCriteria).toEqual({
+    center_latitude: -0.8917,
+    center_longitude: 119.8707,
+    search_radius_meters: 5000,
+    categories_searched: ['catering', 'accommodation', 'office', 'education'],
+    total_candidates_found: 1,
+    recommendations_returned: 1
+  });
+  expect(result.methodology).toEqual({
+    approach: 'Fuzzy AHP facility-evidence scoring',
+    criteria_weights: {
+      location_type: 0.5,
+      distance_factor: 0.3,
+      facility_score: 0.2,
+      consistency_ratio: 0
+    }
   });
 });
 

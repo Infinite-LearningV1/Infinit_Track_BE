@@ -7,7 +7,7 @@ const GEOAPIFY_PLACES_URL = 'https://api.geoapify.com/v2/places';
 const GEOAPIFY_PLACE_DETAILS_URL = 'https://api.geoapify.com/v2/place-details';
 const GEOAPIFY_TIMEOUT_MS = 30000;
 const GEOAPIFY_RETRY_DELAY_MS = 250;
-const GEOAPIFY_WFA_CATEGORIES = 'catering,accommodation,office,education';
+export const GEOAPIFY_WFA_CATEGORIES = 'catering,accommodation,office,education';
 
 const defaultSleep = (milliseconds) =>
   new Promise((resolve) => {
