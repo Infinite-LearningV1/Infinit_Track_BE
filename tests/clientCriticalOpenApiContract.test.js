@@ -393,6 +393,67 @@ describe('client-critical OpenAPI contract', () => {
           }
         }
       });
+
+    const validationSchema = schemaAt(bookingOperation, '400');
+    expect(validationSchema.required).toEqual(['success', 'code', 'message', 'errors']);
+    expect(validationSchema.properties.errors.items.required).toEqual([
+      'type', 'msg', 'path', 'location'
+    ]);
+    expect(validationSchema.properties.errors.items.properties).toMatchObject({
+      type: { type: 'string', enum: ['field'] },
+      value: { type: 'string', nullable: true, example: '2026-02-30' },
+      msg: {
+        type: 'string',
+        example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+      },
+      path: { type: 'string', example: 'schedule_date' },
+      location: { type: 'string', enum: ['body'] },
+      code: { type: 'string', nullable: true, example: 'INVALID_SCHEDULE_DATE' }
+    });
+    expect(bookingOperation.responses['400'].content['application/json'].examples.invalid_schedule_date)
+      .toMatchObject({
+        value: {
+          success: false,
+          code: 'INVALID_SCHEDULE_DATE',
+          message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid',
+          errors: [{
+            type: 'field',
+            value: '2026-02-30',
+            msg: 'schedule_date tidak merepresentasikan tanggal kalender yang valid',
+            path: 'schedule_date',
+            location: 'body',
+            code: 'INVALID_SCHEDULE_DATE'
+          }]
+        }
+      });
+
+    const duplicateSchema = schemaAt(bookingOperation, '409');
+    expect(duplicateSchema.properties.message).toMatchObject({
+      type: 'string',
+      example: 'Validasi booking gagal.'
+    });
+    expect(duplicateSchema.properties.errors.items.required).toEqual(['field', 'code', 'message']);
+    expect(duplicateSchema.properties.errors.items.properties).toMatchObject({
+      field: { type: 'string', example: 'schedule_date' },
+      code: { type: 'string', example: 'DUPLICATE_BOOKING' },
+      message: {
+        type: 'string',
+        example: 'Anda sudah memiliki booking pada tanggal tersebut.'
+      }
+    });
+    expect(bookingOperation.responses['409'].content['application/json'].examples.duplicate_booking)
+      .toMatchObject({
+        value: {
+          success: false,
+          code: 'DUPLICATE_BOOKING',
+          message: 'Validasi booking gagal.',
+          errors: [{
+            field: 'schedule_date',
+            code: 'DUPLICATE_BOOKING',
+            message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+          }]
+        }
+      });
   });
 
   test('parses the complete public OpenAPI artifact with a strict YAML parser', () => {
@@ -868,6 +929,50 @@ describe('client-critical OpenAPI contract', () => {
     });
     expect(analysisData.properties).not.toHaveProperty('search_criteria');
     expect(analysisData.properties).not.toHaveProperty('fahp_methodology');
+
+    const recommendationSuccess = schemaAt(recommendationOperation);
+    const recommendationExamples = recommendationOperation.responses['200'].content['application/json'].examples;
+    expect(recommendationSuccess.required).toEqual(['success', 'data', 'message']);
+    expect(recommendationSuccess.properties.message).toMatchObject({
+      type: 'string',
+      example: 'Rekomendasi WFA berhasil diambil.'
+    });
+    expect(recommendationExamples.ranked.value).toMatchObject({
+      success: true,
+      message: 'Rekomendasi WFA berhasil diambil.',
+      data: {
+        recommendations: [{
+          status: 'ranked',
+          facility_score: expect.any(Number),
+          final_score: expect.any(Number),
+          final_label: expect.any(String),
+          rank: expect.any(Number)
+        }],
+        search_criteria: expect.any(Object),
+        fahp_methodology: expect.any(Object)
+      }
+    });
+    expect(recommendationExamples.insufficient_facility_data.value.data.recommendations[0]).toMatchObject({
+      status: 'insufficient_facility_data',
+      final_score: null,
+      final_label: null,
+      rank: null
+    });
+    expect(recommendationExamples.facility_enrichment_failed.value.data.recommendations[0]).toMatchObject({
+      status: 'facility_enrichment_failed',
+      facility_score: null,
+      facility_confidence: null,
+      final_score: null,
+      final_label: null,
+      rank: null
+    });
+    for (const example of Object.values(recommendationExamples)) {
+      expect(Object.keys(example.value.data)).toEqual([
+        'recommendations',
+        'search_criteria',
+        'fahp_methodology'
+      ]);
+    }
 
     expect(openapi.components.securitySchemes.cookieAuth).toMatchObject({
       type: 'apiKey',
