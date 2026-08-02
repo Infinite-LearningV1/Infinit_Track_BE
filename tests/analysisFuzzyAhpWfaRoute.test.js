@@ -2,7 +2,7 @@ import express from 'express';
 import { jest } from '@jest/globals';
 import request from 'supertest';
 
-const mockAxiosGet = jest.fn();
+const mockAnalyze = jest.fn();
 
 const mockVerifyToken = jest.fn((req, res, next) => {
   if (!req.get('authorization')) {
@@ -34,18 +34,8 @@ const mockLocationEvent = {
   findOne: jest.fn()
 };
 
-const mockFuzzyEngine = {
-  getDisciplineAhpWeights: jest.fn(),
-  calculateDisciplineIndex: jest.fn(),
-  getLegacyWfaAmenityWeights: jest.fn(),
-  calculateLegacyWfaAmenityScore: jest.fn(),
-  categorizePlace: jest.fn(() => 'other')
-};
-
-jest.unstable_mockModule('axios', () => ({
-  __esModule: true,
-  default: { get: mockAxiosGet },
-  get: mockAxiosGet
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  analyze: mockAnalyze
 }));
 
 jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
@@ -62,11 +52,6 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Attendance: mockAttendance,
   Location: mockLocation,
   LocationEvent: mockLocationEvent
-}));
-
-jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
-  __esModule: true,
-  default: mockFuzzyEngine
 }));
 
 const { default: analysisRoutes } = await import('../src/routes/analysis.routes.js');
@@ -89,26 +74,17 @@ const expectValidationFailure = async (path) => {
 };
 
 describe('analysis WFA fuzzy ahp route validation', () => {
-  const originalGeoapifyApiKey = process.env.GEOAPIFY_API_KEY;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.GEOAPIFY_API_KEY = 'test-geoapify-key';
-    mockAxiosGet.mockResolvedValue({ data: { features: [] } });
-    mockFuzzyEngine.getLegacyWfaAmenityWeights.mockReturnValue({
-      location_type: 0.5,
-      distance_factor: 0.3,
-      amenity_score: 0.2,
-      consistency_ratio: 0.042
+    mockAnalyze.mockResolvedValue({
+      candidates: [],
+      searchCriteria: {},
+      methodology: {}
     });
   });
 
-  afterAll(() => {
-    if (originalGeoapifyApiKey === undefined) {
-      delete process.env.GEOAPIFY_API_KEY;
-    } else {
-      process.env.GEOAPIFY_API_KEY = originalGeoapifyApiKey;
-    }
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns 400 when lat is missing', async () => {
@@ -131,6 +107,19 @@ describe('analysis WFA fuzzy ahp route validation', () => {
     await expectValidationFailure(
       '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-02-30'
     );
+  });
+
+  it('returns 400 when schedule_date is today or in the past in WIB', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-02T04:00:00.000Z'));
+
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-08-02'
+    );
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-08-01'
+    );
+
+    expect(mockAnalyze).not.toHaveBeenCalled();
   });
 
   it('returns 400 when radius_meters is below minimum', async () => {
@@ -186,15 +175,11 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      type: 'wfa',
-      timezone: 'Asia/Jakarta',
-      data_source: 'geoapify_live',
-      query: {
-        lat: -0.895,
-        lon: 119.872,
-        radius_meters: 100
-      }
+    expect(mockAnalyze).toHaveBeenCalledWith({
+      latitude: -0.895,
+      longitude: 119.872,
+      scheduleDate: '2099-08-03',
+      radiusMeters: 100
     });
   });
 
@@ -206,15 +191,11 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      type: 'wfa',
-      timezone: 'Asia/Jakarta',
-      data_source: 'geoapify_live',
-      query: {
-        lat: -0.895,
-        lon: 119.872,
-        radius_meters: 5000
-      }
+    expect(mockAnalyze).toHaveBeenCalledWith({
+      latitude: -0.895,
+      longitude: 119.872,
+      scheduleDate: '2099-08-03',
+      radiusMeters: 5000
     });
   });
 });

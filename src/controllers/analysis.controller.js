@@ -4,12 +4,18 @@ import {
   buildFuzzyAhpDashboardRecapPayload,
   buildSmartAcAnalysis,
   buildSmartAcFahpPayload,
-  buildWfaAnalysis,
-  buildWfaFahpPayload,
   formatWibDateTime,
   getAnalysisWindow
 } from '../services/fuzzyAhpAnalysis.service.js';
+import { analyze } from '../services/wfaRecommendation.service.js';
 import logger from '../utils/logger.js';
+
+const sendWfaAnalysisMoved = (res) =>
+  res.status(410).json({
+    success: false,
+    code: 'WFA_ANALYSIS_MOVED',
+    message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+  });
 
 export const getDisciplineFahp = async (req, res, next) => {
   try {
@@ -28,8 +34,13 @@ export const getDisciplineFahp = async (req, res, next) => {
 
 export const getWfaFahp = async (req, res, next) => {
   try {
-    const { lat, lon, radius_meters: radiusMeters = 5000 } = req.query;
-    const data = await buildWfaFahpPayload({ lat, lon, radiusMeters });
+    const { lat, lon, schedule_date: scheduleDate, radius_meters: radiusMeters = 5000 } = req.query;
+    const data = await analyze({
+      latitude: Number(lat),
+      longitude: Number(lon),
+      scheduleDate,
+      radiusMeters: Number(radiusMeters)
+    });
 
     return res.status(200).json({
       success: true,
@@ -37,15 +48,6 @@ export const getWfaFahp = async (req, res, next) => {
       message: 'WFA Fuzzy AHP analysis retrieved successfully'
     });
   } catch (error) {
-    if (error.code === 'AUTH_OR_PROVIDER_UNAVAILABLE' && error.provider === 'geoapify') {
-      return res.status(503).json({
-        success: false,
-        code: 'AUTH_OR_PROVIDER_UNAVAILABLE',
-        provider: 'geoapify',
-        reason: error.reason || 'unavailable'
-      });
-    }
-
     next(error);
   }
 };
@@ -67,6 +69,8 @@ export const getSmartAcFahp = async (_req, res, next) => {
 export const getFuzzyAhpDashboardRecap = async (req, res, next) => {
   try {
     const { type } = req.query;
+    if (type === 'wfa') return sendWfaAnalysisMoved(res);
+
     const data = await buildFuzzyAhpDashboardRecapPayload({ type });
 
     return res.status(200).json({
@@ -112,8 +116,7 @@ export const getFuzzyAhpAnalysis = async (req, res, next) => {
         result = await buildDisciplineAnalysis({ startAt, endAt });
         break;
       case 'wfa':
-        result = await buildWfaAnalysis({ startAt, endAt });
-        break;
+        return sendWfaAnalysisMoved(res);
       default:
         result = await buildSmartAcAnalysis({ startAt, endAt });
         break;

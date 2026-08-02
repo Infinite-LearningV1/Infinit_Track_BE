@@ -2,9 +2,9 @@ import express from 'express';
 import { jest } from '@jest/globals';
 import request from 'supertest';
 
-const mockAxiosGet = jest.fn();
+const mockAnalyze = jest.fn();
 
-const mockVerifyToken = jest.fn((req, res, next) => {
+const mockVerifyToken = jest.fn((req, _res, next) => {
   req.user = { id: 12, role_name: req.get('x-test-role') || 'Management' };
   next();
 });
@@ -17,27 +17,8 @@ const mockRoleGuard = jest.fn((allowedRoles) => (req, res, next) => {
   next();
 });
 
-const mockUser = { findAll: jest.fn() };
-const mockAttendance = { findAll: jest.fn() };
-const mockLocation = { findAll: jest.fn() };
-const mockLocationEvent = { findOne: jest.fn() };
-
-const mockFuzzyEngine = {
-  getDisciplineAhpWeights: jest.fn(),
-  calculateDisciplineIndex: jest.fn(),
-  getWfaAhpWeights: jest.fn(),
-  calculateWfaScore: jest.fn(),
-  getLegacyWfaAmenityWeights: jest.fn(),
-  calculateLegacyWfaAmenityScore: jest.fn(),
-  getLocationTypeScore: jest.fn(),
-  getDistanceFactorScore: jest.fn(),
-  categorizePlace: jest.fn()
-};
-
-jest.unstable_mockModule('axios', () => ({
-  __esModule: true,
-  default: { get: mockAxiosGet },
-  get: mockAxiosGet
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  analyze: mockAnalyze
 }));
 
 jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
@@ -49,178 +30,111 @@ jest.unstable_mockModule('../src/middlewares/roleGuard.js', () => ({
   default: mockRoleGuard
 }));
 
-jest.unstable_mockModule('../src/models/index.js', () => ({
-  User: mockUser,
-  Attendance: mockAttendance,
-  Location: mockLocation,
-  LocationEvent: mockLocationEvent
-}));
-
-jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
-  __esModule: true,
-  default: mockFuzzyEngine
-}));
-
 const { default: analysisRoutes } = await import('../src/routes/analysis.routes.js');
 
 const app = express();
 app.use(express.json());
 app.use('/api/analysis', analysisRoutes);
 
-const requestWfa = (query = 'lat=-0.895&lon=119.872&radius_meters=1000&schedule_date=2026-08-10') =>
-  request(app).get(`/api/analysis/fuzzy-ahp/wfa?${query}`).set('Authorization', 'Bearer test-token');
-
 describe('analysis WFA fuzzy ahp contract', () => {
-  const originalGeoapifyApiKey = process.env.GEOAPIFY_API_KEY;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.GEOAPIFY_API_KEY = 'test-geoapify-key';
-    mockFuzzyEngine.getLegacyWfaAmenityWeights.mockReturnValue({
-      location_type: 0.5,
-      distance_factor: 0.3,
-      amenity_score: 0.2,
-      consistency_ratio: 0.042
-    });
-    mockFuzzyEngine.categorizePlace.mockReturnValue('cafe');
-    mockFuzzyEngine.calculateLegacyWfaAmenityScore.mockResolvedValue({
-      score: 87.25,
-      label: 'Sangat Tinggi',
-      breakdown: {
-        location_score: 100,
-        distance_score: 95,
-        amenity_score: 80
-      }
-    });
   });
 
-  afterAll(() => {
-    if (originalGeoapifyApiKey === undefined) {
-      delete process.env.GEOAPIFY_API_KEY;
-    } else {
-      process.env.GEOAPIFY_API_KEY = originalGeoapifyApiKey;
-    }
-  });
-
-  it('returns Geoapify-backed WFA ranking contract with honest breakdown values', async () => {
-    mockAxiosGet.mockResolvedValue({
-      data: {
-        features: [
-          {
-            properties: {
-              place_id: 'geo-1',
-              name: 'Palu Work Cafe',
-              distance: 123,
-              categories: ['catering.cafe'],
-              amenities: { wifi: true, power_outlets: true, tables: true, quiet: true }
-            },
-            geometry: { coordinates: [119.873, -0.894] }
-          }
-        ]
-      }
-    });
-
-    const res = await requestWfa();
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      type: 'wfa',
-      timezone: 'Asia/Jakarta',
-      data_source: 'geoapify_live',
-      consistency: {
-        threshold: 0.1
-      },
-      weights: {
-        method: "Chang's Extent Analysis"
-      }
-    });
-    expect(res.body.data.ranking).toEqual([
+  it('delegates to canonical analysis and preserves truthful candidate statuses', async () => {
+    const facilities = {
+      internet_access: 1,
+      air_conditioning: 1,
+      toilets: 0,
+      opening_hours: 1,
+      wheelchair_accessibility: null
+    };
+    const candidates = [
       {
-        rank: 1,
-        place_id: 'geo-1',
+        place_id: 'ranked',
         name: 'Palu Work Cafe',
-        score: 87.25,
-        label: 'Sangat Tinggi',
-        breakdown: {
-          location_type: 'cafe',
-          distance_m: 123,
-          amenity_score: 100
-        }
-      }
-    ]);
-    expect(res.body.data.ranking[0].breakdown).not.toMatchObject({
-      distance_m: 1000,
-      amenity_score: 50
-    });
-    expect(mockAxiosGet).toHaveBeenCalledWith(
-      'https://api.geoapify.com/v2/places',
-      expect.objectContaining({
-        params: expect.objectContaining({
-          filter: 'circle:119.872,-0.895,1000',
-          apiKey: 'test-geoapify-key'
-        })
-      })
-    );
-  });
-
-  it.each([
-    { providerError: Object.assign(new Error('Unauthorized'), { response: { status: 401 } }), reason: 'auth_failed' },
-    { providerError: Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' }), reason: 'timeout' },
-    { providerError: Object.assign(new Error('Request timeout'), { response: { status: 408 } }), reason: 'timeout' },
-    {
-      providerError: Object.assign(new Error('Rate limited'), { response: { status: 429 } }),
-      reason: 'quota_or_rate_limited'
-    },
-    { providerError: Object.assign(new Error('Provider error'), { response: { status: 503 } }), reason: 'provider_5xx' },
-    { providerError: Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }), reason: 'provider_unavailable' }
-  ])('maps Geoapify $reason failure to provider unavailable', async ({ providerError, reason }) => {
-    mockAxiosGet.mockRejectedValue(providerError);
-
-    const res = await requestWfa();
-
-    expect(res.status).toBe(503);
-    expect(res.body).toEqual({
-      success: false,
-      code: 'AUTH_OR_PROVIDER_UNAVAILABLE',
-      provider: 'geoapify',
-      reason
-    });
-  });
-
-  it('does not convert an unclassified Geoapify error into the provider-unavailable contract', async () => {
-    mockAxiosGet.mockRejectedValue(Object.assign(new Error('Bad request'), { response: { status: 400 } }));
-
-    const res = await requestWfa();
-
-    expect(res.status).not.toBe(503);
-    expect(res.body).not.toMatchObject({
-      code: 'AUTH_OR_PROVIDER_UNAVAILABLE',
-      provider: 'geoapify'
-    });
-  });
-
-  it('returns an empty real response when Geoapify returns no places', async () => {
-    mockAxiosGet.mockResolvedValue({ data: { features: [] } });
-
-    const res = await requestWfa();
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      type: 'wfa',
-      timezone: 'Asia/Jakarta',
-      data_source: 'geoapify_live',
-      empty_real: true,
-      distribution: {
-        'Sangat Tinggi': 0,
-        Tinggi: 0,
-        Sedang: 0,
-        Rendah: 0,
-        'Sangat Rendah': 0
+        address: 'Jl. Merdeka',
+        latitude: -0.894,
+        longitude: 119.873,
+        status: 'ranked',
+        distance_meters: 123,
+        location_type: 'cafe',
+        facility_score: 75,
+        facility_confidence: 80,
+        facilities,
+        final_score: 87.25,
+        final_label: 'Sangat Tinggi',
+        rank: 1
       },
-      ranking: []
+      {
+        place_id: 'insufficient',
+        name: 'Sparse Cafe',
+        address: null,
+        latitude: -0.893,
+        longitude: 119.874,
+        status: 'insufficient_facility_data',
+        distance_meters: 240,
+        location_type: 'cafe',
+        facility_score: 100,
+        facility_confidence: 20,
+        facilities: { ...facilities, air_conditioning: null, toilets: null, opening_hours: null },
+        final_score: null,
+        final_label: null,
+        rank: null
+      },
+      {
+        place_id: 'failed',
+        name: 'Unavailable Details',
+        address: null,
+        latitude: -0.892,
+        longitude: 119.875,
+        status: 'facility_enrichment_failed',
+        distance_meters: 360,
+        location_type: 'office',
+        facility_score: null,
+        facility_confidence: null,
+        facilities: {
+          internet_access: null,
+          air_conditioning: null,
+          toilets: null,
+          opening_hours: null,
+          wheelchair_accessibility: null
+        },
+        final_score: null,
+        final_label: null,
+        rank: null
+      }
+    ];
+    const serviceResult = {
+      candidates,
+      searchCriteria: { search_radius_meters: 1000 },
+      methodology: { approach: 'Fuzzy AHP facility-evidence scoring' }
+    };
+    mockAnalyze.mockResolvedValue(serviceResult);
+
+    const response = await request(app)
+      .get(
+        '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=1000&schedule_date=2099-08-10'
+      )
+      .set('Authorization', 'Bearer test-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      data: serviceResult,
+      message: 'WFA Fuzzy AHP analysis retrieved successfully'
     });
-    expect(mockFuzzyEngine.calculateWfaScore).not.toHaveBeenCalled();
+    expect(mockAnalyze).toHaveBeenCalledWith({
+      latitude: -0.895,
+      longitude: 119.872,
+      scheduleDate: '2099-08-10',
+      radiusMeters: 1000
+    });
+    expect(response.body.data.candidates.map((candidate) => candidate.status)).toEqual([
+      'ranked',
+      'insufficient_facility_data',
+      'facility_enrichment_failed'
+    ]);
+    expect(JSON.stringify(response.body)).not.toContain('amenity');
   });
 });
