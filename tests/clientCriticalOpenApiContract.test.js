@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import yaml from 'yamljs';
+import { load as loadStrictYaml } from 'js-yaml';
 
 function schemaAt(operation, statusCode = '200') {
   return operation.responses[statusCode].content['application/json'].schema;
@@ -44,7 +44,7 @@ function collectLocalRefs(node, refs = []) {
 }
 
 describe('client-critical OpenAPI contract', () => {
-  const openapi = yaml.parse(
+  const openapi = loadStrictYaml(
     fs.readFileSync(path.resolve(process.cwd(), 'docs/openapi.yaml'), 'utf8')
   );
 
@@ -367,7 +367,7 @@ describe('client-critical OpenAPI contract', () => {
     expect(schemaAt(bookingOperation, '503').properties).toMatchObject({
       success: { type: 'boolean', example: false },
       code: { type: 'string', example: 'WFA_SCORING_UNAVAILABLE' },
-      message: { type: 'string' }
+      message: { type: 'string', example: 'Internal server error' }
     });
     expect(responseSchemaAt(openapi, bookingOperation, '500').properties).toMatchObject({
       success: { type: 'boolean', example: false },
@@ -377,7 +377,7 @@ describe('client-critical OpenAPI contract', () => {
     expect(responseAt(openapi, bookingOperation, '500').content['application/json'].example).toEqual({
       success: false,
       code: 'WFA_CONFIG_UNAVAILABLE',
-      message: 'Konfigurasi WFA belum tersedia.'
+      message: 'Internal server error'
     });
     expect(dataSchema.required).toEqual(
       expect.arrayContaining(['suitability_score', 'suitability_label', 'suitability_status'])
@@ -393,6 +393,11 @@ describe('client-critical OpenAPI contract', () => {
           }
         }
       });
+  });
+
+  test('parses the complete public OpenAPI artifact with a strict YAML parser', () => {
+    expect(() => loadStrictYaml(fs.readFileSync(path.resolve(process.cwd(), 'docs/openapi.yaml'), 'utf8')))
+      .not.toThrow();
   });
 
   test('resolves every local OpenAPI reference', () => {
@@ -809,7 +814,11 @@ describe('client-critical OpenAPI contract', () => {
     ]) {
       const operation = openapi.paths[pathName]?.get;
       expect(operation).toBeDefined();
-      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.security).toEqual(
+        pathName === '/api/analysis/fuzzy-ahp/wfa'
+          ? [{ bearerAuth: [] }, { cookieAuth: [] }]
+          : [{ bearerAuth: [] }]
+      );
       expect(operation.responses['401']).toBeDefined();
       expect(operation.responses['403']).toBeDefined();
     }
@@ -859,6 +868,47 @@ describe('client-critical OpenAPI contract', () => {
     });
     expect(analysisData.properties).not.toHaveProperty('search_criteria');
     expect(analysisData.properties).not.toHaveProperty('fahp_methodology');
+
+    expect(openapi.components.securitySchemes.cookieAuth).toMatchObject({
+      type: 'apiKey',
+      in: 'cookie',
+      name: 'token'
+    });
+    for (const operation of [recommendationOperation, analysisOperation]) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }, { cookieAuth: [] }]);
+
+      const validationResponse = responseAt(openapi, operation, '400');
+      const validationSchema = responseSchemaAt(openapi, operation, '400');
+      expect(validationSchema.required).toEqual(['success', 'code', 'message', 'errors']);
+      expect(validationSchema.properties).toMatchObject({
+        success: { type: 'boolean', enum: [false] },
+        code: { type: 'string', enum: ['E_VALIDATION'] },
+        message: { type: 'string' },
+        errors: { type: 'array' }
+      });
+      expect(validationSchema.properties.errors.items.required).toEqual([
+        'type', 'msg', 'path', 'location'
+      ]);
+      expect(validationSchema.properties.errors.items.properties).toMatchObject({
+        type: { type: 'string', enum: ['field'] },
+        value: { type: 'string', nullable: true, example: 'not-a-coordinate' },
+        msg: { type: 'string', example: 'lat must be a valid latitude' },
+        path: { type: 'string', example: 'lat' },
+        location: { type: 'string', enum: ['query'] }
+      });
+      expect(validationResponse.content['application/json'].example).toEqual({
+        success: false,
+        code: 'E_VALIDATION',
+        message: 'lat must be a valid latitude',
+        errors: [{
+          type: 'field',
+          value: 'not-a-coordinate',
+          msg: 'lat must be a valid latitude',
+          path: 'lat',
+          location: 'query'
+        }]
+      });
+    }
 
     expect(Object.keys(recommendationParams)).toEqual(['lat', 'lng', 'schedule_date']);
     expect(Object.keys(analysisParams)).toEqual(['lat', 'lon', 'schedule_date', 'radius_meters']);
@@ -913,12 +963,38 @@ describe('client-critical OpenAPI contract', () => {
       const searchCriteria = data.properties.search_criteria ?? data.properties.searchCriteria;
       const methodology = data.properties.fahp_methodology ?? data.properties.methodology;
 
-      expect(searchCriteria.properties.categories_searched.example).toEqual([
-        'catering',
-        'accommodation',
-        'office',
-        'education'
+      expect(data.required).toEqual(
+        operation === recommendationOperation
+          ? ['recommendations', 'search_criteria', 'fahp_methodology']
+          : ['candidates', 'searchCriteria', 'methodology']
+      );
+      expect(searchCriteria.required).toEqual([
+        'center_latitude',
+        'center_longitude',
+        'search_radius_meters',
+        'categories_searched',
+        'total_candidates_found',
+        'recommendations_returned'
       ]);
+      expect(methodology.required).toEqual(['approach', 'criteria_weights']);
+      expect(methodology.properties.criteria_weights.required).toEqual([
+        'location_type',
+        'distance_factor',
+        'facility_score',
+        'consistency_ratio',
+        'weighting_method'
+      ]);
+
+      expect(searchCriteria.properties.categories_searched).toMatchObject({
+        minItems: 4,
+        maxItems: 4,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          enum: ['catering', 'accommodation', 'office', 'education']
+        },
+        example: ['catering', 'accommodation', 'office', 'education']
+      });
       expect(methodology.properties.criteria_weights.properties).toMatchObject({
         location_type: { type: 'number' },
         distance_factor: { type: 'number' },
@@ -933,7 +1009,7 @@ describe('client-critical OpenAPI contract', () => {
       expect(failureSchema.properties).toMatchObject({
         success: { type: 'boolean', example: false },
         code: { type: 'string' },
-        message: { type: 'string' }
+        message: { type: 'string', example: 'Internal server error' }
       });
     }
     expect(schemaAt(recommendationOperation, '503').properties.code.example).toBe('WFA_PROVIDER_UNAVAILABLE');
@@ -944,7 +1020,7 @@ describe('client-critical OpenAPI contract', () => {
       expect(responseAt(openapi, operation, '500').content['application/json'].example).toEqual({
         success: false,
         code: 'WFA_CONFIG_UNAVAILABLE',
-        message: 'Konfigurasi jam check-in WFA belum tersedia.'
+        message: 'Internal server error'
       });
     }
     expect(schemaAt(recommendationOperation, '409').properties.code.example).toBe('DUPLICATE_BOOKING');
