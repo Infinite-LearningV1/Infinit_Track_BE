@@ -42,6 +42,8 @@ const mockFuzzyEngine = {
   calculateDisciplineIndex: jest.fn(),
   getWfaAhpWeights: jest.fn(),
   calculateWfaScore: jest.fn(),
+  getLocationTypeScore: jest.fn(),
+  getDistanceFactorScore: jest.fn(),
   getSmartAcAhpWeights: jest.fn(),
   weightedPrediction: jest.fn(),
   categorizePlace: jest.fn((place) => {
@@ -138,13 +140,15 @@ describe('analysis fuzzy ahp contract', () => {
     mockFuzzyEngine.getWfaAhpWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
-      amenity_score: 0.2,
+      facility_score: 0.2,
       consistency_ratio: 0.025
     });
     mockFuzzyEngine.calculateWfaScore.mockResolvedValue({
       score: 76.4,
       label: 'Tinggi'
     });
+    mockFuzzyEngine.getLocationTypeScore.mockReturnValue(40);
+    mockFuzzyEngine.getDistanceFactorScore.mockReturnValue(66.67);
 
     mockFuzzyEngine.getSmartAcAhpWeights.mockReturnValue({
       history: 0.43,
@@ -342,7 +346,7 @@ describe('analysis fuzzy ahp contract', () => {
               label: expect.any(String),
               breakdown: expect.objectContaining({
                 location_type: expect.any(String),
-                amenity_score: expect.any(Number),
+                facility_score: expect.any(Number),
                 distance: expect.any(Number)
               })
             })
@@ -695,7 +699,7 @@ describe('analysis fuzzy ahp contract', () => {
         criteria_weights: [
           { key: 'location_type', label: 'location_type', display_label: 'Tipe Lokasi', value: expect.any(Number) },
           { key: 'distance_factor', label: 'distance_factor', display_label: 'Faktor Jarak', value: expect.any(Number) },
-          { key: 'amenity_score', label: 'amenity_score', display_label: 'Skor Fasilitas', value: expect.any(Number) }
+          { key: 'facility_score', label: 'facility_score', display_label: 'Skor Fasilitas', value: expect.any(Number) }
         ],
         ranking_preview: {
           top_n: 5,

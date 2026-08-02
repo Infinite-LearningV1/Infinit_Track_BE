@@ -174,7 +174,11 @@ async function getSuitabilityScoreForCustomLocation(latitude, longitude) {
     };
 
     // Hitung skor menggunakan Fuzzy AHP Engine
-    const scoreResult = await fuzzyEngine.calculateWfaScore(mockPlaceDetails);
+    const scoreResult = await fuzzyEngine.calculateWfaScore({
+      locationTypeScore: fuzzyEngine.getLocationTypeScore(mockPlaceDetails),
+      distanceScore: fuzzyEngine.getDistanceFactorScore(mockPlaceDetails.properties?.distance),
+      facilityScore: mockPlaceDetails.properties?.facility_score
+    });
 
     return {
       suitability_score: scoreResult.score,

@@ -172,7 +172,17 @@ export const getWfaRecommendations = async (req, res, next) => {
         processedPlaces.add(placeKey);
         // Add user location for distance calculation
         place.userLocation = { lat: latitude, lon: longitude };
-        const scoreResult = await fuzzyEngine.calculateWfaScore(place, ahpWeights);
+        const distanceMeters =
+          place.properties?.distance ||
+          calculateDistance(latitude, longitude, place.geometry.coordinates[1], place.geometry.coordinates[0]);
+        const scoreResult = await fuzzyEngine.calculateWfaScore(
+          {
+            locationTypeScore: fuzzyEngine.getLocationTypeScore(place),
+            distanceScore: fuzzyEngine.getDistanceFactorScore(distanceMeters),
+            facilityScore: place.properties?.facility_score
+          },
+          ahpWeights
+        );
 
         // Add additional metadata for response
         const scoredPlace = {
@@ -181,14 +191,7 @@ export const getWfaRecommendations = async (req, res, next) => {
             final_score: scoreResult.score,
             label: scoreResult.label,
             breakdown: scoreResult.breakdown,
-            distance_meters:
-              place.properties?.distance ||
-              calculateDistance(
-                latitude,
-                longitude,
-                place.geometry.coordinates[1],
-                place.geometry.coordinates[0]
-              )
+            distance_meters: distanceMeters
           }
         };
 
@@ -382,7 +385,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
       data: {
         current_weights: {
           location_type: ahpWeights.location_type,
-          amenity_score: ahpWeights.amenity_score,
+          facility_score: ahpWeights.facility_score,
           distance_factor: ahpWeights.distance_factor
         },
         consistency_ratio: ahpWeights.consistency_ratio,
@@ -391,7 +394,7 @@ export const getWfaAhpConfig = async (req, res, next) => {
         criteria_explanation: {
           location_type:
             'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)',
-          amenity_score:
+          facility_score:
             'Penilaian komprehensif fasilitas: WiFi, informasi bisnis, brand recognition, payment options, aksesibilitas, dan keragaman kategori',
           distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
         },
@@ -423,7 +426,14 @@ export const testFuzzyAhp = async (req, res, next) => {
 
     const usesCustomWeights = custom_weights != null;
     const weights = usesCustomWeights ? custom_weights : fuzzyEngine.getWfaAhpWeights();
-    const testResult = await fuzzyEngine.calculateWfaScore(place_data, weights);
+    const testResult = await fuzzyEngine.calculateWfaScore(
+      {
+        locationTypeScore: fuzzyEngine.getLocationTypeScore(place_data),
+        distanceScore: fuzzyEngine.getDistanceFactorScore(place_data.properties?.distance),
+        facilityScore: place_data.properties?.facility_score
+      },
+      weights
+    );
     const category = testResult.label;
     const normalizedExpected = typeof expected === 'string' ? expected.trim() : null;
 
@@ -434,7 +444,7 @@ export const testFuzzyAhp = async (req, res, next) => {
         weights: {
           location_type: Number((weights.location_type ?? testResult.weights?.[0] ?? 0).toFixed(4)),
           distance_factor: Number((weights.distance_factor ?? testResult.weights?.[1] ?? 0).toFixed(4)),
-          amenity_score: Number((weights.amenity_score ?? testResult.weights?.[2] ?? 0).toFixed(4))
+          facility_score: Number((weights.facility_score ?? testResult.weights?.[2] ?? 0).toFixed(4))
         },
         cr: usesCustomWeights
           ? null

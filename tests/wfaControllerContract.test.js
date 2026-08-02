@@ -45,7 +45,7 @@ const loadWfa = async ({
     default: {
       getWfaAhpWeights: () => ({
         location_type: 0.5,
-        amenity_score: 0.3,
+        facility_score: 0.3,
         distance_factor: 0.2,
         consistency_ratio: 0.05
       }),
@@ -56,6 +56,8 @@ const loadWfa = async ({
         breakdown: {}
       })),
       getWfaScoreLabel: () => 'SANGAT SESUAI',
+      getLocationTypeScore: () => 100,
+      getDistanceFactorScore: () => 90,
       categorizePlace: () => 'office',
       getCategoryDisplayName: () => 'Kantor'
     }
@@ -283,7 +285,7 @@ describe('getWfaAhpConfig', () => {
     expect(body.success).toBe(true);
     expect(body.data.current_weights).toEqual({
       location_type: 0.5,
-      amenity_score: 0.3,
+      facility_score: 0.3,
       distance_factor: 0.2
     });
     expect(body.data.consistency_ratio).toBe(0.05);
@@ -315,7 +317,12 @@ describe('testFuzzyAhp', () => {
     const next = jest.fn();
 
     await testFuzzyAhp(
-      { body: { place_data: { properties: { name: 'Kafe Uji' } }, scenario: 'skenario-1' } },
+      {
+        body: {
+          place_data: { properties: { name: 'Kafe Uji', distance: 100, facility_score: 90 } },
+          scenario: 'skenario-1'
+        }
+      },
       res,
       next
     );
@@ -332,7 +339,11 @@ describe('testFuzzyAhp', () => {
     const { testFuzzyAhp, restoreEnv } = await loadWfa();
     const res = buildRes();
 
-    await testFuzzyAhp({ body: { place_data: { properties: { name: 'Kafe Uji' } } } }, res, jest.fn());
+    await testFuzzyAhp(
+      { body: { place_data: { properties: { name: 'Kafe Uji', distance: 100, facility_score: 90 } } } },
+      res,
+      jest.fn()
+    );
     restoreEnv();
 
     expect(res.json.mock.calls[0][0].data.scenario).toBe('Kafe Uji');

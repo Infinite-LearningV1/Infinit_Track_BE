@@ -3,14 +3,21 @@ import { defuzzifyMatrixTFN, computeCR } from '../analytics/fahp.js';
 import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { minMax } from '../analytics/normalization.js';
 import { labelEqualInterval } from '../analytics/labeling.js';
-import { WFA_PAIRWISE_TFN, DISC_PAIRWISE_TFN, SMART_AC_PAIRWISE_TFN } from '../analytics/config.fahp.js';
-import { calculateDistance } from './geofence.js';
+import {
+  FACILITY_CRITERIA,
+  FACILITY_PAIRWISE_TFN,
+  WFA_PAIRWISE_TFN,
+  DISC_PAIRWISE_TFN,
+  SMART_AC_PAIRWISE_TFN
+} from '../analytics/config.fahp.js';
 
 // Simple memoization for FAHP weights
 let cachedWfaWeights = null;
+let cachedFacilityWeights = null;
 let cachedDiscWeights = null;
 let cachedSmartAcWeights = null;
 let cachedWfaCR = null;
+let cachedFacilityCR = null;
 let cachedDiscCR = null;
 let cachedSmartAcConsistency = null;
 
@@ -18,6 +25,20 @@ const CR_THRESHOLD = 0.10;
 function selectWeights(matrixTFN) {
   return extentWeightsTFN(matrixTFN);
 }
+
+const selectWfaWeights = () => {
+  const extentWeights = selectWeights(WFA_PAIRWISE_TFN);
+  if (extentWeights.every((weight) => weight > 0)) return extentWeights;
+
+  // Chang's possibility comparison can collapse a valid lowest-ranked criterion
+  // to zero. Preserve the configured TFN judgments while using the standard
+  // row-geometric-mean AHP derivation to retain all three scoring signals.
+  const geometricMeans = defuzzifyMatrixTFN(WFA_PAIRWISE_TFN).map((row) =>
+    Math.pow(row.reduce((product, value) => product * value, 1), 1 / row.length)
+  );
+  const sum = geometricMeans.reduce((total, value) => total + value, 0);
+  return geometricMeans.map((value) => value / sum);
+};
 
 // --- Time utilities for Smart Auto Checkout weighted prediction ---
 function minutesSinceMidnightWIB(dateLike) {
@@ -66,11 +87,11 @@ function getWfaAhpWeights() {
     return {
       location_type: cachedWfaWeights[0],
       distance_factor: cachedWfaWeights[1],
-      amenity_score: cachedWfaWeights[2],
+      facility_score: cachedWfaWeights[2],
       consistency_ratio: cachedWfaCR
     };
   }
-  const weights = selectWeights(WFA_PAIRWISE_TFN);
+  const weights = selectWfaWeights();
   const crisp = defuzzifyMatrixTFN(WFA_PAIRWISE_TFN);
   const { CR } = computeCR(crisp);
   cachedWfaWeights = weights;
@@ -78,24 +99,33 @@ function getWfaAhpWeights() {
   return {
     location_type: weights[0],
     distance_factor: weights[1],
-    amenity_score: weights[2],
+    facility_score: weights[2],
     consistency_ratio: CR
   };
 }
 
-const parseFiniteNumber = (value, fieldName) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+function getFacilityAhpWeights() {
+  if (!cachedFacilityWeights || cachedFacilityCR == null) {
+    cachedFacilityWeights = selectWeights(FACILITY_PAIRWISE_TFN);
+    const { CR } = computeCR(defuzzifyMatrixTFN(FACILITY_PAIRWISE_TFN));
+    cachedFacilityCR = Math.abs(CR) < Number.EPSILON ? 0 : CR;
   }
 
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
+  return {
+    criteria: [...FACILITY_CRITERIA],
+    values: [...cachedFacilityWeights],
+    consistency_ratio: cachedFacilityCR
+  };
+}
 
-  throw new Error(`${fieldName} must be numeric`);
+const parseScore = (value, fieldName) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${fieldName} must be numeric`);
+  }
+  if (value < 0 || value > 100) {
+    throw new Error(`${fieldName} must be between 0 and 100`);
+  }
+  return value;
 };
 
 const categoryTokens = (categories = []) =>
@@ -106,103 +136,75 @@ const categoryTokens = (categories = []) =>
       .filter(Boolean)
   );
 
-// --- Public API: calculateWfaScore(place, ahpWeights?) ---
-async function calculateWfaScore(placeDetails, ahpWeights = null) {
-  try {
-    const wObj = ahpWeights || getWfaAhpWeights();
-    const W = [wObj.location_type, wObj.distance_factor, wObj.amenity_score];
+function getLocationTypeScore(place) {
+  const categories = Array.isArray(place?.properties?.categories) ? place.properties.categories : [];
+  const tokens = categoryTokens(categories);
+  const name = String(place?.properties?.name || '').toLowerCase();
+  const isCafe =
+    categories.some((category) => String(category).includes('cafe') || String(category).includes('coffee')) ||
+    name.includes('cafe') ||
+    name.includes('coffee');
+  const isLibrary =
+    categories.some((category) => String(category).includes('library')) ||
+    name.includes('library') ||
+    name.includes('perpustakaan');
+  const isHotel =
+    categories.some((category) => String(category).includes('hotel') || String(category).includes('accommodation')) ||
+    name.includes('hotel');
+  const isRestaurant =
+    categories.some((category) => String(category).includes('restaurant') || String(category).includes('food')) ||
+    name.includes('restaurant') ||
+    name.includes('restoran');
+  const isLowSuitability =
+    tokens.some((token) => ['industrial', 'warehouse', 'factory', 'manufacturing', 'storage', 'yard'].includes(token)) ||
+    name.includes('industrial') ||
+    name.includes('warehouse') ||
+    name.includes('factory') ||
+    name.includes('manufacturing') ||
+    name.includes('storage');
 
-    // r_loc: map simple categories to [0,1]
-    const categories = placeDetails.properties?.categories || [];
-    const tokens = categoryTokens(categories);
-    const name = (placeDetails.properties?.name || '').toLowerCase();
-    const isCafe =
-      categories.some((c) => c.includes('cafe') || c.includes('coffee')) ||
-      name.includes('cafe') ||
-      name.includes('coffee');
-    const isLibrary =
-      categories.some((c) => c.includes('library')) ||
-      name.includes('library') ||
-      name.includes('perpustakaan');
-    const isHotel =
-      categories.some((c) => c.includes('hotel') || c.includes('accommodation')) ||
-      name.includes('hotel');
-    const isRestaurant =
-      categories.some((c) => c.includes('restaurant') || c.includes('food')) ||
-      name.includes('restaurant') ||
-      name.includes('restoran');
-    const isLowSuitability =
-      tokens.some((token) => ['industrial', 'warehouse', 'factory', 'manufacturing', 'storage', 'yard'].includes(token)) ||
-      name.includes('industrial') ||
-      name.includes('warehouse') ||
-      name.includes('factory') ||
-      name.includes('manufacturing') ||
-      name.includes('storage');
+  if (isLowSuitability) return 10;
+  if (isCafe) return 100;
+  if (isLibrary) return 85;
+  if (isHotel) return 75;
+  if (isRestaurant) return 65;
+  if (categories.some((category) => String(category).includes('mall'))) return 60;
+  if (categories.some((category) => String(category).includes('park'))) return 45;
+  return 40;
+}
 
-    let loc01 = 0.4;
-    if (isLowSuitability) loc01 = 0.1;
-    else if (isCafe) loc01 = 1.0;
-    else if (isLibrary) loc01 = 0.85;
-    else if (isHotel) loc01 = 0.75;
-    else if (isRestaurant) loc01 = 0.65;
-    else if (categories.some((c) => c.includes('mall'))) loc01 = 0.6;
-    else if (categories.some((c) => c.includes('park'))) loc01 = 0.45;
-
-    // Distance fallback: use provided properties.distance or compute from coordinates
-    let distanceMeters = placeDetails.properties?.distance;
-    try {
-      if (distanceMeters == null) {
-        const user = placeDetails.userLocation;
-        const coords = placeDetails.geometry?.coordinates;
-        if (user && Array.isArray(coords) && coords.length >= 2) {
-          const lat2 = coords[1];
-          const lon2 = coords[0];
-          distanceMeters = calculateDistance(user.lat, user.lon, lat2, lon2);
-        }
-      }
-    } catch (e) {
-      logger.debug(`Distance fallback failed: ${e.message}`);
-    }
-    if (distanceMeters == null) distanceMeters = 1000;
-    distanceMeters = parseFiniteNumber(distanceMeters, 'distance');
-    const r_dist = minMax(distanceMeters, 0, 3000, 'cost');
-
-    // Amenity score: expect 0..100 if provided; fallback simple inference
-    let amen = 50;
-    if (placeDetails.properties?.amenity_score != null) {
-      amen = parseFiniteNumber(placeDetails.properties.amenity_score, 'amenity_score');
-    }
-    const r_amen = Math.max(0, Math.min(1, amen / 100));
-
-    const r = [loc01, r_dist, r_amen];
-    const score01 = W.reduce((s, wi, i) => s + wi * r[i], 0);
-    const label = labelEqualInterval(score01);
-
-    const result = {
-      score: +(score01 * 100).toFixed(2),
-      label,
-      breakdown: {
-        location_score: +(loc01 * 100).toFixed(2),
-        distance_score: +(r_dist * 100).toFixed(2),
-        amenity_score: +(r_amen * 100).toFixed(2)
-      },
-      weights: W,
-      CR: +wObj.consistency_ratio?.toFixed?.(3) || undefined
-    };
-
-    if (result.CR != null && result.CR > CR_THRESHOLD) {
-      result.warning = `AHP consistency ratio high (CR=${result.CR}). Consider revising pairwise judgments.`;
-    }
-
-    return result;
-  } catch (error) {
-    logger.error('Error calculating WFA score (FAHP):', error);
-    return {
-      score: 0,
-      label: labelEqualInterval(0),
-      breakdown: { error: error.message }
-    };
+function getDistanceFactorScore(distanceMeters) {
+  if (typeof distanceMeters !== 'number' || !Number.isFinite(distanceMeters)) {
+    throw new Error('distance must be numeric');
   }
+  return minMax(distanceMeters, 0, 3000, 'cost') * 100;
+}
+
+async function calculateWfaScore(input, ahpWeights = null) {
+  const components = input || {};
+  const locationTypeScore = parseScore(components.locationTypeScore, 'location_type');
+  const distanceScore = parseScore(components.distanceScore, 'distance_factor');
+  const facilityScore = parseScore(components.facilityScore, 'facility_score');
+  const wObj = ahpWeights || getWfaAhpWeights();
+  const W = [wObj.location_type, wObj.distance_factor, wObj.facility_score];
+  const score01 = W.reduce((sum, weight, index) => sum + weight * [locationTypeScore, distanceScore, facilityScore][index] / 100, 0);
+  const result = {
+    score: +(score01 * 100).toFixed(2),
+    label: labelEqualInterval(score01),
+    breakdown: {
+      location_type: locationTypeScore,
+      distance_factor: distanceScore,
+      facility_score: facilityScore
+    },
+    weights: W,
+    CR: +wObj.consistency_ratio?.toFixed?.(3) || undefined
+  };
+
+  if (result.CR != null && result.CR > CR_THRESHOLD) {
+    result.warning = `AHP consistency ratio high (CR=${result.CR}). Consider revising pairwise judgments.`;
+  }
+
+  return result;
 }
 
 // --- Public API: getDisciplineAhpWeights (now FAHP) ---
@@ -361,10 +363,13 @@ export default {
 
   // Weights
   getWfaAhpWeights,
+  getFacilityAhpWeights,
   getDisciplineAhpWeights,
   getSmartAcAhpWeights,
 
   // Utils
+  getLocationTypeScore,
+  getDistanceFactorScore,
   getWfaScoreLabel,
   getDisciplineLabel,
   categorizePlace,

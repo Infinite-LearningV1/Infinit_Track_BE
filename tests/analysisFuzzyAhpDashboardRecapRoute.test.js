@@ -90,7 +90,7 @@ const mockCalculateDisciplineIndex = jest.fn(async () => ({
 const mockGetWfaAhpWeights = jest.fn(() => ({
   location_type: 0.5,
   distance_factor: 0.3,
-  amenity_score: 0.2,
+  facility_score: 0.2,
   consistency_ratio: 0.01
 }));
 const mockCalculateWfaScore = jest.fn(async () => ({
@@ -98,6 +98,8 @@ const mockCalculateWfaScore = jest.fn(async () => ({
   label: 'Tinggi'
 }));
 const mockCategorizePlace = jest.fn(() => 'office');
+const mockGetLocationTypeScore = jest.fn(() => 40);
+const mockGetDistanceFactorScore = jest.fn(() => 66.67);
 const mockGetSmartAcAhpWeights = jest.fn(() => ({
   history: 0.4,
   checkin_pattern: 0.3,
@@ -178,6 +180,8 @@ jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
     calculateDisciplineIndex: mockCalculateDisciplineIndex,
     getWfaAhpWeights: mockGetWfaAhpWeights,
     calculateWfaScore: mockCalculateWfaScore,
+    getLocationTypeScore: mockGetLocationTypeScore,
+    getDistanceFactorScore: mockGetDistanceFactorScore,
     categorizePlace: mockCategorizePlace,
     getSmartAcAhpWeights: mockGetSmartAcAhpWeights
   }
@@ -374,7 +378,7 @@ describe('fuzzy ahp dashboard recap service behavior', () => {
     mockGetWfaAhpWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
-      amenity_score: 0.2,
+      facility_score: 0.2,
       consistency_ratio: 0.01
     });
     mockCalculateWfaScore.mockResolvedValue({

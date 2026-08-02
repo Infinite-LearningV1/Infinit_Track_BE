@@ -37,7 +37,11 @@ jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
   resolveActiveWfaRejectionReason: jest.fn()
 }));
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
-  default: { calculateWfaScore: mockCalculateWfaScore }
+  default: {
+    calculateWfaScore: mockCalculateWfaScore,
+    getLocationTypeScore: jest.fn(() => 100),
+    getDistanceFactorScore: jest.fn(() => 90)
+  }
 }));
 jest.unstable_mockModule('../src/utils/geofence.js', () => ({
   getJakartaDateString: jest.fn(() => '2026-07-28')
@@ -56,7 +60,7 @@ jest.unstable_mockModule('axios', () => ({
       data: {
         features: [
           {
-            properties: { name: 'Lokasi server' },
+            properties: { name: 'Lokasi server', distance: 100, facility_score: 90 },
             geometry: { type: 'Point', coordinates: [119.87, -0.9] }
           }
         ]
