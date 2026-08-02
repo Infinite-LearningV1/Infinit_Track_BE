@@ -30,14 +30,30 @@ export const isTransientGeoapifyError = (error) => {
   return status === 429 || (status >= 500 && status <= 599);
 };
 
+class GeoapifyRequestError extends Error {
+  constructor({ operation, retryable, status }) {
+    super('Geoapify request failed');
+    Object.defineProperty(this, 'name', { value: 'GeoapifyRequestError', configurable: true });
+    this.code = 'GEOAPIFY_REQUEST_FAILED';
+    this.geoapify = { operation, retryable, status };
+  }
+}
+
 const classifyGeoapifyError = (error, operation) => {
-  const classifiedError = error instanceof Error ? error : new Error('Geoapify request failed');
-  classifiedError.geoapify = {
+  const classifiedRetryable = error?.geoapify?.retryable;
+  const classifiedStatus = error?.geoapify?.status;
+  const responseStatus = error?.response?.status;
+
+  return new GeoapifyRequestError({
     operation,
-    retryable: error?.geoapify?.retryable ?? isTransientGeoapifyError(error),
-    status: error?.geoapify?.status ?? error?.response?.status ?? null
-  };
-  return classifiedError;
+    retryable:
+      typeof classifiedRetryable === 'boolean' ? classifiedRetryable : isTransientGeoapifyError(error),
+    status: Number.isInteger(classifiedStatus)
+      ? classifiedStatus
+      : Number.isInteger(responseStatus)
+        ? responseStatus
+        : null
+  });
 };
 
 const requestWithRetry = async (request, { sleep, logger: clientLogger, operation, params }) => {

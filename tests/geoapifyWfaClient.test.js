@@ -126,6 +126,40 @@ test('stops after one retry and redacts the API key from failure diagnostics', a
   expect(metadata).not.toContain('secret-key');
 });
 
+test('throws a new sanitized details error without the provider request graph or API key', async () => {
+  const providerError = new Error('Request failed for secret-key');
+  providerError.code = 'ERR_BAD_RESPONSE';
+  providerError.config = { params: { apiKey: 'secret-key' } };
+  providerError.request = { path: '/v2/place-details?apiKey=secret-key' };
+  providerError.response = {
+    status: 500,
+    config: providerError.config,
+    data: { diagnostic: 'secret-key' }
+  };
+  providerError.geoapify = {
+    retryable: { diagnostic: 'secret-key' },
+    status: { diagnostic: 'secret-key' }
+  };
+  const get = jest.fn().mockRejectedValue(providerError);
+  const { client } = createClient({ get });
+
+  const thrown = await client.fetchPlaceDetails('place-1').catch((error) => error);
+
+  expect(thrown).not.toBe(providerError);
+  expect(thrown).toMatchObject({
+    name: 'GeoapifyRequestError',
+    message: 'Geoapify request failed',
+    code: 'GEOAPIFY_REQUEST_FAILED',
+    geoapify: { operation: 'place-details', retryable: true, status: 500 }
+  });
+  expect(Object.keys(thrown).sort()).toEqual(['code', 'geoapify']);
+  expect(thrown).not.toHaveProperty('config');
+  expect(thrown).not.toHaveProperty('request');
+  expect(thrown).not.toHaveProperty('response');
+  expect(thrown).not.toHaveProperty('cause');
+  expect(JSON.stringify(thrown)).not.toContain('secret-key');
+});
+
 test('normalizes Places discovery failures to a typed provider error with redacted diagnostics', async () => {
   const get = jest.fn().mockRejectedValue({ response: { status: 500 } });
   const { client, clientLogger } = createClient({ get });
