@@ -13,6 +13,17 @@ const canonicalWeights = {
   distance_factor: 0.2,
   consistency_ratio: 0.05
 };
+const methodology = {
+  approach: 'Fuzzy AHP facility-evidence scoring',
+  criteria_weights: canonicalWeights,
+  facility_matrix: {
+    version: 'facility_equal_v1',
+    criteria: ['internet_access', 'air_conditioning', 'toilets', 'opening_hours', 'wheelchair_accessibility'],
+    weights: [0.2, 0.2, 0.2, 0.2, 0.2],
+    consistency_ratio: 0,
+    weighting_method: 'chang_extent'
+  }
+};
 
 const loadWfa = async ({ recommendForUser = jest.fn(), weights = canonicalWeights } = {}) => {
   jest.resetModules();
@@ -48,7 +59,7 @@ describe('getWfaRecommendations', () => {
         }
       ],
       searchCriteria: { radius_meters: 5000 },
-      methodology: { approach: 'facility evidence' }
+      methodology
     });
     const { getWfaRecommendations } = await loadWfa({ recommendForUser });
     const res = buildRes();
@@ -73,7 +84,7 @@ describe('getWfaRecommendations', () => {
       success: true,
       data: {
         search_criteria: { radius_meters: 5000 },
-        fahp_methodology: { approach: 'facility evidence' }
+        fahp_methodology: methodology
       },
       message: 'Rekomendasi WFA berhasil diambil.'
     });

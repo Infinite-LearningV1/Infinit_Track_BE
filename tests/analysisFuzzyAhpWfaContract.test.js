@@ -108,7 +108,22 @@ describe('analysis WFA fuzzy ahp contract', () => {
     const serviceResult = {
       candidates,
       searchCriteria: { search_radius_meters: 1000 },
-      methodology: { approach: 'Fuzzy AHP facility-evidence scoring' }
+      methodology: {
+        approach: 'Fuzzy AHP facility-evidence scoring',
+        criteria_weights: {
+          location_type: 0.5,
+          distance_factor: 0.3,
+          facility_score: 0.2,
+          consistency_ratio: 0
+        },
+        facility_matrix: {
+          version: 'facility_equal_v1',
+          criteria: ['internet_access', 'air_conditioning', 'toilets', 'opening_hours', 'wheelchair_accessibility'],
+          weights: [0.2, 0.2, 0.2, 0.2, 0.2],
+          consistency_ratio: 0,
+          weighting_method: 'chang_extent'
+        }
+      }
     };
     mockAnalyze.mockResolvedValue(serviceResult);
 

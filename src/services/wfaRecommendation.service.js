@@ -154,9 +154,16 @@ const recommendationSearchCriteria = ({
   recommendations_returned: recommendationsReturned
 });
 
-const recommendationMethodology = (wfaWeights) => ({
+const recommendationMethodology = (wfaWeights, facilityWeights) => ({
   approach: 'Fuzzy AHP facility-evidence scoring',
-  criteria_weights: { ...wfaWeights }
+  criteria_weights: { ...wfaWeights },
+  facility_matrix: {
+    version: facilityWeights.version,
+    criteria: [...facilityWeights.criteria],
+    weights: [...facilityWeights.values],
+    consistency_ratio: facilityWeights.consistency_ratio,
+    weighting_method: facilityWeights.weighting_method
+  }
 });
 
 const compareFinalCandidates = (left, right) => {
@@ -300,8 +307,9 @@ export const createWfaRecommendationService = (dependencies = {}) => {
       radiusMeters
     });
     const wfaWeights = resolved.fuzzyEngine.getWfaAhpWeights();
+    const facilityWeights = resolved.fuzzyEngine.getFacilityAhpWeights();
     const candidates = prepareCandidates({ features, latitude, longitude, wfaWeights });
-    const methodology = recommendationMethodology(wfaWeights);
+    const methodology = recommendationMethodology(wfaWeights, facilityWeights);
     const shortlist = candidates
       .sort(
         nearestOnly

@@ -4,6 +4,29 @@ import { AppError } from '../src/shared/errors/AppError.js';
 import { createWfaRecommendationService } from '../src/services/wfaRecommendation.service.js';
 
 const scheduleDate = '2099-08-03';
+const facilityMatrix = Object.freeze({
+  version: 'facility_equal_v1',
+  criteria: ['internet_access', 'air_conditioning', 'toilets', 'opening_hours', 'wheelchair_accessibility'],
+  values: [0.2, 0.2, 0.2, 0.2, 0.2],
+  consistency_ratio: 0,
+  weighting_method: 'chang_extent'
+});
+const expectedMethodology = {
+  approach: 'Fuzzy AHP facility-evidence scoring',
+  criteria_weights: {
+    location_type: 0.5,
+    distance_factor: 0.3,
+    facility_score: 0.2,
+    consistency_ratio: 0
+  },
+  facility_matrix: {
+    version: 'facility_equal_v1',
+    criteria: ['internet_access', 'air_conditioning', 'toilets', 'opening_hours', 'wheelchair_accessibility'],
+    weights: [0.2, 0.2, 0.2, 0.2, 0.2],
+    consistency_ratio: 0,
+    weighting_method: 'chang_extent'
+  }
+};
 const unknownFacilities = Object.freeze({
   internet_access: null,
   air_conditioning: null,
@@ -104,6 +127,11 @@ const createHarness = ({
   };
   const fuzzyEngine = {
     getWfaAhpWeights: jest.fn(() => wfaWeights),
+    getFacilityAhpWeights: jest.fn(() => ({
+      ...facilityMatrix,
+      criteria: [...facilityMatrix.criteria],
+      values: [...facilityMatrix.values]
+    })),
     getLocationTypeScore: jest.fn((candidate) => candidate.properties.location_score),
     getDistanceFactorScore: jest.fn((distance) => Math.max(0, 100 - distance)),
     categorizePlace: jest.fn((candidate) => candidate.properties.location_type),
@@ -414,15 +442,33 @@ test('recommendations require duplicate eligibility and the configured search ra
     total_candidates_found: 1,
     recommendations_returned: 1
   });
-  expect(result.methodology).toEqual({
-    approach: 'Fuzzy AHP facility-evidence scoring',
-    criteria_weights: {
-      location_type: 0.5,
-      distance_factor: 0.3,
-      facility_score: 0.2,
-      consistency_ratio: 0
-    }
+  expect(result.methodology).toEqual(expectedMethodology);
+});
+
+test('empty analysis returns complete copy-safe facility methodology', async () => {
+  const harness = createHarness();
+
+  const first = await harness.service.analyze({
+    latitude: -0.8917,
+    longitude: 119.8707,
+    scheduleDate,
+    radiusMeters: 2500
   });
+
+  expect(first.candidates).toEqual([]);
+  expect(first.methodology).toEqual(expectedMethodology);
+  first.methodology.criteria_weights.location_type = 99;
+  first.methodology.facility_matrix.criteria[0] = 'changed';
+  first.methodology.facility_matrix.weights[0] = 99;
+
+  const second = await harness.service.analyze({
+    latitude: -0.8917,
+    longitude: 119.8707,
+    scheduleDate,
+    radiusMeters: 2500
+  });
+
+  expect(second.methodology).toEqual(expectedMethodology);
 });
 
 test('analysis validates the date without a duplicate check and honors its explicit radius', async () => {

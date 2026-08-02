@@ -3,26 +3,28 @@ import fuzzyEngine from '../src/utils/fuzzyAhpEngine.js';
 test('facility matrix produces equal weights and CR zero', () => {
   const result = fuzzyEngine.getFacilityAhpWeights();
 
-  expect(result.criteria).toEqual([
-    'internet_access',
-    'air_conditioning',
-    'toilets',
-    'opening_hours',
-    'wheelchair_accessibility'
-  ]);
-  expect(result.values).toEqual([0.2, 0.2, 0.2, 0.2, 0.2]);
-  expect(result.consistency_ratio).toBe(0);
+  expect(result).toEqual({
+    version: 'facility_equal_v1',
+    criteria: ['internet_access', 'air_conditioning', 'toilets', 'opening_hours', 'wheelchair_accessibility'],
+    values: [0.2, 0.2, 0.2, 0.2, 0.2],
+    consistency_ratio: 0,
+    weighting_method: 'chang_extent'
+  });
 });
 
 test('facility weights are returned as copies', () => {
   const first = fuzzyEngine.getFacilityAhpWeights();
   first.criteria[0] = 'changed';
   first.values[0] = 99;
+  first.version = 'changed';
+  first.weighting_method = 'changed';
 
   expect(fuzzyEngine.getFacilityAhpWeights()).toEqual({
+    version: 'facility_equal_v1',
     criteria: ['internet_access', 'air_conditioning', 'toilets', 'opening_hours', 'wheelchair_accessibility'],
     values: [0.2, 0.2, 0.2, 0.2, 0.2],
-    consistency_ratio: 0
+    consistency_ratio: 0,
+    weighting_method: 'chang_extent'
   });
 });
 

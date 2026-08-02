@@ -4,6 +4,7 @@ import { extentWeightsTFN } from '../analytics/fahp.extent.js';
 import { minMax } from '../analytics/normalization.js';
 import { labelEqualInterval } from '../analytics/labeling.js';
 import {
+  FACILITY_MATRIX_VERSION,
   FACILITY_CRITERIA,
   FACILITY_PAIRWISE_TFN,
   WFA_PAIRWISE_TFN,
@@ -133,9 +134,11 @@ function getFacilityAhpWeights() {
   }
 
   return {
+    version: FACILITY_MATRIX_VERSION,
     criteria: [...FACILITY_CRITERIA],
     values: [...cachedFacilityWeights],
-    consistency_ratio: cachedFacilityCR
+    consistency_ratio: cachedFacilityCR,
+    weighting_method: 'chang_extent'
   };
 }
 

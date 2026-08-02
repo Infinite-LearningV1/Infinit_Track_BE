@@ -23,6 +23,8 @@ export const TFN = {
   EXTREME: [8, 9, 9] // 9: Extreme importance
 };
 
+export const FACILITY_MATRIX_VERSION = 'facility_equal_v1';
+
 export const FACILITY_CRITERIA = Object.freeze([
   'internet_access',
   'air_conditioning',
