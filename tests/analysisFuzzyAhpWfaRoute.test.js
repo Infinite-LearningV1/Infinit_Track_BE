@@ -37,8 +37,8 @@ const mockLocationEvent = {
 const mockFuzzyEngine = {
   getDisciplineAhpWeights: jest.fn(),
   calculateDisciplineIndex: jest.fn(),
-  getWfaAhpWeights: jest.fn(),
-  calculateWfaScore: jest.fn(),
+  getLegacyWfaAmenityWeights: jest.fn(),
+  calculateLegacyWfaAmenityScore: jest.fn(),
   categorizePlace: jest.fn(() => 'other')
 };
 
@@ -95,7 +95,7 @@ describe('analysis WFA fuzzy ahp route validation', () => {
     jest.clearAllMocks();
     process.env.GEOAPIFY_API_KEY = 'test-geoapify-key';
     mockAxiosGet.mockResolvedValue({ data: { features: [] } });
-    mockFuzzyEngine.getWfaAhpWeights.mockReturnValue({
+    mockFuzzyEngine.getLegacyWfaAmenityWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
       amenity_score: 0.2,

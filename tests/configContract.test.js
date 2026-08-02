@@ -122,13 +122,13 @@ async function loadWfaControllerWithMocks({ axiosGet, logger, settingsValue = nu
 
   jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
     default: {
-      getWfaAhpWeights: jest.fn(() => ({
+      getLegacyWfaAmenityWeights: jest.fn(() => ({
         location_type: 0.4,
         amenity_score: 0.4,
         distance_factor: 0.2,
         consistency_ratio: 0.05
       })),
-      calculateWfaScore: jest.fn(),
+      calculateLegacyWfaAmenityScore: jest.fn(),
       getCategoryDisplayName: jest.fn((value) => value),
       categorizePlace: jest.fn(() => 'catering')
     }
