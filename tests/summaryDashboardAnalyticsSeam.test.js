@@ -45,6 +45,10 @@ jest.unstable_mockModule('../src/models/user.model.js', () => ({
   default: { findOne: jest.fn() }
 }));
 
+jest.unstable_mockModule('../src/models/booking.model.js', () => ({
+  default: {}
+}));
+
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   default: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() }
 }));
