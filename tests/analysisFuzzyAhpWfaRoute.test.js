@@ -100,25 +100,30 @@ describe('analysis WFA fuzzy ahp route validation', () => {
   });
 
   it('returns 400 when schedule_date is missing', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872');
-  });
-
-  it('returns 400 when schedule_date is not a strict future date', async () => {
-    await expectValidationFailure(
-      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-02-30'
+    const response = await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872'
     );
+
+    expect(response.body.errors).toEqual([
+      expect.objectContaining({ path: 'schedule_date', msg: 'schedule_date is required' })
+    ]);
+    expect(response.body.errors[0]).not.toHaveProperty('code');
   });
 
-  it('returns 400 when schedule_date is today or in the past in WIB', async () => {
+  it.each([
+    ['2026-02-30', 'INVALID_SCHEDULE_DATE'],
+    ['2026-08-01', 'PAST_DATE_NOT_ALLOWED'],
+    ['2026-08-02', 'SAME_DAY_NOT_ALLOWED']
+  ])('returns %s with error item code %s', async (scheduleDate, code) => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-02T04:00:00.000Z'));
 
-    await expectValidationFailure(
-      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-08-02'
-    );
-    await expectValidationFailure(
-      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2026-08-01'
+    const response = await expectValidationFailure(
+      `/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=${scheduleDate}`
     );
 
+    expect(response.body.errors).toEqual([
+      expect.objectContaining({ path: 'schedule_date', code })
+    ]);
     expect(mockAnalyze).not.toHaveBeenCalled();
   });
 

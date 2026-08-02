@@ -35,6 +35,11 @@ export const upload = multer({
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TODAY_LOCATIONS_LIMIT_MAX = 500;
+const WFA_SCHEDULE_DATE_ERROR_CODES = new Set([
+  'INVALID_SCHEDULE_DATE',
+  'PAST_DATE_NOT_ALLOWED',
+  'SAME_DAY_NOT_ALLOWED'
+]);
 
 const parseStrictDateOnly = (value) => {
   if (typeof value !== 'string' || !DATE_ONLY_PATTERN.test(value)) return null;
@@ -59,7 +64,18 @@ const strictFutureScheduleDateQuery = (field) =>
     .withMessage(`${field} is required`)
     .bail()
     .custom((value) => {
-      assertFutureWibScheduleDate(value);
+      try {
+        assertFutureWibScheduleDate(value);
+      } catch (error) {
+        if (!WFA_SCHEDULE_DATE_ERROR_CODES.has(error?.code)) {
+          throw error;
+        }
+
+        throw {
+          message: error.message,
+          validationCode: error.code
+        };
+      }
       return true;
     });
 
@@ -228,7 +244,7 @@ export const validate = (req, res, next) => {
       return {
         ...error,
         msg: error.msg.message,
-        code: error.msg.code
+        code: error.msg.code ?? error.msg.validationCode
       };
     });
     const typedCode =

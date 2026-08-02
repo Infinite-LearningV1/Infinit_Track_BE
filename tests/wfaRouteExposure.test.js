@@ -29,6 +29,10 @@ const buildApp = async () => {
 };
 
 describe('WFA recommendation route contract', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('runs the shared validation before exposing canonical recommendations', async () => {
     const { app, getWfaRecommendations } = await buildApp();
 
@@ -39,16 +43,39 @@ describe('WFA recommendation route contract', () => {
     expect(getWfaRecommendations).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    ['missing schedule date', 'lat=-0.895&lng=119.872'],
-    ['malformed schedule date', 'lat=-0.895&lng=119.872&schedule_date=2099-02-30'],
-    ['nonfuture schedule date', 'lat=-0.895&lng=119.872&schedule_date=2020-08-10']
-  ])('rejects %s before the controller', async (_name, query) => {
+  it('keeps a missing schedule date as a standard required-field validation error', async () => {
     const { app, getWfaRecommendations } = await buildApp();
 
-    const response = await request(app).get(`/api/wfa/recommendations?${query}`).expect(400);
+    const response = await request(app)
+      .get('/api/wfa/recommendations?lat=-0.895&lng=119.872')
+      .expect(400);
 
     expect(response.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
+    expect(response.body.errors).toEqual([
+      expect.objectContaining({ path: 'schedule_date', msg: 'schedule_date is required' })
+    ]);
+    expect(response.body.errors[0]).not.toHaveProperty('code');
+    expect(getWfaRecommendations).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['invalid calendar date', '2099-02-30', 'INVALID_SCHEDULE_DATE'],
+    ['past date', '2026-08-01', 'PAST_DATE_NOT_ALLOWED'],
+    ['same-day date', '2026-08-02', 'SAME_DAY_NOT_ALLOWED']
+  ])('preserves %s code in the validation error item', async (_name, scheduleDate, code) => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-02T04:00:00.000Z'));
+    const { app, getWfaRecommendations } = await buildApp();
+
+    const response = await request(app)
+      .get(
+        `/api/wfa/recommendations?lat=-0.895&lng=119.872&schedule_date=${scheduleDate}`
+      )
+      .expect(400);
+
+    expect(response.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
+    expect(response.body.errors).toEqual([
+      expect.objectContaining({ path: 'schedule_date', code })
+    ]);
     expect(getWfaRecommendations).not.toHaveBeenCalled();
   });
 
