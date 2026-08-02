@@ -449,11 +449,34 @@ describe('server-authoritative WFA booking creation', () => {
   it('awaits rollback before forwarding a post-transaction write failure', async () => {
     const writeError = new Error('location write failed');
     mockLocationCreate.mockRejectedValueOnce(writeError);
+    let signalRollbackStarted;
+    let resolveRollback;
+    const rollbackStarted = new Promise((resolve) => {
+      signalRollbackStarted = resolve;
+    });
+    const rollbackPending = new Promise((resolve) => {
+      resolveRollback = resolve;
+    });
+    transaction.rollback.mockImplementationOnce(() => {
+      signalRollbackStarted();
+      return rollbackPending;
+    });
     const next = jest.fn();
 
-    await createBooking({ user: { id: 9 }, body: validPayload }, buildRes(), next);
+    const controllerPending = createBooking(
+      { user: { id: 9 }, body: validPayload },
+      buildRes(),
+      next
+    );
+
+    await rollbackStarted;
 
     expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+
+    resolveRollback();
+    await controllerPending;
+
     expect(next).toHaveBeenCalledWith(writeError);
     expect(transaction.rollback.mock.invocationCallOrder[0]).toBeLessThan(
       next.mock.invocationCallOrder[0]
