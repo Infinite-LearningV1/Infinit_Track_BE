@@ -54,10 +54,11 @@ const buildApp = async ({ verifyTokenImpl } = {}) => {
   return app;
 };
 
-const buildValidatorApp = () => {
+const buildValidatorApp = ({ onCreate } = {}) => {
   const app = express();
   app.use(express.json());
   app.post('/bookings', createBookingValidation, validate, (req, res) => {
+    onCreate?.(req);
     res.status(201).json({ ok: true });
   });
   app.patch('/bookings/:id', updateStatusValidation, validate, (req, res) => {
@@ -117,6 +118,50 @@ describe('bookings route contract', () => {
 });
 
 describe('bookings validator contract', () => {
+  test.each([
+    ['abc', 'Location ID harus berupa integer positif'],
+    ['7.5', 'Location ID harus berupa integer positif'],
+    [0, 'Location ID harus berupa integer positif'],
+    [-1, 'Location ID harus berupa integer positif']
+  ])('rejects malformed location_id %p before the booking controller boundary', async (locationId, message) => {
+    const onCreate = jest.fn();
+    const response = await request(buildValidatorApp({ onCreate }))
+      .post('/bookings')
+      .send({ ...validBookingPayload, location_id: locationId })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'E_VALIDATION',
+      message,
+      errors: [{ path: 'location_id', msg: message, location: 'body' }]
+    });
+    expect(onCreate).not.toHaveBeenCalled();
+    validateBookingValidationEnvelope(response.body);
+  });
+
+  test('preserves absent location_id for canonical coordinate lookup', async () => {
+    const onCreate = jest.fn();
+    await request(buildValidatorApp({ onCreate }))
+      .post('/bookings')
+      .send(validBookingPayload)
+      .expect(201);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onCreate.mock.calls[0][0].body).not.toHaveProperty('location_id');
+  });
+
+  test('accepts a positive integer location_id for scoped reuse', async () => {
+    const onCreate = jest.fn();
+    await request(buildValidatorApp({ onCreate }))
+      .post('/bookings')
+      .send({ ...validBookingPayload, location_id: 7 })
+      .expect(201);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onCreate.mock.calls[0][0].body.location_id).toBe(7);
+  });
+
   test('missing schedule_date returns 400', async () => {
     const app = buildValidatorApp();
     const payload = { ...validBookingPayload };

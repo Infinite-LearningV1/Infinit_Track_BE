@@ -589,6 +589,12 @@ export const createBookingValidation = [
     .isLength({ max: 500 })
     .withMessage('request_other_reason maksimal 500 karakter'),
 
+  body('location_id')
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage('Location ID harus berupa integer positif')
+    .toInt(),
+
   body('latitude')
     .notEmpty()
     .withMessage('Latitude wajib diisi')
