@@ -155,11 +155,11 @@ describe('bookings validator contract', () => {
     expect(onCreate.mock.calls[0][0].body).not.toHaveProperty('location_id');
   });
 
-  test('accepts a positive integer location_id for scoped reuse', async () => {
+  test.each([7, '7'])('accepts and normalizes a positive integer location_id %p for scoped reuse', async (locationId) => {
     const onCreate = jest.fn();
     await request(buildValidatorApp({ onCreate }))
       .post('/bookings')
-      .send({ ...validBookingPayload, location_id: 7 })
+      .send({ ...validBookingPayload, location_id: locationId })
       .expect(201);
 
     expect(onCreate).toHaveBeenCalledTimes(1);

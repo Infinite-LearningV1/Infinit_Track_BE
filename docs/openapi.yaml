@@ -3424,9 +3424,12 @@ paths:
                   format: float
                   example: 106.816666
                 location_id:
-                  type: integer
-                  minimum: 1
-                  description: Optional existing WFA location for the same authenticated user and WFA category; its exact latitude and longitude must match the submitted coordinates.
+                  oneOf:
+                    - type: integer
+                      minimum: 1
+                    - type: string
+                      pattern: '^[1-9][0-9]*$'
+                  description: Optional existing WFA location for the same authenticated user and WFA category; its exact latitude and longitude must match the submitted coordinates. Numeric strings are normalized to integers by the request validator.
                 description:
                   type: string
                   example: 'WFA smoke gate location'

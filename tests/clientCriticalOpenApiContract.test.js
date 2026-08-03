@@ -313,8 +313,10 @@ describe('client-critical OpenAPI contract', () => {
         format: 'float'
       },
       location_id: {
-        type: 'integer',
-        minimum: 1
+        oneOf: [
+          { type: 'integer', minimum: 1 },
+          { type: 'string', pattern: '^[1-9][0-9]*$' }
+        ]
       },
       description: { type: 'string' },
       notes: { type: 'string' }
@@ -322,6 +324,19 @@ describe('client-critical OpenAPI contract', () => {
     expect(bookingSchema.properties.location_id.description).toContain('same authenticated user');
     expect(bookingSchema.properties.location_id.description).toContain('WFA category');
     expect(bookingSchema.properties.location_id.description).toContain('exact latitude and longitude');
+    expect(bookingSchema.properties.location_id.description).toContain('normalized to integers');
+    const validateBooking = compileOasSchema(openapi, bookingSchema);
+    const validBooking = {
+      schedule_date: '2099-12-31',
+      request_reason_id: 2,
+      latitude: -6.2,
+      longitude: 106.816666,
+      location_id: '7'
+    };
+    expect(validateBooking(validBooking)).toBe(true);
+    for (const value of [null, '0', '7.5', '', [], {}, true]) {
+      expect(validateBooking({ ...validBooking, location_id: value })).toBe(false);
+    }
     expect(bookingSchema.properties).not.toHaveProperty('date');
     expect(bookingSchema.properties).not.toHaveProperty('location_name');
     expect(bookingSchema.properties).not.toHaveProperty('reason');
