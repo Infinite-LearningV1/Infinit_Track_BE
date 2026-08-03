@@ -854,7 +854,7 @@ paths:
                             type: integer
                       methodology:
                         type: object
-                        required: [approach, criteria_weights]
+                        required: [approach, criteria_weights, facility_matrix]
                         properties:
                           approach:
                             type: string
@@ -875,6 +875,29 @@ paths:
                               weighting_method:
                                 type: string
                                 example: row_geometric_mean_fallback
+                          facility_matrix:
+                            type: object
+                            required: [version, criteria, weights, consistency_ratio, weighting_method]
+                            properties:
+                              version:
+                                type: string
+                                enum: [facility_equal_v1]
+                              criteria:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]]
+                              weights:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[0.2, 0.2, 0.2, 0.2, 0.2]]
+                              consistency_ratio:
+                                type: number
+                                enum: [0]
+                              weighting_method:
+                                type: string
+                                enum: [chang_extent]
                   message:
                     type: string
                     example: WFA Fuzzy AHP analysis retrieved successfully
@@ -897,10 +920,10 @@ paths:
                           facility_confidence: 100
                           facilities: { internet_access: 1, air_conditioning: 1, toilets: 1, opening_hours: 1, wheelchair_accessibility: 0 }
                           final_score: 78.4
-                          final_label: Tinggi
+                          final_label: Sangat Baik
                           rank: 1
                       searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
-                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
                     message: WFA Fuzzy AHP analysis retrieved successfully
                 insufficient_facility_data:
                   summary: Discovery succeeded but facility evidence is insufficient to rank.
@@ -923,7 +946,7 @@ paths:
                           final_label: null
                           rank: null
                       searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
-                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
                     message: WFA Fuzzy AHP analysis retrieved successfully
                 facility_enrichment_failed:
                   summary: Candidate details could not be enriched; no score is fabricated.
@@ -946,7 +969,15 @@ paths:
                           final_label: null
                           rank: null
                       searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
-                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                empty:
+                  summary: No nearby venue matches the search categories.
+                  value:
+                    success: true
+                    data:
+                      candidates: []
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 0, recommendations_returned: 0 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
                     message: WFA Fuzzy AHP analysis retrieved successfully
         '400':
           $ref: '#/components/responses/WfaQueryValidationError'
@@ -3392,6 +3423,10 @@ paths:
                   type: number
                   format: float
                   example: 106.816666
+                location_id:
+                  type: integer
+                  minimum: 1
+                  description: Optional existing WFA location for the same authenticated user and WFA category; its exact latitude and longitude must match the submitted coordinates.
                 description:
                   type: string
                   example: 'WFA smoke gate location'
@@ -3512,6 +3547,42 @@ paths:
                     message: 'Alasan pengajuan WFA tidak ditemukan.'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: opaque location validation failure. The response does not disclose location ownership or existence.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, message, errors]
+                properties:
+                  success:
+                    type: boolean
+                    enum: [false]
+                  message:
+                    type: string
+                    enum: ['Validasi booking gagal.']
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, code, message]
+                      properties:
+                        field:
+                          type: string
+                          enum: [location_id]
+                        code:
+                          type: string
+                          enum: [LOCATION_NOT_FOUND]
+                        message:
+                          type: string
+                          enum: ['Lokasi tidak ditemukan atau tidak valid.']
+              example:
+                success: false
+                message: 'Validasi booking gagal.'
+                errors:
+                  - field: location_id
+                    code: LOCATION_NOT_FOUND
+                    message: 'Lokasi tidak ditemukan atau tidak valid.'
         '409':
           description: A pending or approved booking already exists for the authenticated user and schedule date.
           content:
@@ -3914,7 +3985,7 @@ paths:
                             type: integer
                       fahp_methodology:
                         type: object
-                        required: [approach, criteria_weights]
+                        required: [approach, criteria_weights, facility_matrix]
                         properties:
                           approach:
                             type: string
@@ -3935,6 +4006,29 @@ paths:
                               weighting_method:
                                 type: string
                                 example: row_geometric_mean_fallback
+                          facility_matrix:
+                            type: object
+                            required: [version, criteria, weights, consistency_ratio, weighting_method]
+                            properties:
+                              version:
+                                type: string
+                                enum: [facility_equal_v1]
+                              criteria:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]]
+                              weights:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[0.2, 0.2, 0.2, 0.2, 0.2]]
+                              consistency_ratio:
+                                type: number
+                                enum: [0]
+                              weighting_method:
+                                type: string
+                                enum: [chang_extent]
                   message:
                     type: string
                     example: 'Rekomendasi WFA berhasil diambil.'
@@ -3957,10 +4051,10 @@ paths:
                           facility_confidence: 100
                           facilities: { internet_access: 1, air_conditioning: 1, toilets: 1, opening_hours: 1, wheelchair_accessibility: 0 }
                           final_score: 78.4
-                          final_label: Tinggi
+                          final_label: Sangat Baik
                           rank: 1
                       search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
-                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
                     message: 'Rekomendasi WFA berhasil diambil.'
                 insufficient_facility_data:
                   summary: Candidate remains visible but cannot receive a final rank from partial facility evidence.
@@ -3983,7 +4077,7 @@ paths:
                           final_label: null
                           rank: null
                       search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
-                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
                     message: 'Rekomendasi WFA berhasil diambil.'
                 facility_enrichment_failed:
                   summary: Candidate remains visible when provider detail enrichment cannot be completed.
@@ -4006,7 +4100,16 @@ paths:
                           final_label: null
                           rank: null
                       search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
-                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback } }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                empty:
+                  summary: No nearby venue matches the search categories.
+                  value:
+                    success: true
+                    data:
+                      recommendations: []
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 0, recommendations_returned: 0 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
                     message: 'Rekomendasi WFA berhasil diambil.'
         '400':
           $ref: '#/components/responses/WfaQueryValidationError'
@@ -4082,7 +4185,10 @@ paths:
       tags:
         - WFA System
       summary: Get AHP configuration
-      description: Retrieve current Fuzzy AHP algorithm configuration and criteria weights
+      description: Retrieve the authenticated canonical WFA Fuzzy AHP configuration and criteria weights.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: AHP configuration retrieved successfully
@@ -4090,35 +4196,65 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [success, data, message]
                 properties:
                   success:
                     type: boolean
                     example: true
                   data:
                     type: object
+                    required: [current_weights, consistency_ratio, is_consistent, method, criteria_explanation, weight_calculation, scoring_method]
                     properties:
-                      criteria_weights:
+                      current_weights:
                         type: object
+                        required: [location_type, distance_factor, facility_score]
                         properties:
-                          wifi_quality:
+                          location_type:
                             type: number
-                            format: float
-                            example: 0.35
-                          noise_level:
+                            example: 0.633524839963704
+                          distance_factor:
                             type: number
-                            format: float
-                            example: 0.25
-                          amenities:
+                            example: 0.2604011016177943
+                          facility_score:
                             type: number
-                            format: float
-                            example: 0.25
-                          distance:
-                            type: number
-                            format: float
-                            example: 0.15
-                      fuzzy_scales:
+                            example: 0.10607405841850168
+                      consistency_ratio:
+                        type: number
+                        example: 0.057629117460781754
+                      is_consistent:
+                        type: boolean
+                        example: true
+                      method:
+                        type: string
+                        example: 'Fuzzy AHP dengan fallback geometric mean'
+                      criteria_explanation:
                         type: object
-                        description: Fuzzy scale definitions for each criterion
+                        additionalProperties:
+                          type: string
+                      weight_calculation:
+                        type: string
+                      scoring_method:
+                        type: string
+                  message:
+                    type: string
+                    example: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
+              example:
+                success: true
+                data:
+                  current_weights:
+                    location_type: 0.633524839963704
+                    distance_factor: 0.2604011016177943
+                    facility_score: 0.10607405841850168
+                  consistency_ratio: 0.057629117460781754
+                  is_consistent: true
+                  method: 'Fuzzy AHP dengan fallback geometric mean'
+                  criteria_explanation:
+                    location_type: 'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)'
+                    facility_score: 'Penilaian berdasarkan internet_access, air_conditioning, toilets, opening_hours, dan wheelchair accessibility.'
+                    distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
+                  weight_calculation: 'Pembobotan pairwise TFN dengan row geometric mean fallback karena Chang menghasilkan bobot nol'
+                  scoring_method: 'Weighted scoring model dengan normalisasi 0-100'
+                message: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -7852,6 +7988,7 @@ components:
         final_label:
           type: string
           nullable: true
+          enum: [Rendah, Cukup, Baik, Sangat Baik, null]
         rank:
           type: integer
           nullable: true
@@ -7917,6 +8054,56 @@ components:
                     location:
                       type: string
                       enum: [query]
+                    code:
+                      type: string
+                      enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+          examples:
+            missing_schedule_date:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: schedule_date is required
+                errors:
+                  - type: field
+                    msg: schedule_date is required
+                    path: schedule_date
+                    location: query
+            invalid_schedule_date:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Tanggal WFA tidak valid.'
+                errors:
+                  - type: field
+                    value: '2099-02-30'
+                    msg: 'Tanggal WFA tidak valid.'
+                    path: schedule_date
+                    location: query
+                    code: INVALID_SCHEDULE_DATE
+            past_date_not_allowed:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Tanggal booking tidak boleh di masa lalu.'
+                errors:
+                  - type: field
+                    value: '2026-08-01'
+                    msg: 'Tanggal booking tidak boleh di masa lalu.'
+                    path: schedule_date
+                    location: query
+                    code: PAST_DATE_NOT_ALLOWED
+            same_day_not_allowed:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Booking di hari yang sama tidak diperbolehkan.'
+                errors:
+                  - type: field
+                    value: '2026-08-02'
+                    msg: 'Booking di hari yang sama tidak diperbolehkan.'
+                    path: schedule_date
+                    location: query
+                    code: SAME_DAY_NOT_ALLOWED
           example:
             success: false
             code: E_VALIDATION

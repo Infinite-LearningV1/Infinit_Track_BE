@@ -41,6 +41,60 @@ describe('analysis WFA fuzzy ahp contract', () => {
     jest.clearAllMocks();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('keeps a missing schedule date as an untyped required-field validation item', async () => {
+    const response = await request(app)
+      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=1000')
+      .set('Authorization', 'Bearer test-token')
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'schedule_date is required',
+      errors: [{
+        type: 'field',
+        msg: 'schedule_date is required',
+        path: 'schedule_date',
+        location: 'query'
+      }]
+    });
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['invalid calendar date', '2099-02-30', 'INVALID_SCHEDULE_DATE', 'Tanggal WFA tidak valid.'],
+    ['past date', '2026-08-01', 'PAST_DATE_NOT_ALLOWED', 'Tanggal booking tidak boleh di masa lalu.'],
+    ['same-day date', '2026-08-02', 'SAME_DAY_NOT_ALLOWED', 'Booking di hari yang sama tidak diperbolehkan.']
+  ])('preserves the %s taxonomy in the query error item', async (_case, scheduleDate, code, message) => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-02T04:00:00.000Z'));
+
+    const response = await request(app)
+      .get(
+        `/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=1000&schedule_date=${scheduleDate}`
+      )
+      .set('Authorization', 'Bearer test-token')
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'E_VALIDATION',
+      message,
+      errors: [{
+        type: 'field',
+        value: scheduleDate,
+        msg: message,
+        path: 'schedule_date',
+        location: 'query',
+        code
+      }]
+    });
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
   it('delegates to canonical analysis and preserves truthful candidate statuses', async () => {
     const facilities = {
       internet_access: 1,
