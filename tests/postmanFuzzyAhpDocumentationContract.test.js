@@ -4,6 +4,9 @@ import path from 'path';
 const repoRoot = path.resolve(process.cwd());
 const reportingBoundaryPath = path.join(repoRoot, 'docs', 'reporting-analytics-boundary.md');
 const reportingBoundary = fs.readFileSync(reportingBoundaryPath, 'utf8');
+const requestMap = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, 'postman', 'fahp-thesis-hybrid.request-map.json'), 'utf8')
+);
 
 const dedicatedProductionPaths = [
   'GET /api/analysis/fuzzy-ahp/discipline',
@@ -57,6 +60,18 @@ describe('Postman Fuzzy AHP documentation contract', () => {
       /`GET \/api\/analysis\/fuzzy-ahp` remains temporarily supported as the legacy combined endpoint[^\n]*transition-only/i
     );
     expect(fahpSection).toMatch(/Use the legacy combined endpoint only for explicit migration compatibility checks\./i);
+  });
+
+  test('keeps the legacy WFA request as a 410 migration check and points live validation to schedule_date', () => {
+    const legacyWfa = requestMap.requests.find(({ name }) => name === 'Migration / Legacy Combined / WFA');
+    const dedicatedWfa = requestMap.requests.find(({ name }) => name === 'Validation / Dedicated / WFA Live');
+
+    expect(legacyWfa).toMatchObject({
+      endpoint: '/api/analysis/fuzzy-ahp?type=wfa&period=monthly',
+      purpose: 'migration_check',
+      expectedStatus: 410
+    });
+    expect(dedicatedWfa.queryVariables).toContain('wfa_schedule_date');
   });
 
   test('lists exactly the three dedicated production endpoint paths plus the dashboard recap adapter route', () => {

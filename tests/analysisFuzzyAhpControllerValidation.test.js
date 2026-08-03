@@ -5,10 +5,9 @@ const mockBuildDisciplineFahpPayload = jest.fn();
 const mockBuildFuzzyAhpDashboardRecapPayload = jest.fn();
 const mockBuildSmartAcAnalysis = jest.fn();
 const mockBuildSmartAcFahpPayload = jest.fn();
-const mockBuildWfaAnalysis = jest.fn();
-const mockBuildWfaFahpPayload = jest.fn();
 const mockFormatWibDateTime = jest.fn();
 const mockGetAnalysisWindow = jest.fn();
+const mockAnalyze = jest.fn();
 const mockLoggerError = jest.fn();
 
 jest.unstable_mockModule('../src/services/fuzzyAhpAnalysis.service.js', () => ({
@@ -17,10 +16,11 @@ jest.unstable_mockModule('../src/services/fuzzyAhpAnalysis.service.js', () => ({
   buildFuzzyAhpDashboardRecapPayload: mockBuildFuzzyAhpDashboardRecapPayload,
   buildSmartAcAnalysis: mockBuildSmartAcAnalysis,
   buildSmartAcFahpPayload: mockBuildSmartAcFahpPayload,
-  buildWfaAnalysis: mockBuildWfaAnalysis,
-  buildWfaFahpPayload: mockBuildWfaFahpPayload,
   formatWibDateTime: mockFormatWibDateTime,
   getAnalysisWindow: mockGetAnalysisWindow
+}));
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  analyze: mockAnalyze
 }));
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   __esModule: true,
@@ -141,7 +141,7 @@ describe('analysis fuzzy ahp controller validation', () => {
     });
   });
 
-  it('keeps additive display fields present for empty dashboard recap payloads', async () => {
+  it('returns the exact move contract instead of a fabricated empty wfa recap', async () => {
     const req = { query: { type: 'wfa' } };
     const res = {
       status: jest.fn().mockReturnThis(),
@@ -149,71 +149,21 @@ describe('analysis fuzzy ahp controller validation', () => {
     };
     const next = jest.fn();
 
-    mockBuildFuzzyAhpDashboardRecapPayload.mockResolvedValueOnce({
-      type: 'wfa',
-      type_label: 'WFA',
-      generated_at: '2026-06-26T00:00:00+07:00',
-      timezone: 'Asia/Jakarta',
-      requested_window: { period: 'monthly' },
-      executed_window: {
-        start_at: '2026-06-01T00:00:00+07:00',
-        end_at: '2026-06-26T00:00:00+07:00'
-      },
-      status: 'empty',
-      needs_data: true,
-      consistency: {
-        CR: 0.21,
-        threshold: 0.1,
-        is_consistent: false,
-        summary_label: 'Konsistensi perlu ditinjau'
-      },
-      criteria_weights: [
-        {
-          key: 'location_type',
-          label: 'location_type',
-          display_label: 'Tipe Lokasi',
-          value: 0.5
-        }
-      ],
-      ranking_preview: { top_n: 5, items: [] },
-      distribution: {
-        'Sangat Tinggi': 0,
-        Tinggi: 0,
-        Sedang: 0,
-        Rendah: 0,
-        'Sangat Rendah': 0
-      }
-    });
-
     await getFuzzyAhpDashboardRecap(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({
-          type: 'wfa',
-          type_label: 'WFA',
-          status: 'empty',
-          needs_data: true,
-          consistency: expect.objectContaining({
-            summary_label: 'Konsistensi perlu ditinjau'
-          }),
-          criteria_weights: [
-            expect.objectContaining({
-              key: 'location_type',
-              display_label: 'Tipe Lokasi'
-            })
-          ]
-        })
-      })
-    );
+    expect(mockBuildFuzzyAhpDashboardRecapPayload).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(410);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      code: 'WFA_ANALYSIS_MOVED',
+      message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+    });
   });
 
   it('logs and forwards dashboard recap builder errors', async () => {
     const req = {
-      query: { type: 'wfa' },
+      query: { type: 'discipline' },
       user: { id: 12, role_name: 'Admin' }
     };
     const res = {

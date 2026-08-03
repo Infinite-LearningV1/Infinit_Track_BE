@@ -30,6 +30,12 @@ jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
   resolveActiveWfaRequestReason: jest.fn(),
   resolveActiveWfaRejectionReason: mockResolveActiveWfaRejectionReason
 }));
+jest.unstable_mockModule('../src/services/wfaEligibility.service.js', () => ({
+  assertWfaEligibility: jest.fn()
+}));
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  scoreBookingLocation: jest.fn()
+}));
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({ default: {} }));
 jest.unstable_mockModule('../src/utils/logger.js', () => ({
   default: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }

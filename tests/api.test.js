@@ -37,7 +37,7 @@ describe('FAHP Dynamic Test Endpoint', () => {
           name: 'Coffee Lab',
           categories: ['cafe'],
           distance: 200,
-          amenity_score: 90
+          facility_score: 90
         },
         geometry: { type: 'Point', coordinates: [106.8, -6.2] },
         userLocation: { lat: -6.2, lon: 106.8 }
@@ -57,7 +57,7 @@ describe('FAHP Dynamic Test Endpoint', () => {
     });
     expect(res.body.data).toHaveProperty('weights.location_type');
     expect(res.body.data).toHaveProperty('weights.distance_factor');
-    expect(res.body.data).toHaveProperty('weights.amenity_score');
+    expect(res.body.data).toHaveProperty('weights.facility_score');
     expect(res.body.data).toHaveProperty('cr');
     expect(res.body.data).toHaveProperty('score');
     expect(res.body.data).not.toHaveProperty('test_result');
@@ -73,7 +73,7 @@ describe('FAHP Dynamic Test Endpoint', () => {
           name: 'Remote Industrial Yard',
           categories: ['industrial'],
           distance: 3000,
-          amenity_score: 0
+          facility_score: 0
         },
         geometry: { type: 'Point', coordinates: [106.8, -6.2] },
         userLocation: { lat: -6.2, lon: 106.8 }
@@ -101,14 +101,14 @@ describe('FAHP Dynamic Test Endpoint', () => {
       custom_weights: {
         location_type: 0.4,
         distance_factor: 0.35,
-        amenity_score: 0.25
+        facility_score: 0.25
       },
       place_data: {
         properties: {
           name: 'Coffee Lab',
           categories: ['cafe'],
           distance: 200,
-          amenity_score: 90
+          facility_score: 90
         },
         geometry: { type: 'Point', coordinates: [106.8, -6.2] },
         userLocation: { lat: -6.2, lon: 106.8 }
@@ -126,8 +126,34 @@ describe('FAHP Dynamic Test Endpoint', () => {
     expect(res.body.data.weights).toMatchObject({
       location_type: 0.4,
       distance_factor: 0.35,
-      amenity_score: 0.25
+      facility_score: 0.25
     });
+  });
+
+  it('POST /api/wfa/test-ahp rejects the retired amenity_score input', async () => {
+    const res = await request(app)
+      .post('/api/wfa/test-ahp')
+      .send({ place_data: { properties: { amenity_score: 90, distance: 200 } } });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
+  });
+
+  it('POST /api/wfa/test-ahp rejects retired amenity_score custom weights', async () => {
+    const res = await request(app)
+      .post('/api/wfa/test-ahp')
+      .send({
+        custom_weights: {
+          location_type: 0.4,
+          distance_factor: 0.35,
+          facility_score: 0.25,
+          amenity_score: 0.1
+        },
+        place_data: { properties: { facility_score: 90, distance: 200 } }
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ success: false, code: 'E_VALIDATION' });
   });
 
   it('POST /api/discipline/test-ahp returns compact evidence payload', async () => {

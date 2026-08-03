@@ -4,6 +4,7 @@ import path from 'path';
 const repoRoot = path.resolve(process.cwd());
 const readmePath = path.join(repoRoot, 'postman', 'README.fahp-thesis-hybrid.md');
 const samplePath = path.join(repoRoot, 'postman', 'samples', 'dedicated-wfa-live.json');
+const requestMapPath = path.join(repoRoot, 'postman', 'fahp-thesis-hybrid.request-map.json');
 
 describe('INF-170 dedicated WFA live proof', () => {
   test('either stores live proof or records Needs Verification explicitly', () => {
@@ -22,5 +23,17 @@ describe('INF-170 dedicated WFA live proof', () => {
     } else {
       expect(readme).toMatch(/Reason: .+/);
     }
+  });
+
+  test('requires a future schedule date when validating the dedicated WFA contract', () => {
+    const requestMap = JSON.parse(fs.readFileSync(requestMapPath, 'utf8'));
+    const request = requestMap.requests.find(({ name }) => name === 'Validation / Dedicated / WFA Live');
+
+    expect(request.queryVariables).toEqual([
+      'wfa_lat',
+      'wfa_lon',
+      'wfa_schedule_date',
+      'wfa_radius_meters'
+    ]);
   });
 });

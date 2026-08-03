@@ -90,14 +90,26 @@ const mockCalculateDisciplineIndex = jest.fn(async () => ({
 const mockGetWfaAhpWeights = jest.fn(() => ({
   location_type: 0.5,
   distance_factor: 0.3,
-  amenity_score: 0.2,
+  facility_score: 0.2,
   consistency_ratio: 0.01
 }));
 const mockCalculateWfaScore = jest.fn(async () => ({
   score: 82.3,
   label: 'Tinggi'
 }));
+const mockGetLegacyWfaAmenityWeights = jest.fn(() => ({
+  location_type: 0.5,
+  distance_factor: 0.3,
+  amenity_score: 0.2,
+  consistency_ratio: 0.01
+}));
+const mockCalculateLegacyWfaAmenityScore = jest.fn(async () => ({
+  score: 82.3,
+  label: 'Tinggi'
+}));
 const mockCategorizePlace = jest.fn(() => 'office');
+const mockGetLocationTypeScore = jest.fn(() => 40);
+const mockGetDistanceFactorScore = jest.fn(() => 66.67);
 const mockGetSmartAcAhpWeights = jest.fn(() => ({
   history: 0.4,
   checkin_pattern: 0.3,
@@ -178,6 +190,10 @@ jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
     calculateDisciplineIndex: mockCalculateDisciplineIndex,
     getWfaAhpWeights: mockGetWfaAhpWeights,
     calculateWfaScore: mockCalculateWfaScore,
+    getLegacyWfaAmenityWeights: mockGetLegacyWfaAmenityWeights,
+    calculateLegacyWfaAmenityScore: mockCalculateLegacyWfaAmenityScore,
+    getLocationTypeScore: mockGetLocationTypeScore,
+    getDistanceFactorScore: mockGetDistanceFactorScore,
     categorizePlace: mockCategorizePlace,
     getSmartAcAhpWeights: mockGetSmartAcAhpWeights
   }
@@ -371,13 +387,13 @@ describe('fuzzy ahp dashboard recap service behavior', () => {
       label: 'Sangat Tinggi',
       breakdown: {}
     });
-    mockGetWfaAhpWeights.mockReturnValue({
+    mockGetLegacyWfaAmenityWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
       amenity_score: 0.2,
       consistency_ratio: 0.01
     });
-    mockCalculateWfaScore.mockResolvedValue({
+    mockCalculateLegacyWfaAmenityScore.mockResolvedValue({
       score: 82.3,
       label: 'Tinggi'
     });
@@ -408,49 +424,6 @@ describe('fuzzy ahp dashboard recap service behavior', () => {
     expect(payload.needs_data).toBe(true);
     expect(payload.reason).toBe('NO_DISCIPLINE_DATA_IN_WINDOW');
     expect(payload.criteria_weights).toBeNull();
-  });
-
-  it('returns empty wfa recap when there are no monthly location events', async () => {
-    mockLocationFindAll.mockResolvedValue([
-      {
-        location_id: 3,
-        description: 'Office Hub',
-        latitude: '-6.2',
-        longitude: '106.8'
-      }
-    ]);
-
-    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'wfa' });
-
-    expect(payload.status).toBe('empty');
-    expect(payload.needs_data).toBe(true);
-    expect(payload.ranking_preview.items).toEqual([]);
-  });
-
-  it('keeps wfa recap ready when windowed location activity exists', async () => {
-    mockLocationEventFindAll.mockResolvedValue([{ location_id: 3 }]);
-    mockLocationFindAll.mockResolvedValue([
-      {
-        location_id: 3,
-        description: 'Office Hub',
-        latitude: '-6.2',
-        longitude: '106.8'
-      },
-      {
-        location_id: 4,
-        description: 'Unused Hub',
-        latitude: '-6.21',
-        longitude: '106.81'
-      }
-    ]);
-
-    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'wfa' });
-
-    expect(payload.status).toBe('ready');
-    expect(payload.needs_data).toBe(false);
-    expect(payload.criteria_weights).toHaveLength(3);
-    expect(payload.ranking_preview.items).toHaveLength(1);
-    expect(payload.ranking_preview.items[0].id).toBe(3);
   });
 
   it('returns empty smart_ac recap when all users lack monthly attendance evidence', async () => {

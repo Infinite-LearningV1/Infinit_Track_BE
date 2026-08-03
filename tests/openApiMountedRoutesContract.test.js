@@ -40,6 +40,10 @@ describe('OpenAPI mounted route inventory contract', () => {
     );
   });
 
+  test('documents the authenticated WFA recommendation surface', () => {
+    expect(publicPaths).toContain('/api/wfa/recommendations');
+  });
+
   test('excludes debug, test, internal ops, and legacy endpoints from public OpenAPI', () => {
     const excludedPaths = [
       '/api/auth/register',

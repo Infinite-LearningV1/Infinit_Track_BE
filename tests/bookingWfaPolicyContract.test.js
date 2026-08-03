@@ -1,31 +1,45 @@
 import { jest } from '@jest/globals';
+import express from 'express';
+import request from 'supertest';
+
+import { AppError } from '../src/shared/errors/AppError.js';
+import { toErrorResponse } from '../src/shared/http/toErrorResponse.js';
 
 process.env.GEOAPIFY_API_KEY = 'test-key';
 
 const transaction = {
+  LOCK: { UPDATE: 'UPDATE' },
   commit: jest.fn().mockResolvedValue(undefined),
   rollback: jest.fn().mockResolvedValue(undefined)
 };
 const mockBookingFindOne = jest.fn();
 const mockBookingCreate = jest.fn();
 const mockLocationFindByPk = jest.fn();
+const mockLocationFindOne = jest.fn();
 const mockLocationCreate = jest.fn();
+const mockUserFindByPk = jest.fn();
 const mockReadWfaRequestConfig = jest.fn();
 const mockResolveActiveWfaRequestReason = jest.fn();
-const mockCalculateWfaScore = jest.fn();
+const mockAssertWfaEligibility = jest.fn();
+const mockScoreBookingLocation = jest.fn();
+const mockTransaction = jest.fn().mockResolvedValue(transaction);
 
 jest.unstable_mockModule('../src/config/database.js', () => ({
   default: {
-    transaction: jest.fn().mockResolvedValue(transaction),
+    transaction: mockTransaction,
     fn: jest.fn(),
     col: jest.fn()
   }
 }));
 jest.unstable_mockModule('../src/models/index.js', () => ({
   Booking: { findOne: mockBookingFindOne, create: mockBookingCreate },
-  Location: { findByPk: mockLocationFindByPk, create: mockLocationCreate },
+  Location: {
+    findByPk: mockLocationFindByPk,
+    findOne: mockLocationFindOne,
+    create: mockLocationCreate
+  },
   BookingStatus: {},
-  User: {},
+  User: { findByPk: mockUserFindByPk },
   Position: {},
   Role: {},
   WfaRequestReason: {},
@@ -36,8 +50,11 @@ jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
   resolveActiveWfaRequestReason: mockResolveActiveWfaRequestReason,
   resolveActiveWfaRejectionReason: jest.fn()
 }));
-jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
-  default: { calculateWfaScore: mockCalculateWfaScore }
+jest.unstable_mockModule('../src/services/wfaEligibility.service.js', () => ({
+  assertWfaEligibility: mockAssertWfaEligibility
+}));
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  scoreBookingLocation: mockScoreBookingLocation
 }));
 jest.unstable_mockModule('../src/utils/geofence.js', () => ({
   getJakartaDateString: jest.fn(() => '2026-07-28')
@@ -50,22 +67,8 @@ jest.unstable_mockModule('../src/utils/logger.js', () => ({
     error: jest.fn()
   }
 }));
-jest.unstable_mockModule('axios', () => ({
-  default: {
-    get: jest.fn().mockResolvedValue({
-      data: {
-        features: [
-          {
-            properties: { name: 'Lokasi server' },
-            geometry: { type: 'Point', coordinates: [119.87, -0.9] }
-          }
-        ]
-      }
-    })
-  }
-}));
-
 const { createBooking } = await import('../src/controllers/booking.controller.js');
+const { errorHandler } = await import('../src/middlewares/errorHandler.js');
 
 const buildRes = () => {
   const res = {};
@@ -74,9 +77,61 @@ const buildRes = () => {
   return res;
 };
 
+const validPayload = {
+  schedule_date: '2026-08-10',
+  request_reason_id: 1,
+  request_other_reason: null,
+  notes: '  Pertemuan project  ',
+  latitude: -0.9,
+  longitude: 119.87,
+  description: 'Lokasi klien'
+};
+
+const buildApp = () => {
+  const app = express();
+  app.use(express.json());
+  app.post('/api/bookings', (req, res, next) => {
+    req.user = { id: 9 };
+    return createBooking(req, res, next);
+  });
+  app.use((error, _req, res, _next) => {
+    const { status, body } = toErrorResponse(error, { env: 'test' });
+    return res.status(status).json(body);
+  });
+  return app;
+};
+
+const buildRuntimeErrorHandlerApp = () => {
+  const app = express();
+  app.use(express.json());
+  app.post('/api/bookings', (req, res, next) => {
+    req.user = { id: 9 };
+    return createBooking(req, res, next);
+  });
+  app.use(errorHandler);
+  return app;
+};
+
+const mockScopedLocation = (record) => {
+  mockLocationFindByPk.mockResolvedValue(record);
+  mockLocationFindOne.mockImplementation(async ({ where }) => {
+    const exactMatch =
+      Number(record.location_id) === Number(where.location_id) &&
+      Number(record.user_id) === Number(where.user_id) &&
+      Number(record.id_attendance_categories) === Number(where.id_attendance_categories) &&
+      Number(record.latitude) === Number(where.latitude) &&
+      Number(record.longitude) === Number(where.longitude);
+
+    return exactMatch ? record : null;
+  });
+};
+
 describe('server-authoritative WFA booking creation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockTransaction.mockResolvedValue(transaction);
+    mockAssertWfaEligibility.mockResolvedValue('2026-08-10');
+    mockUserFindByPk.mockResolvedValue({ id_users: 9 });
     mockBookingFindOne.mockResolvedValue(null);
     mockReadWfaRequestConfig.mockResolvedValue({ radiusMeters: 150, reasons: [] });
     mockResolveActiveWfaRequestReason.mockResolvedValue({
@@ -90,7 +145,16 @@ describe('server-authoritative WFA booking creation', () => {
       radius: 150,
       description: 'Lokasi klien'
     });
-    mockCalculateWfaScore.mockResolvedValue({ score: 82, label: 'Direkomendasikan' });
+    mockScoreBookingLocation.mockResolvedValue({
+      status: 'ranked',
+      suitabilityScore: 82,
+      suitabilityLabel: 'Direkomendasikan',
+      candidate: {
+        place_id: 'ranked-place',
+        final_score: 82,
+        final_label: 'Direkomendasikan'
+      }
+    });
     mockBookingCreate.mockImplementation(async (payload) => ({
       booking_id: 30,
       ...payload
@@ -101,13 +165,7 @@ describe('server-authoritative WFA booking creation', () => {
     const req = {
       user: { id: 9 },
       body: {
-        schedule_date: '2026-08-10',
-        request_reason_id: 1,
-        request_other_reason: null,
-        notes: '  Pertemuan project  ',
-        latitude: -0.9,
-        longitude: 119.87,
-        description: 'Lokasi klien',
+        ...validPayload,
         radius: 9999,
         suitability_score: 999,
         suitability_label: 'client-controlled',
@@ -120,12 +178,49 @@ describe('server-authoritative WFA booking creation', () => {
 
     await createBooking(req, res, next);
 
+    expect(mockAssertWfaEligibility).toHaveBeenCalledWith({
+      userId: 9,
+      scheduleDate: '2026-08-10',
+      checkDuplicate: true
+    });
+    expect(mockScoreBookingLocation).toHaveBeenCalledWith({
+      userId: 9,
+      latitude: -0.9,
+      longitude: 119.87,
+      scheduleDate: '2026-08-10'
+    });
+    expect(mockReadWfaRequestConfig).toHaveBeenNthCalledWith(1);
+    expect(mockReadWfaRequestConfig).toHaveBeenNthCalledWith(2, transaction);
     expect(mockReadWfaRequestConfig).toHaveBeenCalledWith(transaction);
-    expect(mockResolveActiveWfaRequestReason).toHaveBeenCalledWith({
+    expect(mockResolveActiveWfaRequestReason).toHaveBeenNthCalledWith(1, {
+      reasonId: 1,
+      otherReasonText: null
+    });
+    expect(mockResolveActiveWfaRequestReason).toHaveBeenNthCalledWith(2, {
       reasonId: 1,
       otherReasonText: null,
       transaction
     });
+    expect(mockUserFindByPk).toHaveBeenCalledWith(9, {
+      attributes: ['id_users'],
+      lock: transaction.LOCK.UPDATE,
+      transaction
+    });
+    expect(mockUserFindByPk.mock.invocationCallOrder[0]).toBeLessThan(
+      mockReadWfaRequestConfig.mock.invocationCallOrder[1]
+    );
+    expect(mockReadWfaRequestConfig.mock.invocationCallOrder[1]).toBeLessThan(
+      mockResolveActiveWfaRequestReason.mock.invocationCallOrder[1]
+    );
+    expect(mockResolveActiveWfaRequestReason.mock.invocationCallOrder[1]).toBeLessThan(
+      mockBookingFindOne.mock.invocationCallOrder[0]
+    );
+    expect(mockBookingFindOne.mock.invocationCallOrder[0]).toBeLessThan(
+      mockLocationCreate.mock.invocationCallOrder[0]
+    );
+    expect(mockLocationCreate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockBookingCreate.mock.invocationCallOrder[0]
+    );
     expect(mockLocationCreate).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 9, radius: 150 }),
       { transaction }
@@ -160,6 +255,7 @@ describe('server-authoritative WFA booking creation', () => {
         radius_snapshot: 150,
         suitability_score: 82,
         suitability_label: 'Direkomendasikan',
+        suitability_status: 'ranked',
         request_reason: {
           id: 1,
           label: 'Pertemuan dengan klien',
@@ -171,31 +267,367 @@ describe('server-authoritative WFA booking creation', () => {
     });
   });
 
-  it('returns INVALID_SCHEDULE_DATE before reading policy for an impossible date', async () => {
+  it('persists nullable suitability and reports insufficient status when discovery succeeds with no place', async () => {
+    mockScoreBookingLocation.mockResolvedValue({
+      status: 'insufficient_facility_data',
+      suitabilityScore: null,
+      suitabilityLabel: null,
+      candidate: null
+    });
+    const req = {
+      user: { id: 9 },
+      body: validPayload
+    };
     const res = buildRes();
+
+    await createBooking(req, res, jest.fn());
+
+    expect(mockBookingCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ suitability_score: null, suitability_label: null }),
+      { transaction }
+    );
+    expect(res.json.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({
+        suitability_score: null,
+        suitability_label: null,
+        suitability_status: 'insufficient_facility_data'
+      })
+    );
+  });
+
+  it('returns WFA_SCORING_UNAVAILABLE without opening a write transaction or writing rows', async () => {
+    mockScoreBookingLocation.mockRejectedValue(
+      new AppError('Penilaian lokasi WFA tidak tersedia.', {
+        code: 'WFA_SCORING_UNAVAILABLE',
+        status: 503
+      })
+    );
+
+    const response = await request(buildApp()).post('/api/bookings').send(validPayload).expect(503);
+
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Penilaian lokasi WFA tidak tersedia.',
+      code: 'WFA_SCORING_UNAVAILABLE'
+    });
+    expect(mockLocationCreate).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rechecks pending or approved duplicates inside the transaction before writing', async () => {
+    mockBookingFindOne.mockResolvedValue({ booking_id: 99, status: 3 });
+
+    const response = await request(buildApp()).post('/api/bookings').send(validPayload).expect(409);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'DUPLICATE_BOOKING',
+      message: 'Validasi booking gagal.',
+      errors: [
+        {
+          field: 'schedule_date',
+          code: 'DUPLICATE_BOOKING',
+          message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+        }
+      ]
+    });
+    expect(mockScoreBookingLocation).toHaveBeenCalled();
+    expect(mockScoreBookingLocation.mock.invocationCallOrder[0]).toBeLessThan(
+      mockTransaction.mock.invocationCallOrder[0]
+    );
+    expect(mockBookingFindOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user_id: 9,
+          schedule_date: '2026-08-10'
+        }),
+        lock: transaction.LOCK.UPDATE,
+        transaction
+      })
+    );
+    expect(mockLocationCreate).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    expect(transaction.commit).not.toHaveBeenCalled();
+  });
+
+  it('serializes concurrent same-user/date writes so only one booking is created', async () => {
+    let committedBooking = null;
+    let releaseSecondLock;
+    const secondLock = new Promise((resolve) => {
+      releaseSecondLock = resolve;
+    });
+    const firstTransaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn(async () => releaseSecondLock()),
+      rollback: jest.fn()
+    };
+    const secondTransaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn(),
+      rollback: jest.fn()
+    };
+    mockTransaction
+      .mockResolvedValueOnce(firstTransaction)
+      .mockResolvedValueOnce(secondTransaction);
+    mockUserFindByPk
+      .mockResolvedValueOnce({ id_users: 9 })
+      .mockImplementationOnce(async () => {
+        await secondLock;
+        return { id_users: 9 };
+      });
+    mockBookingFindOne.mockImplementation(async () => committedBooking);
+    mockBookingCreate.mockImplementationOnce(async (payload) => {
+      committedBooking = { booking_id: 30, ...payload };
+      return committedBooking;
+    });
+
+    const firstRes = buildRes();
+    const secondRes = buildRes();
+    const firstNext = jest.fn();
+    const secondNext = jest.fn();
+    await Promise.all([
+      createBooking({ user: { id: 9 }, body: validPayload }, firstRes, firstNext),
+      createBooking({ user: { id: 9 }, body: validPayload }, secondRes, secondNext)
+    ]);
+
+    expect(mockUserFindByPk).toHaveBeenCalledTimes(2);
+    expect(mockBookingCreate).toHaveBeenCalledTimes(1);
+    expect(firstRes.status).toHaveBeenCalledWith(201);
+    expect(secondRes.status).toHaveBeenCalledWith(409);
+    expect(secondTransaction.rollback).toHaveBeenCalledTimes(1);
+    expect(firstNext).not.toHaveBeenCalled();
+    expect(secondNext).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['another user', { user_id: 10, id_attendance_categories: 3, latitude: -0.9, longitude: 119.87 }],
+    ['a non-WFA category', { user_id: 9, id_attendance_categories: 2, latitude: -0.9, longitude: 119.87 }],
+    ['different coordinates', { user_id: 9, id_attendance_categories: 3, latitude: -0.9, longitude: 119.88 }]
+  ])('rejects location_id owned by %s without creating a booking', async (_case, overrides) => {
+    mockScopedLocation({ location_id: 77, ...overrides });
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send({ ...validPayload, location_id: 77 })
+      .expect(404);
+
+    expect(response.body).toEqual({
+      success: false,
+      message: 'Validasi booking gagal.',
+      errors: [
+        {
+          field: 'location_id',
+          code: 'LOCATION_NOT_FOUND',
+          message: 'Lokasi tidak ditemukan atau tidak valid.'
+        }
+      ]
+    });
+    expect(mockLocationFindOne).toHaveBeenCalledWith({
+      where: {
+        location_id: 77,
+        user_id: 9,
+        id_attendance_categories: 3,
+        latitude: -0.9,
+        longitude: 119.87
+      },
+      transaction
+    });
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['configuration', 'config', new AppError('Konfigurasi WFA belum tersedia.', { code: 'WFA_CONFIG_UNAVAILABLE', status: 500 })],
+    ['request reason', 'reason', new AppError('Alasan WFA tidak tersedia.', { code: 'WFA_REQUEST_REASON_NOT_FOUND', status: 400 })]
+  ])('does not score, transact, or write when early %s validation fails', async (_case, source, error) => {
+    if (source === 'config') {
+      mockReadWfaRequestConfig.mockRejectedValueOnce(error);
+    } else {
+      mockResolveActiveWfaRequestReason.mockRejectedValueOnce(error);
+    }
     const next = jest.fn();
 
-    await createBooking(
-      {
-        user: { id: 9 },
-        body: {
-          schedule_date: '2026-02-30',
-          request_reason_id: 1,
-          latitude: -0.9,
-          longitude: 119.87
-        }
-      },
-      res,
+    await createBooking({ user: { id: 9 }, body: validPayload }, buildRes(), next);
+
+    expect(next).toHaveBeenCalledWith(error);
+    expect(mockScoreBookingLocation).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockLocationCreate).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('awaits rollback before forwarding a post-transaction write failure', async () => {
+    const writeError = new Error('location write failed');
+    mockLocationCreate.mockRejectedValueOnce(writeError);
+    let signalRollbackStarted;
+    let resolveRollback;
+    const rollbackStarted = new Promise((resolve) => {
+      signalRollbackStarted = resolve;
+    });
+    const rollbackPending = new Promise((resolve) => {
+      resolveRollback = resolve;
+    });
+    transaction.rollback.mockImplementationOnce(() => {
+      signalRollbackStarted();
+      return rollbackPending;
+    });
+    const next = jest.fn();
+
+    const controllerPending = createBooking(
+      { user: { id: 9 }, body: validPayload },
+      buildRes(),
       next
     );
 
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false, code: 'INVALID_SCHEDULE_DATE' })
+    await rollbackStarted;
+
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+
+    resolveRollback();
+    await controllerPending;
+
+    expect(next).toHaveBeenCalledWith(writeError);
+    expect(transaction.rollback.mock.invocationCallOrder[0]).toBeLessThan(
+      next.mock.invocationCallOrder[0]
     );
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns INVALID_SCHEDULE_DATE in the booking validation envelope before reading policy', async () => {
+    mockAssertWfaEligibility.mockRejectedValue(
+      new AppError('Tanggal WFA tidak valid.', {
+        code: 'INVALID_SCHEDULE_DATE',
+        status: 400,
+        details: [{ field: 'schedule_date', code: 'INVALID_SCHEDULE_DATE' }]
+      })
+    );
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send({ ...validPayload, schedule_date: '2026-02-30' })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'Validasi booking gagal.',
+      errors: [
+        {
+          field: 'schedule_date',
+          code: 'INVALID_SCHEDULE_DATE',
+          message: 'Tanggal WFA tidak valid.'
+        }
+      ]
+    });
     expect(mockReadWfaRequestConfig).not.toHaveBeenCalled();
     expect(mockBookingCreate).not.toHaveBeenCalled();
-    expect(transaction.rollback).toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+  });
+
+  it('returns PAST_DATE_NOT_ALLOWED in the documented eligibility envelope before reading policy', async () => {
+    mockAssertWfaEligibility.mockRejectedValue(
+      new AppError('Tanggal booking tidak boleh di masa lalu.', {
+        code: 'PAST_DATE_NOT_ALLOWED',
+        status: 400,
+        details: [{ field: 'schedule_date', code: 'PAST_DATE_NOT_ALLOWED' }]
+      })
+    );
+
+    const response = await request(buildApp())
+      .post('/api/bookings')
+      .send({ ...validPayload, schedule_date: '2026-08-02' })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'PAST_DATE_NOT_ALLOWED',
+      message: 'Validasi booking gagal.',
+      errors: [{
+        field: 'schedule_date',
+        code: 'PAST_DATE_NOT_ALLOWED',
+        message: 'Tanggal booking tidak boleh di masa lalu.'
+      }]
+    });
+    expect(mockReadWfaRequestConfig).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('lets a request-reason service 400 use the runtime error handler envelope without errors', async () => {
+    const error = new Error('Alasan pengajuan WFA tidak ditemukan.');
+    error.status = 400;
+    error.code = 'WFA_REQUEST_REASON_NOT_FOUND';
+    error.details = [{ field: 'request_reason_id', code: 'WFA_REQUEST_REASON_NOT_FOUND' }];
+    mockResolveActiveWfaRequestReason.mockRejectedValueOnce(error);
+
+    const response = await request(buildRuntimeErrorHandlerApp())
+      .post('/api/bookings')
+      .send(validPayload)
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'WFA_REQUEST_REASON_NOT_FOUND',
+      message: 'Alasan pengajuan WFA tidak ditemukan.'
+    });
+    expect(response.body).not.toHaveProperty('errors');
+    expect(mockScoreBookingLocation).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('returns early DUPLICATE_BOOKING in the same envelope as the transaction recheck', async () => {
+    mockAssertWfaEligibility.mockRejectedValue(
+      new AppError('Anda sudah memiliki booking pada tanggal tersebut.', {
+        code: 'DUPLICATE_BOOKING',
+        status: 409,
+        details: [{ field: 'schedule_date', code: 'DUPLICATE_BOOKING' }]
+      })
+    );
+
+    const response = await request(buildApp()).post('/api/bookings').send(validPayload).expect(409);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'DUPLICATE_BOOKING',
+      message: 'Validasi booking gagal.',
+      errors: [
+        {
+          field: 'schedule_date',
+          code: 'DUPLICATE_BOOKING',
+          message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+        }
+      ]
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the booking validation envelope when canonical scoring rechecks a duplicate', async () => {
+    mockScoreBookingLocation.mockRejectedValue(
+      new AppError('Anda sudah memiliki booking pada tanggal tersebut.', {
+        code: 'DUPLICATE_BOOKING',
+        status: 409,
+        details: [{ field: 'schedule_date', code: 'DUPLICATE_BOOKING' }]
+      })
+    );
+
+    const response = await request(buildApp()).post('/api/bookings').send(validPayload).expect(409);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'DUPLICATE_BOOKING',
+      message: 'Validasi booking gagal.',
+      errors: [
+        {
+          field: 'schedule_date',
+          code: 'DUPLICATE_BOOKING',
+          message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+        }
+      ]
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockBookingCreate).not.toHaveBeenCalled();
   });
 });

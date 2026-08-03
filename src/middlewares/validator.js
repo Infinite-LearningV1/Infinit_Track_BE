@@ -2,6 +2,7 @@ import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { assertFutureWibScheduleDate } from '../services/wfaEligibility.service.js';
 import { validateHistoricalDateWindowQuery } from '../utils/historicalDateWindow.js';
 import { assertSafeUrl } from '../utils/url.js';
 
@@ -34,6 +35,11 @@ export const upload = multer({
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TODAY_LOCATIONS_LIMIT_MAX = 500;
+const WFA_SCHEDULE_DATE_ERROR_CODES = new Set([
+  'INVALID_SCHEDULE_DATE',
+  'PAST_DATE_NOT_ALLOWED',
+  'SAME_DAY_NOT_ALLOWED'
+]);
 
 const parseStrictDateOnly = (value) => {
   if (typeof value !== 'string' || !DATE_ONLY_PATTERN.test(value)) return null;
@@ -51,6 +57,27 @@ const parseStrictDateOnly = (value) => {
 
   return parsed;
 };
+
+const strictFutureScheduleDateQuery = (field) =>
+  query(field)
+    .exists()
+    .withMessage(`${field} is required`)
+    .bail()
+    .custom((value) => {
+      try {
+        assertFutureWibScheduleDate(value);
+      } catch (error) {
+        if (!WFA_SCHEDULE_DATE_ERROR_CODES.has(error?.code)) {
+          throw error;
+        }
+
+        throw {
+          message: error.message,
+          validationCode: error.code
+        };
+      }
+      return true;
+    });
 
 const validateTodayLocationsQueryKeys = (_value, { req }) => {
   const unsupportedQueryKey = Object.keys(req.query ?? {}).find((key) => key !== 'limit');
@@ -217,7 +244,7 @@ export const validate = (req, res, next) => {
       return {
         ...error,
         msg: error.msg.message,
-        code: error.msg.code
+        code: error.msg.code ?? error.msg.validationCode
       };
     });
     const typedCode =
@@ -562,6 +589,19 @@ export const createBookingValidation = [
     .isLength({ max: 500 })
     .withMessage('request_other_reason maksimal 500 karakter'),
 
+  body('location_id')
+    .optional()
+    .custom((value) => {
+      if (typeof value !== 'number' && typeof value !== 'string') {
+        throw new Error('Location ID harus berupa integer positif');
+      }
+      return true;
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage('Location ID harus berupa integer positif')
+    .toInt(),
+
   body('latitude')
     .notEmpty()
     .withMessage('Latitude wajib diisi')
@@ -668,10 +708,27 @@ export const wfaFahpValidation = [
     .bail()
     .isFloat({ min: -180, max: 180 })
     .withMessage('lon must be a valid longitude'),
+  strictFutureScheduleDateQuery('schedule_date'),
   query('radius_meters')
     .default(5000)
     .isInt({ min: 100, max: 50000 })
     .withMessage('radius_meters must be an integer between 100 and 50000')
+];
+
+export const wfaRecommendationValidation = [
+  query('lat')
+    .exists()
+    .withMessage('lat is required')
+    .bail()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('lat must be a valid latitude'),
+  query('lng')
+    .exists()
+    .withMessage('lng is required')
+    .bail()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('lng must be a valid longitude'),
+  strictFutureScheduleDateQuery('schedule_date')
 ];
 
 export const fuzzyAhpDashboardRecapValidation = [

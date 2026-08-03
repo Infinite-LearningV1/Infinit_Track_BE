@@ -23,19 +23,33 @@ export const TFN = {
   EXTREME: [8, 9, 9] // 9: Extreme importance
 };
 
+export const FACILITY_MATRIX_VERSION = 'facility_equal_v1';
+
+export const FACILITY_CRITERIA = Object.freeze([
+  'internet_access',
+  'air_conditioning',
+  'toilets',
+  'opening_hours',
+  'wheelchair_accessibility'
+]);
+
+export const FACILITY_PAIRWISE_TFN = FACILITY_CRITERIA.map(() =>
+  FACILITY_CRITERIA.map(() => TFN.EQUAL)
+);
+
 /**
  * WFA (Work From Anywhere) Pairwise Comparison Matrix
- * Criteria: [location_type, distance_factor, amenity_score]
+ * Criteria: [location_type, distance_factor, facility_score]
  *
  * Judgment rationale:
  * - location_type > distance_factor: MODERATE (3) - Type of place matters more than exact distance
- * - location_type > amenity_score: STRONG (5) - Location type is key factor
- * - distance_factor > amenity_score: MODERATE (3) - Distance still matters more than amenities
+ * - location_type > facility_score: STRONG (5) - Location type is key factor
+ * - distance_factor > facility_score: MODERATE (3) - Distance still matters more than facilities
  */
 export const WFA_PAIRWISE_TFN = [
   [TFN.EQUAL, TFN.MODERATE, TFN.STRONG], // location_type (was M, H, VH → EQUAL, MODERATE, STRONG)
   [invTFN(TFN.MODERATE), TFN.EQUAL, TFN.MODERATE], // distance_factor (was 1/H, M, H → 1/MODERATE, EQUAL, MODERATE)
-  [invTFN(TFN.STRONG), invTFN(TFN.MODERATE), TFN.EQUAL] // amenity_score (was 1/VH, 1/H, M → 1/STRONG, 1/MODERATE, EQUAL)
+  [invTFN(TFN.STRONG), invTFN(TFN.MODERATE), TFN.EQUAL] // facility_score (was 1/VH, 1/H, M → 1/STRONG, 1/MODERATE, EQUAL)
 ];
 
 /**

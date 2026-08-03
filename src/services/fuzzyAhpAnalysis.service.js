@@ -1,9 +1,8 @@
-import axios from 'axios';
 import { Op } from 'sequelize';
 
 import * as models from '../models/index.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
-import { calculateDistance, toJakartaTime } from '../utils/geofence.js';
+import { toJakartaTime } from '../utils/geofence.js';
 
 const { Attendance, Booking, Location, LocationEvent, User } = models;
 
@@ -11,9 +10,6 @@ const CR_THRESHOLD = 0.1;
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 const WORK_START_MINUTES = 8 * 60;
 const FULL_WORK_DAY_HOURS = 8;
-const GEOAPIFY_PLACES_URL = 'https://api.geoapify.com/v2/places';
-const GEOAPIFY_WFA_CATEGORIES = 'catering,accommodation,office,education';
-
 const EMPTY_DISTRIBUTION = {
   'Sangat Tinggi': 0,
   Tinggi: 0,
@@ -132,132 +128,6 @@ const buildDistribution = (ranking) => {
     acc[item.label] = (acc[item.label] || 0) + 1;
     return acc;
   }, { ...EMPTY_DISTRIBUTION });
-};
-
-export class GeoapifyProviderUnavailableError extends Error {
-  constructor(reason) {
-    super(`Geoapify provider unavailable: ${reason}`);
-    this.name = 'GeoapifyProviderUnavailableError';
-    this.code = 'AUTH_OR_PROVIDER_UNAVAILABLE';
-    this.provider = 'geoapify';
-    this.reason = reason;
-  }
-}
-
-const mapGeoapifyUnavailableReason = (error) => {
-  const status = Number(error?.response?.status ?? error?.status);
-
-  if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') return 'timeout';
-  if (status === 408) return 'timeout';
-  if (status === 401 || status === 403) return 'auth_failed';
-  if (status === 429) return 'quota_or_rate_limited';
-  if (status >= 500) return 'provider_5xx';
-  if (error?.code === 'ECONNRESET' || error?.code === 'ENOTFOUND' || error?.code === 'EAI_AGAIN') {
-    return 'provider_unavailable';
-  }
-  return null;
-};
-
-const getGeoapifyPlaceId = (place, index) => {
-  const properties = place.properties || {};
-  return (
-    properties.place_id ||
-    properties.datasource?.raw?.place_id ||
-    properties.datasource?.raw?.osm_id ||
-    properties.osm_id ||
-    `geoapify:${index}`
-  );
-};
-
-const hasValidCoordinates = (place) => {
-  const coordinates = place.geometry?.coordinates;
-  return (
-    Array.isArray(coordinates) &&
-    coordinates.length >= 2 &&
-    Number.isFinite(Number(coordinates[0])) &&
-    Number.isFinite(Number(coordinates[1]))
-  );
-};
-
-const deriveGeoapifyAmenityScore = (place) => {
-  const properties = place.properties || {};
-  const amenities = properties.amenities || {};
-  const categories = Array.isArray(properties.categories) ? properties.categories : [];
-  const categoryText = categories.join(' ').toLowerCase();
-  const evidenceValues = [];
-
-  for (const key of [
-    'wifi',
-    'internet_access',
-    'power_outlets',
-    'tables',
-    'seating',
-    'quiet',
-    'air_conditioning',
-    'business_center',
-    'conference_room'
-  ]) {
-    if (Object.hasOwn(amenities, key)) evidenceValues.push(Boolean(amenities[key]));
-  }
-
-  if (properties.contact?.website !== undefined) evidenceValues.push(Boolean(properties.contact.website));
-  if (properties.contact?.phone !== undefined) evidenceValues.push(Boolean(properties.contact.phone));
-  if (properties.opening_hours !== undefined) evidenceValues.push(Boolean(properties.opening_hours));
-  if (properties.rating !== undefined) evidenceValues.push(Number(properties.rating) > 0);
-  if (properties.reviews_count !== undefined) evidenceValues.push(Number(properties.reviews_count) > 0);
-  if (categories.length) {
-    evidenceValues.push(
-      categoryText.includes('cafe') || categoryText.includes('office') || categoryText.includes('coworking')
-    );
-  }
-
-  if (!evidenceValues.length) return 0;
-
-  const positiveEvidence = evidenceValues.reduce((sum, value) => (value ? sum + 1 : sum), 0);
-  return Math.min(100, Math.round((positiveEvidence / evidenceValues.length) * 100));
-};
-
-const getGeoapifyDistanceMeters = ({ place, latitude, longitude }) => {
-  const propertyDistance = Number(place.properties?.distance);
-  if (Number.isFinite(propertyDistance)) return Math.round(propertyDistance);
-
-  if (!hasValidCoordinates(place)) return null;
-
-  return Math.round(
-    calculateDistance(latitude, longitude, Number(place.geometry.coordinates[1]), Number(place.geometry.coordinates[0]))
-  );
-};
-
-const fetchGeoapifyPlaces = async ({ latitude, longitude, radiusMeters }) => {
-  const apiKey = process.env.GEOAPIFY_API_KEY;
-  if (!apiKey) {
-    throw new GeoapifyProviderUnavailableError('auth_missing');
-  }
-
-  try {
-    const response = await axios.get(GEOAPIFY_PLACES_URL, {
-      params: {
-        categories: GEOAPIFY_WFA_CATEGORIES,
-        filter: `circle:${longitude},${latitude},${radiusMeters}`,
-        limit: 50,
-        apiKey,
-        lang: 'en'
-      },
-      timeout: 30000,
-      headers: {
-        'User-Agent': 'Infinit-Track-WFA-Analysis/1.0',
-        Accept: 'application/json'
-      }
-    });
-
-    return Array.isArray(response.data?.features) ? response.data.features : [];
-  } catch (error) {
-    const reason = mapGeoapifyUnavailableReason(error);
-    if (reason) {
-      throw new GeoapifyProviderUnavailableError(reason);
-    }
-    throw error;
-  }
 };
 
 const getWorkdayCount = (startAt, endAt) => {
@@ -431,201 +301,9 @@ export const buildDisciplineFahpPayload = async ({ period, from, to }) => {
   };
 };
 
-export const buildWfaFahpPayload = async ({ lat, lon, radiusMeters }) => {
-  const latitude = Number(lat);
-  const longitude = Number(lon);
-  const searchRadiusMeters = Number(radiusMeters ?? 5000);
-  const places = await fetchGeoapifyPlaces({ latitude, longitude, radiusMeters: searchRadiusMeters });
-  const weightsObj = fuzzyEngine.getWfaAhpWeights();
-  const criteria = ['location_type', 'distance_factor', 'amenity_score'];
-  const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.amenity_score];
-  const consistency = buildConsistency({
-    CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
-    CI: 0,
-    lambda_max: 0
-  });
-
-  const basePayload = {
-    type: 'wfa',
-    timezone: 'Asia/Jakarta',
-    data_source: 'geoapify_live',
-    query: {
-      lat: latitude,
-      lon: longitude,
-      radius_meters: searchRadiusMeters
-    },
-    entity_kind: 'place',
-    consistency,
-    weights: {
-      criteria,
-      values,
-      method: "Chang's Extent Analysis"
-    }
-  };
-
-  if (!places.length) {
-    return {
-      ...basePayload,
-      distribution: { ...EMPTY_DISTRIBUTION },
-      ranking: [],
-      empty_real: true
-    };
-  }
-
-  const ranking = [];
-
-  for (const [index, place] of places.entries()) {
-    if (!hasValidCoordinates(place)) continue;
-
-    const distanceMeters = getGeoapifyDistanceMeters({ place, latitude, longitude });
-    if (!Number.isFinite(distanceMeters)) continue;
-
-    const amenityScore = deriveGeoapifyAmenityScore(place);
-    const placeForScoring = {
-      ...place,
-      properties: {
-        ...(place.properties || {}),
-        distance: distanceMeters,
-        amenity_score: amenityScore
-      },
-      userLocation: { lat: latitude, lon: longitude }
-    };
-    const result = await fuzzyEngine.calculateWfaScore(placeForScoring, weightsObj);
-
-    ranking.push({
-      place_id: getGeoapifyPlaceId(place, index),
-      name:
-        place.properties?.name || place.properties?.address_line1 || place.properties?.formatted || 'Tempat Tidak Diketahui',
-      score: result.score,
-      label: result.label,
-      breakdown: {
-        location_type: fuzzyEngine.categorizePlace(placeForScoring),
-        distance_m: distanceMeters,
-        amenity_score: amenityScore
-      }
-    });
-  }
-
-  ranking.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-  ranking.forEach((item, index) => {
-    item.rank = index + 1;
-  });
-
-  return {
-    ...basePayload,
-    distribution: buildDistribution(ranking),
-    ranking,
-    empty_real: ranking.length === 0
-  };
-};
-
-export const buildWfaAnalysis = async ({ startAt, endAt } = {}) => {
-  const weightsObj = fuzzyEngine.getWfaAhpWeights();
-  const criteria = ['location_type', 'distance_factor', 'amenity_score'];
-  const values = [weightsObj.location_type, weightsObj.distance_factor, weightsObj.amenity_score];
-  const buildEmptyResult = () => ({
-    entity_kind: 'place',
-    consistency: buildConsistency({
-      CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
-      CI: 0,
-      lambda_max: 0
-    }),
-    weights: {
-      criteria,
-      values,
-      method: "Chang's Extent Analysis"
-    },
-    distribution: { ...EMPTY_DISTRIBUTION },
-    ranking: []
-  });
-
-  let locationIdsInWindow = null;
-  if (startAt && endAt && typeof LocationEvent.findAll === 'function') {
-    const locationEvents = await LocationEvent.findAll({
-      where: {
-        event_timestamp: {
-          [Op.gte]: startAt,
-          [Op.lte]: endAt
-        },
-        location_id: {
-          [Op.ne]: null
-        }
-      }
-    });
-
-    locationIdsInWindow = [...new Set(locationEvents.map((event) => event.location_id).filter((id) => id != null))];
-    if (!locationIdsInWindow.length) {
-      return buildEmptyResult();
-    }
-  }
-
-  const places = await Location.findAll({
-    ...(locationIdsInWindow
-      ? {
-          where: {
-            location_id: {
-              [Op.in]: locationIdsInWindow
-            }
-          }
-        }
-      : {})
-  });
-  const scopedPlaces = locationIdsInWindow
-    ? places.filter((place) => locationIdsInWindow.includes(place.location_id))
-    : places;
-  const ranking = [];
-
-  for (const place of scopedPlaces) {
-    const placeDetails = {
-      properties: {
-        name: place.description,
-        amenity_score: 50,
-        distance: 1000
-      },
-      geometry: {
-        coordinates: [Number(place.longitude), Number(place.latitude)]
-      }
-    };
-
-    const result = await fuzzyEngine.calculateWfaScore(placeDetails, weightsObj);
-    ranking.push({
-      id: place.location_id,
-      name: place.description,
-      score: result.score,
-      label: result.label,
-      breakdown: {
-        location_type: fuzzyEngine.categorizePlace(placeDetails),
-        amenity_score: 50,
-        distance: 1000
-      }
-    });
-  }
-
-  if (!ranking.length) {
-    return buildEmptyResult();
-  }
-
-  ranking.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-  ranking.forEach((item, index) => {
-    item.rank = index + 1;
-  });
-
-  return {
-    entity_kind: 'place',
-    consistency: buildConsistency({
-      CR: Number(weightsObj.consistency_ratio?.toFixed?.(3) || 0),
-      CI: 0,
-      lambda_max: 0
-    }),
-    weights: {
-      criteria,
-      values,
-      method: "Chang's Extent Analysis"
-    },
-    distribution: buildDistribution(ranking),
-    ranking
-  };
-};
+// The summary dashboard still imports this historical seam. It now returns an
+// explicit no-data snapshot instead of fabricating WFA facility or distance evidence.
+export const buildWfaAnalysis = async () => ({ ranking: [] });
 
 const SMART_AC_CRITERIA = ['history', 'checkin_pattern', 'context', 'transition'];
 
@@ -945,7 +623,6 @@ const buildDashboardRecapRankingItem = (rankedItem) => {
 
 const DASHBOARD_TYPE_LABELS = {
   discipline: 'Discipline',
-  wfa: 'WFA',
   smart_ac: 'Smart AC'
 };
 
@@ -954,9 +631,6 @@ const DASHBOARD_CRITERIA_DISPLAY_LABELS = {
   lateness_severity: 'Tingkat Keterlambatan',
   lateness_frequency: 'Frekuensi Keterlambatan',
   work_focus: 'Fokus Kerja',
-  location_type: 'Tipe Lokasi',
-  distance_factor: 'Faktor Jarak',
-  amenity_score: 'Skor Fasilitas',
   attendance: 'Attendance'
 };
 
@@ -1001,6 +675,13 @@ const buildDashboardRankingPreview = (ranking) => ({
 });
 
 export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
+  if (type === 'wfa') {
+    const error = new Error('Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.');
+    error.code = 'WFA_ANALYSIS_MOVED';
+    error.status = 410;
+    throw error;
+  }
+
   let { startAt, endAt } = getAnalysisWindow('monthly');
 
   const windowDays = Math.floor((endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60 * 24));
@@ -1016,9 +697,6 @@ export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
   switch (type) {
     case 'discipline':
       result = await buildDisciplineAnalysis({ startAt, endAt, includeLegacyId: false });
-      break;
-    case 'wfa':
-      result = await buildWfaAnalysis({ startAt, endAt });
       break;
     default:
       result = await buildSmartAcAnalysis({ startAt, endAt });

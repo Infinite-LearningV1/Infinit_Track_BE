@@ -104,6 +104,12 @@ const MODULES = {
     routeFile: '../src/routes/wfa.routes.js',
     controllerPath: '../src/controllers/wfa.controller.js',
     controllerExports: ['getWfaRecommendations', 'getWfaAhpConfig', 'testFuzzyAhp'],
+    extraMocks: {
+      '../src/middlewares/validator.js': () => ({
+        wfaRecommendationValidation: passThroughChain,
+        validate: passThrough
+      })
+    },
     prefix: '/api/wfa'
   },
   summary: {

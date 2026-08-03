@@ -87,65 +87,6 @@ function readWorkflow(relativePath) {
   return fs.readFileSync(path.resolve(repoRoot, relativePath), 'utf8');
 }
 
-function buildRes() {
-  const res = {};
-  res.status = jest.fn(() => res);
-  res.json = jest.fn(() => res);
-  return res;
-}
-
-async function loadWfaControllerWithMocks({ axiosGet, logger, settingsValue = null } = {}) {
-  const axiosGetMock = axiosGet || jest.fn().mockResolvedValue({ data: { features: [] } });
-  const loggerMock =
-    logger ||
-    ({
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn()
-    });
-
-  jest.unstable_mockModule('axios', () => ({
-    default: {
-      get: axiosGetMock
-    }
-  }));
-
-  jest.unstable_mockModule('../src/models/settings.model.js', () => ({
-    default: {
-      findOne: jest.fn().mockResolvedValue(settingsValue)
-    }
-  }));
-
-  jest.unstable_mockModule('../src/utils/logger.js', () => ({
-    default: loggerMock
-  }));
-
-  jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
-    default: {
-      getWfaAhpWeights: jest.fn(() => ({
-        location_type: 0.4,
-        amenity_score: 0.4,
-        distance_factor: 0.2,
-        consistency_ratio: 0.05
-      })),
-      calculateWfaScore: jest.fn(),
-      getCategoryDisplayName: jest.fn((value) => value),
-      categorizePlace: jest.fn(() => 'catering')
-    }
-  }));
-
-  jest.unstable_mockModule('../src/utils/geofence.js', () => ({
-    calculateDistance: jest.fn(() => 0)
-  }));
-
-  const controller = await import('../src/controllers/wfa.controller.js');
-
-  return {
-    ...controller,
-    axiosGetMock,
-    loggerMock
-  };
-}
 describe('backend runtime config contract', () => {
   const envBackup = { ...process.env };
 
@@ -790,6 +731,17 @@ describe('backend runtime config contract', () => {
     expect(deployReadme).not.toMatch(/\bGEOAPIFY_KEY\b/);
   });
 
+  test('keeps the compatibility Geoapify key fallback scoped to the injectable WFA client', () => {
+    const geoapifyClient = fs.readFileSync(
+      path.resolve(repoRoot, 'src/services/geoapifyWfa.client.js'),
+      'utf8'
+    );
+
+    expect(geoapifyClient).toContain('process.env.GEOAPIFY_API_KEY');
+    expect(geoapifyClient).toContain('process.env.GEOAPIFY_KEY');
+    expect(geoapifyClient).toContain('Using legacy GEOAPIFY_KEY fallback for WFA Geoapify client');
+  });
+
   test('keeps legacy deployment references non-authoritative and environment-specific', () => {
     const stagingSpec = readDoDeploySpec('app.yaml');
     const productionSpec = readDoDeploySpec('app-production.yaml');
@@ -806,95 +758,16 @@ describe('backend runtime config contract', () => {
     expect(k8sDeployment).not.toContain('<your-dockerhub-username>/infinit-track-backend:latest');
   });
 
-  test('accepts GEOAPIFY_KEY as a temporary fallback for WFA recommendations', async () => {
-    delete process.env.GEOAPIFY_API_KEY;
-    process.env.GEOAPIFY_KEY = 'legacy-geoapify-key';
-
-    const axiosGet = jest.fn().mockResolvedValue({ data: { features: [] } });
-    const logger = {
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn()
-    };
-
-    const { getWfaRecommendations } = await loadWfaControllerWithMocks({
-      axiosGet,
-      logger
-    });
-
-    const req = {
-      query: {
-        lat: '-0.8917',
-        lng: '119.8707'
-      }
-    };
-    const res = buildRes();
-    const next = jest.fn();
-
-    await getWfaRecommendations(req, res, next);
-
-    expect(axiosGet).toHaveBeenCalledWith(
-      'https://api.geoapify.com/v2/places',
-      expect.objectContaining({
-        params: expect.objectContaining({ apiKey: 'legacy-geoapify-key' })
-      })
-    );
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Using legacy GEOAPIFY_KEY fallback for WFA recommendations')
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  test('fails explicitly when no Geoapify env variable is configured for WFA recommendations', async () => {
-    delete process.env.GEOAPIFY_API_KEY;
-    delete process.env.GEOAPIFY_KEY;
-
-    const axiosGet = jest.fn();
-    const logger = {
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn()
-    };
-
-    const { getWfaRecommendations } = await loadWfaControllerWithMocks({
-      axiosGet,
-      logger
-    });
-
-    const req = {
-      query: {
-        lat: '-0.8917',
-        lng: '119.8707'
-      }
-    };
-    const res = buildRes();
-    const next = jest.fn();
-
-    await getWfaRecommendations(req, res, next);
-
-    expect(axiosGet).not.toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledWith(
-      'Geoapify API key not found for WFA recommendations. Set GEOAPIFY_API_KEY.'
-    );
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      success: false,
-      code: 'E_CONFIG',
-      message: 'API key Geoapify tidak ditemukan'
-    });
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  test('redacts Geoapify API key in booking suitability diagnostics', () => {
+  test('keeps Geoapify credentials and diagnostics out of booking orchestration', () => {
     const bookingController = fs.readFileSync(
       path.resolve(repoRoot, 'src/controllers/booking.controller.js'),
       'utf8'
     );
 
-    expect(bookingController).toContain("const diagnosticParams = { ...params, apiKey: '[REDACTED]' };");
-    expect(bookingController).toContain('JSON.stringify(diagnosticParams)');
-    expect(bookingController).not.toContain('JSON.stringify(params)');
+    expect(bookingController).toContain("import { scoreBookingLocation } from '../services/wfaRecommendation.service.js';");
+    expect(bookingController).not.toContain('process.env.GEOAPIFY_API_KEY');
+    expect(bookingController).not.toContain('process.env.GEOAPIFY_KEY');
+    expect(bookingController).not.toContain('apiKey');
   });
 
   test('documents BACKEND_IMAGE_TAG in env example for operators', () => {

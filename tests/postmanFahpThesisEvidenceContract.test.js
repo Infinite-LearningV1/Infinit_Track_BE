@@ -33,9 +33,10 @@ describe('INF-170 hybrid FAHP thesis evidence contract', () => {
           sampleFile: 'postman/samples/legacy-discipline-monthly.json'
         },
         {
-          name: 'Thesis / Legacy Combined / WFA Monthly',
+          name: 'Migration / Legacy Combined / WFA',
           endpoint: '/api/analysis/fuzzy-ahp?type=wfa&period=monthly',
-          purpose: 'thesis_comparison',
+          purpose: 'migration_check',
+          expectedStatus: 410,
           sampleFile: 'postman/samples/legacy-wfa-monthly.json'
         },
         {
@@ -48,7 +49,7 @@ describe('INF-170 hybrid FAHP thesis evidence contract', () => {
           name: 'Validation / Dedicated / WFA Live',
           endpoint: '/api/analysis/fuzzy-ahp/wfa',
           purpose: 'live_validation',
-          queryVariables: ['wfa_lat', 'wfa_lon', 'wfa_radius_meters'],
+          queryVariables: ['wfa_lat', 'wfa_lon', 'wfa_schedule_date', 'wfa_radius_meters'],
           sampleFile: 'postman/samples/dedicated-wfa-live.json'
         }
       ]
@@ -58,11 +59,12 @@ describe('INF-170 hybrid FAHP thesis evidence contract', () => {
   test('makes the legacy WFA caveat impossible to miss', () => {
     const readme = fs.readFileSync(readmePath, 'utf8');
 
-    expect(readme).toContain('Legacy WFA comparison output is not live telemetry.');
+    expect(readme).toContain('Legacy WFA combined requests are 410 migration checks, not thesis comparison output.');
     expect(readme).toContain('Dedicated WFA live proof belongs to the canonical endpoint /api/analysis/fuzzy-ahp/wfa.');
     expect(readme).toContain('Dedicated WFA status: Needs Verification');
     expect(readme).toContain('wfa_lat');
     expect(readme).toContain('wfa_lon');
+    expect(readme).toContain('wfa_schedule_date');
     expect(readme).toContain('wfa_radius_meters');
   });
 });

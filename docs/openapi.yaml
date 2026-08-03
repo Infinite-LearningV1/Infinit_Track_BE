@@ -322,7 +322,7 @@ paths:
         - in: query
           name: type
           required: true
-          description: Selects the legacy response shape. Payload fields vary by type; see the separate 200 examples.
+          description: Selects a legacy analysis type. `wfa` is retired and returns the documented 410 migration response; the 200 examples apply only to discipline and Smart AC.
           schema:
             type: string
             enum: [wfa, discipline, smart_ac]
@@ -336,7 +336,7 @@ paths:
             default: monthly
       responses:
         '200':
-          description: Legacy combined analysis response. The `data` payload varies by `type`; this deprecated route is transition-only and does not replace the dedicated canonical endpoint contracts.
+          description: Legacy combined analysis response for discipline and Smart AC only. This deprecated route is transition-only and does not replace the dedicated canonical endpoint contracts.
           content:
             application/json:
               schema:
@@ -374,49 +374,6 @@ paths:
                           entity_kind:
                             type: string
                             example: user
-                          consistency:
-                            type: object
-                            additionalProperties: true
-                          weights:
-                            type: object
-                            additionalProperties: true
-                          distribution:
-                            type: object
-                            additionalProperties:
-                              type: integer
-                          ranking:
-                            type: array
-                            items:
-                              type: object
-                              additionalProperties: true
-                      - type: object
-                        description: Legacy WFA payload shape from `getFuzzyAhpAnalysis`. Canonical live provider-boundary behavior is documented on `/api/analysis/fuzzy-ahp/wfa`.
-                        properties:
-                          type:
-                            type: string
-                            enum: [wfa]
-                          period:
-                            type: string
-                            enum: [weekly, monthly]
-                            example: monthly
-                          generated_at:
-                            type: string
-                            format: date-time
-                          timezone:
-                            type: string
-                            example: Asia/Jakarta
-                          window:
-                            type: object
-                            properties:
-                              start_at:
-                                type: string
-                                format: date-time
-                              end_at:
-                                type: string
-                                format: date-time
-                          entity_kind:
-                            type: string
-                            example: place
                           consistency:
                             type: object
                             additionalProperties: true
@@ -521,47 +478,6 @@ paths:
                             lateness_frequency: 5
                             work_hour_consistency: 95
                     message: 'Fuzzy AHP analysis retrieved successfully'
-                wfa:
-                  summary: Legacy `type=wfa` response shape
-                  value:
-                    success: true
-                    data:
-                      type: wfa
-                      period: monthly
-                      generated_at: '2026-04-23T03:30:00.000Z'
-                      timezone: Asia/Jakarta
-                      window:
-                        start_at: '2026-03-31T17:00:00.000Z'
-                        end_at: '2026-04-23T03:30:00.000Z'
-                      entity_kind: place
-                      consistency:
-                        CR: 0.058
-                        CI: 0
-                        lambda_max: 0
-                        threshold: 0.1
-                        is_consistent: true
-                        verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
-                      weights:
-                        criteria: [location_type, distance_factor, amenity_score]
-                        values: [0.8205461382121108, 0.17945386178788933, 0]
-                        method: "Chang's Extent Analysis"
-                      distribution:
-                        Sangat Tinggi: 1
-                        Tinggi: 0
-                        Sedang: 0
-                        Rendah: 0
-                        Sangat Rendah: 0
-                      ranking:
-                        - rank: 1
-                          id: 3
-                          name: Cafe Example Palu
-                          score: 78.4
-                          label: Sangat Tinggi
-                          breakdown:
-                            location_type: cafe
-                            amenity_score: 50
-                            distance: 1000
-                    message: Fuzzy AHP analysis retrieved successfully
                 smart_ac:
                   summary: Legacy `type=smart_ac` response shape
                   value:
@@ -610,6 +526,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '410':
+          description: '`type=wfa` has moved to the dedicated facility-scoring analysis endpoint.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_ANALYSIS_MOVED
+                  message:
+                    type: string
+                    example: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+              example:
+                success: false
+                code: WFA_ANALYSIS_MOVED
+                message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
 
   /api/analysis/fuzzy-ahp/discipline:
     get:
@@ -828,9 +765,10 @@ paths:
       tags:
         - Analysis
       summary: Get WFA Fuzzy AHP analysis
-      description: Retrieve dedicated WFA FAHP analysis using Geoapify live Places data. The legacy combined `/api/analysis/fuzzy-ahp?type=wfa` endpoint remains temporarily supported for compatibility.
+      description: Retrieve canonical WFA facility-evidence analysis. `schedule_date` is validated as a strict future WIB date; the retired legacy combined WFA route returns 410 and directs clients here.
       security:
         - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - in: query
           name: lat
@@ -850,6 +788,15 @@ paths:
             minimum: -180
             maximum: 180
             example: 119.8707
+        - in: query
+          name: schedule_date
+          required: true
+          description: Strict future WFA date in the Asia/Jakarta business calendar.
+          schema:
+            type: string
+            format: date
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+            example: '2099-08-10'
         - in: query
           name: radius_meters
           required: false
@@ -873,172 +820,203 @@ paths:
                     example: true
                   data:
                     type: object
+                    required: [candidates, searchCriteria, methodology]
                     properties:
-                      type:
-                        type: string
-                        example: wfa
-                      timezone:
-                        type: string
-                        example: Asia/Jakarta
-                      data_source:
-                        type: string
-                        example: geoapify_live
-                      query:
-                        type: object
-                        properties:
-                          lat:
-                            type: number
-                            example: -0.8917
-                          lon:
-                            type: number
-                            example: 119.8707
-                          radius_meters:
-                            type: integer
-                            example: 5000
-                      entity_kind:
-                        type: string
-                        example: place
-                      consistency:
-                        type: object
-                        properties:
-                          CR:
-                            type: number
-                            example: 0.058
-                          CI:
-                            type: number
-                            example: 0
-                          lambda_max:
-                            type: number
-                            example: 0
-                          threshold:
-                            type: number
-                            example: 0.1
-                          is_consistent:
-                            type: boolean
-                            example: true
-                          verdict:
-                            type: string
-                            example: 'Matriks perbandingan konsisten (CR < 0.10)'
-                      weights:
-                        type: object
-                        properties:
-                          criteria:
-                            type: array
-                            items:
-                              type: string
-                            example: [location_type, distance_factor, amenity_score]
-                          values:
-                            type: array
-                            items:
-                              type: number
-                            example: [0.8205461382121108, 0.17945386178788933, 0]
-                          method:
-                            type: string
-                            example: "Chang's Extent Analysis"
-                      distribution:
-                        type: object
-                        additionalProperties:
-                          type: integer
-                      ranking:
+                      candidates:
                         type: array
                         items:
-                          type: object
-                          properties:
-                            rank:
-                              type: integer
-                            place_id:
+                          $ref: '#/components/schemas/WFARecommendation'
+                      searchCriteria:
+                        type: object
+                        required: [center_latitude, center_longitude, search_radius_meters, categories_searched, total_candidates_found, recommendations_returned]
+                        properties:
+                          center_latitude:
+                            type: number
+                            example: -0.8917
+                          center_longitude:
+                            type: number
+                            example: 119.8707
+                          search_radius_meters:
+                            type: integer
+                            example: 5000
+                          categories_searched:
+                            type: array
+                            minItems: 4
+                            maxItems: 4
+                            uniqueItems: true
+                            items:
                               type: string
-                            name:
-                              type: string
-                            score:
-                              type: number
-                            label:
-                              type: string
-                            breakdown:
-                              type: object
-                              properties:
-                                location_type:
-                                  type: string
-                                distance_m:
-                                  type: integer
-                                amenity_score:
-                                  type: integer
-                      empty_real:
-                        type: boolean
+                              enum: [catering, accommodation, office, education]
+                            example: [catering, accommodation, office, education]
+                          total_candidates_found:
+                            type: integer
+                          recommendations_returned:
+                            type: integer
+                      methodology:
+                        type: object
+                        required: [approach, criteria_weights, facility_matrix]
+                        properties:
+                          approach:
+                            type: string
+                            example: Fuzzy AHP facility-evidence scoring
+                          criteria_weights:
+                            type: object
+                            required: [location_type, distance_factor, facility_score, consistency_ratio, weighting_method]
+                            properties:
+                              location_type:
+                                type: number
+                              distance_factor:
+                                type: number
+                              facility_score:
+                                type: number
+                              consistency_ratio:
+                                type: number
+                                example: 0.0576
+                              weighting_method:
+                                type: string
+                                example: row_geometric_mean_fallback
+                          facility_matrix:
+                            type: object
+                            required: [version, criteria, weights, consistency_ratio, weighting_method]
+                            properties:
+                              version:
+                                type: string
+                                enum: [facility_equal_v1]
+                              criteria:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]]
+                              weights:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[0.2, 0.2, 0.2, 0.2, 0.2]]
+                              consistency_ratio:
+                                type: number
+                                enum: [0]
+                              weighting_method:
+                                type: string
+                                enum: [chang_extent]
                   message:
                     type: string
                     example: WFA Fuzzy AHP analysis retrieved successfully
-              example:
-                success: true
-                data:
-                  type: wfa
-                  timezone: Asia/Jakarta
-                  data_source: geoapify_live
-                  query:
-                    lat: -0.8917
-                    lon: 119.8707
-                    radius_meters: 5000
-                  entity_kind: place
-                  consistency:
-                    CR: 0.058
-                    CI: 0
-                    lambda_max: 0
-                    threshold: 0.1
-                    is_consistent: true
-                    verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
-                  weights:
-                    criteria: [location_type, distance_factor, amenity_score]
-                    values: [0.8205461382121108, 0.17945386178788933, 0]
-                    method: "Chang's Extent Analysis"
-                  distribution:
-                    Sangat Tinggi: 1
-                    Tinggi: 0
-                    Sedang: 0
-                    Rendah: 0
-                    Sangat Rendah: 0
-                  ranking:
-                    - rank: 1
-                      place_id: geoapify:1
-                      name: Cafe Example Palu
-                      score: 78.4
-                      label: Sangat Tinggi
-                      breakdown:
-                        location_type: cafe
-                        distance_m: 412
-                        amenity_score: 83
-                  empty_real: false
-                message: WFA Fuzzy AHP analysis retrieved successfully
+              examples:
+                ranked:
+                  summary: Candidate with verified facility evidence is ranked.
+                  value:
+                    success: true
+                    data:
+                      candidates:
+                        - place_id: geoapify:1
+                          name: Cafe Example Palu
+                          address: 'Jl. Merdeka, Palu'
+                          latitude: -0.8917
+                          longitude: 119.8707
+                          status: ranked
+                          distance_meters: 412
+                          location_type: cafe
+                          facility_score: 80
+                          facility_confidence: 100
+                          facilities: { internet_access: 1, air_conditioning: 1, toilets: 1, opening_hours: 1, wheelchair_accessibility: 0 }
+                          final_score: 78.4
+                          final_label: Sangat Baik
+                          rank: 1
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: WFA Fuzzy AHP analysis retrieved successfully
+                insufficient_facility_data:
+                  summary: Discovery succeeded but facility evidence is insufficient to rank.
+                  value:
+                    success: true
+                    data:
+                      candidates:
+                        - place_id: geoapify:2
+                          name: Sparse Cafe
+                          address: null
+                          latitude: -0.892
+                          longitude: 119.871
+                          status: insufficient_facility_data
+                          distance_meters: 500
+                          location_type: cafe
+                          facility_score: 100
+                          facility_confidence: 20
+                          facilities: { internet_access: 1, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: WFA Fuzzy AHP analysis retrieved successfully
+                facility_enrichment_failed:
+                  summary: Candidate details could not be enriched; no score is fabricated.
+                  value:
+                    success: true
+                    data:
+                      candidates:
+                        - place_id: geoapify:3
+                          name: Unavailable Details
+                          address: null
+                          latitude: -0.893
+                          longitude: 119.872
+                          status: facility_enrichment_failed
+                          distance_meters: 700
+                          location_type: office
+                          facility_score: null
+                          facility_confidence: null
+                          facilities: { internet_access: null, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                empty:
+                  summary: No nearby venue matches the search categories.
+                  value:
+                    success: true
+                    data:
+                      candidates: []
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 0, recommendations_returned: 0 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: WFA Fuzzy AHP analysis retrieved successfully
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/WfaQueryValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '503':
-          description: Geoapify authentication or provider is unavailable
+          description: Geoapify provider discovery is unavailable; no result is fabricated.
           content:
             application/json:
               schema:
                 type: object
-                required: [success, code, provider, reason]
+                required: [success, code, message]
                 properties:
                   success:
                     type: boolean
                     example: false
                   code:
                     type: string
-                    example: AUTH_OR_PROVIDER_UNAVAILABLE
-                  provider:
+                    example: WFA_PROVIDER_UNAVAILABLE
+                  message:
                     type: string
-                    example: geoapify
-                  reason:
-                    type: string
-                    example: auth_missing
+                    example: 'Internal server error'
               example:
                 success: false
-                code: AUTH_OR_PROVIDER_UNAVAILABLE
-                provider: geoapify
-                reason: auth_missing
+                code: WFA_PROVIDER_UNAVAILABLE
+                message: 'Internal server error'
+
+        '500':
+          description: WFA check-in-window configuration is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+              example:
+                success: false
+                code: WFA_CONFIG_UNAVAILABLE
+                message: 'Internal server error'
 
   /api/analysis/fuzzy-ahp/smart-ac:
     get:
@@ -1209,14 +1187,14 @@ paths:
       tags:
         - Analysis
       summary: Get dashboard recap for Fuzzy AHP analysis
-      description: Retrieve a dashboard-specific monthly recap for a single FAHP type. This additive route reuses the legacy `type` query values `discipline`, `wfa`, and `smart_ac`, applies the monthly window internally, and does not expose the full dedicated detail payloads.
+      description: Retrieve a dashboard-specific monthly recap for discipline or Smart AC and does not expose the full dedicated detail payloads. `type=wfa` is retired and returns 410 WFA_ANALYSIS_MOVED so clients use the dedicated WFA facility-scoring endpoint with a schedule date.
       security:
         - bearerAuth: []
       parameters:
         - in: query
           name: type
           required: true
-          description: Required dashboard recap type selector using the legacy combined-contract values.
+          description: Required dashboard recap type selector. `wfa` is accepted only to return the migration response.
           schema:
             type: string
             enum: [discipline, wfa, smart_ac]
@@ -1236,7 +1214,7 @@ paths:
                     properties:
                       type:
                         type: string
-                        enum: [discipline, wfa, smart_ac]
+                        enum: [discipline, smart_ac]
                       type_label:
                         type: string
                         example: Discipline
@@ -1335,6 +1313,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '410':
+          description: '`type=wfa` has moved to the dedicated facility-scoring analysis endpoint.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_ANALYSIS_MOVED
+                  message:
+                    type: string
+                    example: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+              example:
+                success: false
+                code: WFA_ANALYSIS_MOVED
+                message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
 
   # Attendance Endpoints
   /api/attendance/today-locations:
@@ -3406,7 +3405,7 @@ paths:
                   type: string
                   format: date
                   pattern: '^\d{4}-\d{2}-\d{2}$'
-                  example: '2026-04-29'
+                  example: '2099-12-31'
                 request_reason_id:
                   type: integer
                   minimum: 1
@@ -3424,6 +3423,13 @@ paths:
                   type: number
                   format: float
                   example: 106.816666
+                location_id:
+                  oneOf:
+                    - type: integer
+                      minimum: 1
+                    - type: string
+                      pattern: '^[1-9][0-9]*$'
+                  description: Optional existing WFA location for the same authenticated user and WFA category; its exact latitude and longitude must match the submitted coordinates. Numeric strings are normalized to integers by the request validator.
                 description:
                   type: string
                   example: 'WFA smoke gate location'
@@ -3453,6 +3459,9 @@ paths:
                       - request_reason
                       - location
                       - radius_snapshot
+                      - suitability_score
+                      - suitability_label
+                      - suitability_status
                       - created_at
                     properties:
                       booking_id:
@@ -3476,15 +3485,173 @@ paths:
                       suitability_label:
                         type: string
                         nullable: true
+                      suitability_status:
+                        type: string
+                        enum: [ranked, insufficient_facility_data]
+                        description: Canonical facility-scoring outcome for this booking. Scores and label are null when status is insufficient_facility_data.
                       created_at:
                         type: string
                         format: date-time
+              examples:
+                insufficient_facility_data:
+                  summary: Booking is created when discovery succeeds but facility evidence cannot support ranking.
+                  value:
+                    success: true
+                    message: 'Booking WFA berhasil dibuat.'
+                    data:
+                      booking_id: 123
+                      schedule_date: '2099-08-10'
+                      status: pending
+                      request_reason: { id: 2, label: 'Client meeting', is_other: false, other_text: null }
+                      location: { location_id: 45, latitude: -0.8917, longitude: 119.8707, radius: 100, description: 'WFA Location' }
+                      radius_snapshot: 100
+                      suitability_score: null
+                      suitability_label: null
+                      suitability_status: insufficient_facility_data
+                      created_at: '2026-08-02T00:00:00.000Z'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: 'Booking validation can fail in one of three runtime envelopes: Express Validator input errors, eligibility date errors, or request-reason service errors.'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/BookingExpressValidatorError'
+                  - $ref: '#/components/schemas/BookingEligibilityError'
+                  - $ref: '#/components/schemas/BookingRequestReasonError'
+              examples:
+                invalid_schedule_date:
+                  summary: The supplied date matches YYYY-MM-DD but is not a real calendar date.
+                  value:
+                    success: false
+                    code: INVALID_SCHEDULE_DATE
+                    message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+                    errors:
+                      - type: field
+                        value: '2026-02-30'
+                        msg: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+                        path: schedule_date
+                        location: body
+                        code: INVALID_SCHEDULE_DATE
+                past_date_not_allowed:
+                  summary: Eligibility rejects a real calendar date in the past before policy reads.
+                  value:
+                    success: false
+                    code: PAST_DATE_NOT_ALLOWED
+                    message: 'Validasi booking gagal.'
+                    errors:
+                      - field: schedule_date
+                        code: PAST_DATE_NOT_ALLOWED
+                        message: 'Tanggal booking tidak boleh di masa lalu.'
+                request_reason_not_found:
+                  summary: Request-reason service errors use the legacy 400 envelope without errors.
+                  value:
+                    success: false
+                    code: WFA_REQUEST_REASON_NOT_FOUND
+                    message: 'Alasan pengajuan WFA tidak ditemukan.'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: opaque location validation failure. The response does not disclose location ownership or existence.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, message, errors]
+                properties:
+                  success:
+                    type: boolean
+                    enum: [false]
+                  message:
+                    type: string
+                    enum: ['Validasi booking gagal.']
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, code, message]
+                      properties:
+                        field:
+                          type: string
+                          enum: [location_id]
+                        code:
+                          type: string
+                          enum: [LOCATION_NOT_FOUND]
+                        message:
+                          type: string
+                          enum: ['Lokasi tidak ditemukan atau tidak valid.']
+              example:
+                success: false
+                message: 'Validasi booking gagal.'
+                errors:
+                  - field: location_id
+                    code: LOCATION_NOT_FOUND
+                    message: 'Lokasi tidak ditemukan atau tidak valid.'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: A pending or approved booking already exists for the authenticated user and schedule date.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message, errors]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: DUPLICATE_BOOKING
+                  message:
+                    type: string
+                    example: 'Validasi booking gagal.'
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, code, message]
+                      properties:
+                        field:
+                          type: string
+                          example: schedule_date
+                        code:
+                          type: string
+                          example: DUPLICATE_BOOKING
+                        message:
+                          type: string
+                          example: 'Anda sudah memiliki booking pada tanggal tersebut.'
+              examples:
+                duplicate_booking:
+                  summary: The authenticated user already has a pending or approved booking on the requested date.
+                  value:
+                    success: false
+                    code: DUPLICATE_BOOKING
+                    message: 'Validasi booking gagal.'
+                    errors:
+                      - field: schedule_date
+                        code: DUPLICATE_BOOKING
+                        message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+        '503':
+          description: Facility scoring is unavailable before the booking write transaction starts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_SCORING_UNAVAILABLE
+                  message:
+                    type: string
+                    example: 'Internal server error'
+              example:
+                success: false
+                code: WFA_SCORING_UNAVAILABLE
+                message: 'Internal server error'
+        '500':
+          $ref: '#/components/responses/WfaConfigUnavailableError'
 
   /api/bookings/history:
     get:
@@ -3738,36 +3905,40 @@ paths:
       tags:
         - WFA System
       summary: Get WFA recommendations
-      description: Get Work From Anywhere location recommendations based on user location using Fuzzy AHP algorithm
+      description: Get authenticated-user WFA recommendations using canonical facility evidence. `schedule_date` is a strict future WIB date; candidates without sufficient or retrievable facility evidence remain visible with truthful nullable scores.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - in: query
-          name: latitude
+          name: lat
           required: true
           schema:
             type: number
             format: float
+            minimum: -90
+            maximum: 90
           example: -6.200000
           description: User's current latitude
         - in: query
-          name: longitude
+          name: lng
           required: true
           schema:
             type: number
             format: float
+            minimum: -180
+            maximum: 180
           example: 106.816666
           description: User's current longitude
         - in: query
-          name: radius
+          name: schedule_date
+          required: true
+          description: Strict future WFA date in the Asia/Jakarta business calendar.
           schema:
-            type: integer
-            default: 5000
-          description: Search radius in meters
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            default: 10
-          description: Maximum number of recommendations
+            type: string
+            format: date
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+            example: '2099-08-10'
       responses:
         '200':
           description: WFA recommendations retrieved successfully
@@ -3775,50 +3946,252 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [success, data, message]
                 properties:
                   success:
                     type: boolean
                     example: true
                   data:
                     type: object
+                    required: [recommendations, search_criteria, fahp_methodology]
                     properties:
                       recommendations:
                         type: array
                         items:
                           $ref: '#/components/schemas/WFARecommendation'
-                      search_location:
+                      search_criteria:
                         type: object
+                        required: [center_latitude, center_longitude, search_radius_meters, categories_searched, total_candidates_found, recommendations_returned]
                         properties:
-                          latitude:
+                          center_latitude:
                             type: number
                             format: float
                             example: -6.200000
-                          longitude:
+                          center_longitude:
                             type: number
                             format: float
                             example: 106.816666
-                      algorithm_info:
-                        type: object
-                        properties:
-                          method:
-                            type: string
-                            example: 'Fuzzy AHP'
-                          criteria:
+                          search_radius_meters:
+                            type: integer
+                          categories_searched:
                             type: array
+                            minItems: 4
+                            maxItems: 4
+                            uniqueItems: true
                             items:
                               type: string
-                            example: ['wifi_quality', 'noise_level', 'amenities', 'distance']
+                              enum: [catering, accommodation, office, education]
+                            example: [catering, accommodation, office, education]
+                          total_candidates_found:
+                            type: integer
+                          recommendations_returned:
+                            type: integer
+                      fahp_methodology:
+                        type: object
+                        required: [approach, criteria_weights, facility_matrix]
+                        properties:
+                          approach:
+                            type: string
+                            example: Fuzzy AHP facility-evidence scoring
+                          criteria_weights:
+                            type: object
+                            required: [location_type, distance_factor, facility_score, consistency_ratio, weighting_method]
+                            properties:
+                              location_type:
+                                type: number
+                              distance_factor:
+                                type: number
+                              facility_score:
+                                type: number
+                              consistency_ratio:
+                                type: number
+                                example: 0.0576
+                              weighting_method:
+                                type: string
+                                example: row_geometric_mean_fallback
+                          facility_matrix:
+                            type: object
+                            required: [version, criteria, weights, consistency_ratio, weighting_method]
+                            properties:
+                              version:
+                                type: string
+                                enum: [facility_equal_v1]
+                              criteria:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]]
+                              weights:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[0.2, 0.2, 0.2, 0.2, 0.2]]
+                              consistency_ratio:
+                                type: number
+                                enum: [0]
+                              weighting_method:
+                                type: string
+                                enum: [chang_extent]
+                  message:
+                    type: string
+                    example: 'Rekomendasi WFA berhasil diambil.'
+              examples:
+                ranked:
+                  summary: Candidate with sufficient facility evidence receives a rank.
+                  value:
+                    success: true
+                    data:
+                      recommendations:
+                        - place_id: geoapify:1
+                          name: Cafe Example Palu
+                          address: 'Jl. Merdeka, Palu'
+                          latitude: -0.8917
+                          longitude: 119.8707
+                          status: ranked
+                          distance_meters: 412
+                          location_type: cafe
+                          facility_score: 80
+                          facility_confidence: 100
+                          facilities: { internet_access: 1, air_conditioning: 1, toilets: 1, opening_hours: 1, wheelchair_accessibility: 0 }
+                          final_score: 78.4
+                          final_label: Sangat Baik
+                          rank: 1
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                insufficient_facility_data:
+                  summary: Candidate remains visible but cannot receive a final rank from partial facility evidence.
+                  value:
+                    success: true
+                    data:
+                      recommendations:
+                        - place_id: geoapify:2
+                          name: Sparse Cafe
+                          address: null
+                          latitude: -0.892
+                          longitude: 119.871
+                          status: insufficient_facility_data
+                          distance_meters: 500
+                          location_type: cafe
+                          facility_score: 100
+                          facility_confidence: 20
+                          facilities: { internet_access: 1, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                facility_enrichment_failed:
+                  summary: Candidate remains visible when provider detail enrichment cannot be completed.
+                  value:
+                    success: true
+                    data:
+                      recommendations:
+                        - place_id: geoapify:3
+                          name: Unavailable Details
+                          address: null
+                          latitude: -0.893
+                          longitude: 119.872
+                          status: facility_enrichment_failed
+                          distance_meters: 700
+                          location_type: office
+                          facility_score: null
+                          facility_confidence: null
+                          facilities: { internet_access: null, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                empty:
+                  summary: No nearby venue matches the search categories.
+                  value:
+                    success: true
+                    data:
+                      recommendations: []
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 0, recommendations_returned: 0 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/WfaQueryValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The authenticated user already has a pending or approved booking on schedule_date.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message, details]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: DUPLICATE_BOOKING
+                  message:
+                    type: string
+                    example: 'Anda sudah memiliki booking pada tanggal tersebut.'
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                          example: schedule_date
+                        code:
+                          type: string
+                          example: DUPLICATE_BOOKING
+              example:
+                success: false
+                code: DUPLICATE_BOOKING
+                message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+                details: [{ field: schedule_date, code: DUPLICATE_BOOKING }]
+        '503':
+          description: Geoapify provider discovery is unavailable; no result is fabricated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_PROVIDER_UNAVAILABLE
+                  message:
+                    type: string
+                    example: 'Internal server error'
+              example:
+                success: false
+                code: WFA_PROVIDER_UNAVAILABLE
+                message: 'Internal server error'
+        '500':
+          description: WFA check-in-window configuration is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+              example:
+                success: false
+                code: WFA_CONFIG_UNAVAILABLE
+                message: 'Internal server error'
 
   /api/wfa/ahp-config:
     get:
       tags:
         - WFA System
       summary: Get AHP configuration
-      description: Retrieve current Fuzzy AHP algorithm configuration and criteria weights
+      description: Retrieve the authenticated canonical WFA Fuzzy AHP configuration and criteria weights.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: AHP configuration retrieved successfully
@@ -3826,35 +4199,65 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [success, data, message]
                 properties:
                   success:
                     type: boolean
                     example: true
                   data:
                     type: object
+                    required: [current_weights, consistency_ratio, is_consistent, method, criteria_explanation, weight_calculation, scoring_method]
                     properties:
-                      criteria_weights:
+                      current_weights:
                         type: object
+                        required: [location_type, distance_factor, facility_score]
                         properties:
-                          wifi_quality:
+                          location_type:
                             type: number
-                            format: float
-                            example: 0.35
-                          noise_level:
+                            example: 0.633524839963704
+                          distance_factor:
                             type: number
-                            format: float
-                            example: 0.25
-                          amenities:
+                            example: 0.2604011016177943
+                          facility_score:
                             type: number
-                            format: float
-                            example: 0.25
-                          distance:
-                            type: number
-                            format: float
-                            example: 0.15
-                      fuzzy_scales:
+                            example: 0.10607405841850168
+                      consistency_ratio:
+                        type: number
+                        example: 0.057629117460781754
+                      is_consistent:
+                        type: boolean
+                        example: true
+                      method:
+                        type: string
+                        example: 'Fuzzy AHP dengan fallback geometric mean'
+                      criteria_explanation:
                         type: object
-                        description: Fuzzy scale definitions for each criterion
+                        additionalProperties:
+                          type: string
+                      weight_calculation:
+                        type: string
+                      scoring_method:
+                        type: string
+                  message:
+                    type: string
+                    example: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
+              example:
+                success: true
+                data:
+                  current_weights:
+                    location_type: 0.633524839963704
+                    distance_factor: 0.2604011016177943
+                    facility_score: 0.10607405841850168
+                  consistency_ratio: 0.057629117460781754
+                  is_consistent: true
+                  method: 'Fuzzy AHP dengan fallback geometric mean'
+                  criteria_explanation:
+                    location_type: 'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)'
+                    facility_score: 'Penilaian berdasarkan internet_access, air_conditioning, toilets, opening_hours, dan wheelchair accessibility.'
+                    distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
+                  weight_calculation: 'Pembobotan pairwise TFN dengan row geometric mean fallback karena Chang menghasilkan bobot nol'
+                  scoring_method: 'Weighted scoring model dengan normalisasi 0-100'
+                message: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -4569,7 +4972,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
+                    example: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4655,7 +5058,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
+                    example: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4741,7 +5144,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
+                    example: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -5457,7 +5860,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token passed as `Authorization: Bearer <token>`.
+      description: 'Access token passed as `Authorization: Bearer <token>`.'
     cookieAuth:
       type: apiKey
       in: cookie
@@ -7155,7 +7558,7 @@ components:
       type: object
       minProperties: 1
       additionalProperties: false
-      description: `is_other` is immutable; deactivate a catalog item with `is_active=false` instead of deleting it.
+      description: '`is_other` is immutable; deactivate a catalog item with `is_active=false` instead of deleting it.'
       properties:
         label:
           type: string
@@ -7228,7 +7631,91 @@ components:
           example: WFA_CONFIG_UNAVAILABLE
         message:
           type: string
-          example: 'WFA configuration is unavailable'
+          example: 'Internal server error'
+
+    BookingExpressValidatorError:
+      type: object
+      description: Booking request-body validation failure emitted by Express Validator before the controller runs.
+      required: [success, code, message, errors]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          example: INVALID_SCHEDULE_DATE
+        message:
+          type: string
+          example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+        errors:
+          type: array
+          items:
+            type: object
+            required: [type, msg, path, location]
+            properties:
+              type:
+                type: string
+                enum: [field]
+              value:
+                description: Any original JSON request value preserved by Express Validator; omitted when the request-body field is missing.
+                example: '2026-02-30'
+              msg:
+                type: string
+                example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+              path:
+                type: string
+                example: schedule_date
+              location:
+                type: string
+                enum: [body]
+              code:
+                type: string
+                nullable: true
+                description: Present when the validator rule uses a typed WFA code.
+                example: INVALID_SCHEDULE_DATE
+
+    BookingEligibilityError:
+      type: object
+      description: Controller eligibility failure for invalid, past, or same-day WFA schedule dates.
+      required: [success, code, message, errors]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+        message:
+          type: string
+          enum: ['Validasi booking gagal.']
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field:
+                type: string
+                enum: [schedule_date]
+              code:
+                type: string
+                enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+              message:
+                type: string
+
+    BookingRequestReasonError:
+      type: object
+      description: Request-reason service 400 forwarded through the legacy error handler without an errors array.
+      required: [success, code, message]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [WFA_REQUEST_REASON_NOT_FOUND, WFA_REQUEST_REASON_NOT_ACTIVE, WFA_OTHER_REASON_REQUIRED]
+        message:
+          type: string
 
     Booking:
       type: object
@@ -7441,149 +7928,73 @@ components:
 
     WFARecommendation:
       type: object
-      description: Work From Anywhere location recommendation with Fuzzy AHP scoring
+      description: Canonical WFA candidate. Scores are null whenever facility evidence is insufficient or enrichment fails; no fallback score is generated.
+      required: [place_id, name, address, latitude, longitude, status, distance_meters, location_type, facility_score, facility_confidence, facilities, final_score, final_label, rank]
       properties:
-        location_id:
-          type: integer
-          example: 15
-          description: Unique location identifier
+        place_id:
+          type: string
+          example: geoapify:1
         name:
           type: string
-          example: 'Starbucks Senayan City'
-          description: Location name
+          example: Cafe Example Palu
         address:
           type: string
-          example: 'Senayan City Mall, Lt. 2, Jakarta Selatan'
-          description: Full address of the location
-        distance:
+          nullable: true
+        latitude:
           type: number
           format: float
-          example: 850.5
-          description: Distance from user location in meters
-        coordinates:
-          type: object
-          properties:
-            latitude:
-              type: number
-              format: float
-              example: -6.225014
-            longitude:
-              type: number
-              format: float
-              example: 106.799415
-        fuzzy_ahp_score:
+        longitude:
           type: number
           format: float
-          example: 87.0
-          description: Overall Fuzzy AHP score (0-100 scale)
-        suitability_label:
+        status:
           type: string
-          example: 'Sangat Baik'
-          enum: ['Rendah', 'Cukup', 'Baik', 'Sangat Baik']
-          description: Human-readable suitability assessment
-        criteria_scores:
-          type: object
-          description: Individual criteria scores
-          properties:
-            wifi_quality:
-              type: object
-              properties:
-                score:
-                  type: number
-                  format: float
-                  example: 4.5
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.9
-                weight:
-                  type: number
-                  format: float
-                  example: 0.35
-            noise_level:
-              type: object
-              properties:
-                score:
-                  type: number
-                  format: float
-                  example: 3.2
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.64
-                weight:
-                  type: number
-                  format: float
-                  example: 0.25
-            amenities:
-              type: object
-              properties:
-                score:
-                  type: integer
-                  example: 8
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.8
-                weight:
-                  type: number
-                  format: float
-                  example: 0.25
-            distance:
-              type: object
-              properties:
-                score:
-                  type: number
-                  format: float
-                  example: 850.5
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.7
-                weight:
-                  type: number
-                  format: float
-                  example: 0.15
-        ranking:
-          type: integer
-          example: 1
-          description: Ranking position among all recommendations
-        recommendation_confidence:
+          enum: [ranked, insufficient_facility_data, facility_enrichment_failed]
+        distance_meters:
           type: number
           format: float
-          example: 0.92
-          description: Confidence level of the recommendation (0-1)
-        features:
-          type: array
-          items:
-            type: string
-          example: ['WiFi', 'AC', 'Power Outlets', 'Quiet Area', 'Coffee']
-          description: Available features/amenities at the location
-        operating_hours:
+          minimum: 0
+        location_type:
+          type: string
+        facility_score:
+          type: number
+          nullable: true
+        facility_confidence:
+          type: number
+          nullable: true
+        facilities:
           type: object
+          required: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]
           properties:
-            open:
-              type: string
-              format: time
-              example: '07:00:00'
-            close:
-              type: string
-              format: time
-              example: '22:00:00'
-            is_24_hours:
-              type: boolean
-              example: false
-        contact_info:
-          type: object
-          properties:
-            phone:
-              type: string
+            internet_access:
+              type: integer
+              enum: [0, 1, null]
               nullable: true
-              example: '+62-21-12345678'
-            website:
-              type: string
+            air_conditioning:
+              type: integer
+              enum: [0, 1, null]
               nullable: true
-              example: 'https://starbucks.co.id'
+            toilets:
+              type: integer
+              enum: [0, 1, null]
+              nullable: true
+            opening_hours:
+              type: integer
+              enum: [0, 1, null]
+              nullable: true
+            wheelchair_accessibility:
+              type: integer
+              enum: [0, 1, null]
+              nullable: true
+        final_score:
+          type: number
+          nullable: true
+        final_label:
+          type: string
+          nullable: true
+          enum: [Rendah, Cukup, Baik, Sangat Baik, null]
+        rank:
+          type: integer
+          nullable: true
 
     Pagination:
       type: object
@@ -7608,6 +8019,116 @@ components:
           example: false
 
   responses:
+    WfaQueryValidationError:
+      description: Canonical WFA query validation failed before provider discovery or analysis.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, code, message, errors]
+            properties:
+              success:
+                type: boolean
+                enum: [false]
+              code:
+                type: string
+                enum: [E_VALIDATION]
+              message:
+                type: string
+              errors:
+                type: array
+                items:
+                  type: object
+                  required: [type, msg, path, location]
+                  properties:
+                    type:
+                      type: string
+                      enum: [field]
+                    value:
+                      type: string
+                      nullable: true
+                      example: not-a-coordinate
+                    msg:
+                      type: string
+                      example: lat must be a valid latitude
+                    path:
+                      type: string
+                      example: lat
+                    location:
+                      type: string
+                      enum: [query]
+                    code:
+                      type: string
+                      enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+          examples:
+            missing_schedule_date:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: schedule_date is required
+                errors:
+                  - type: field
+                    msg: schedule_date is required
+                    path: schedule_date
+                    location: query
+            invalid_schedule_date:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Tanggal WFA tidak valid.'
+                errors:
+                  - type: field
+                    value: '2099-02-30'
+                    msg: 'Tanggal WFA tidak valid.'
+                    path: schedule_date
+                    location: query
+                    code: INVALID_SCHEDULE_DATE
+            past_date_not_allowed:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Tanggal booking tidak boleh di masa lalu.'
+                errors:
+                  - type: field
+                    value: '2026-08-01'
+                    msg: 'Tanggal booking tidak boleh di masa lalu.'
+                    path: schedule_date
+                    location: query
+                    code: PAST_DATE_NOT_ALLOWED
+            same_day_not_allowed:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Booking di hari yang sama tidak diperbolehkan.'
+                errors:
+                  - type: field
+                    value: '2026-08-02'
+                    msg: 'Booking di hari yang sama tidak diperbolehkan.'
+                    path: schedule_date
+                    location: query
+                    code: SAME_DAY_NOT_ALLOWED
+          example:
+            success: false
+            code: E_VALIDATION
+            message: lat must be a valid latitude
+            errors:
+              - type: field
+                value: not-a-coordinate
+                msg: lat must be a valid latitude
+                path: lat
+                location: query
+
+    WfaConfigUnavailableError:
+      description: WFA configuration is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WfaConfigUnavailableError'
+          example:
+            success: false
+            code: WFA_CONFIG_UNAVAILABLE
+            message: 'Internal server error'
+
     AttendanceValidationError:
       description: Attendance query or path validation failed
       content:
