@@ -122,7 +122,11 @@ describe('bookings validator contract', () => {
     ['abc', 'Location ID harus berupa integer positif'],
     ['7.5', 'Location ID harus berupa integer positif'],
     [0, 'Location ID harus berupa integer positif'],
-    [-1, 'Location ID harus berupa integer positif']
+    [-1, 'Location ID harus berupa integer positif'],
+    [[7], 'Location ID harus berupa integer positif'],
+    [null, 'Location ID harus berupa integer positif'],
+    [{ id: 7 }, 'Location ID harus berupa integer positif'],
+    [true, 'Location ID harus berupa integer positif']
   ])('rejects malformed location_id %p before the booking controller boundary', async (locationId, message) => {
     const onCreate = jest.fn();
     const response = await request(buildValidatorApp({ onCreate }))

@@ -590,7 +590,14 @@ export const createBookingValidation = [
     .withMessage('request_other_reason maksimal 500 karakter'),
 
   body('location_id')
-    .optional({ nullable: true })
+    .optional()
+    .custom((value) => {
+      if (typeof value !== 'number' && typeof value !== 'string') {
+        throw new Error('Location ID harus berupa integer positif');
+      }
+      return true;
+    })
+    .bail()
     .isInt({ min: 1 })
     .withMessage('Location ID harus berupa integer positif')
     .toInt(),
