@@ -104,6 +104,11 @@ Booking.belongsTo(User, {
   targetKey: 'id_users',
   as: 'user'
 });
+Booking.belongsTo(User, {
+  foreignKey: 'approved_by',
+  targetKey: 'id_users',
+  as: 'processor'
+});
 Booking.belongsTo(Location, {
   foreignKey: 'location_id',
   as: 'location'
