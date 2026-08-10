@@ -1,8 +1,8 @@
 # INF-274 Follow-up — Management Booking Pagination Envelope Design
 
-**Date:** 2026-08-10  
-**Repository:** `Infinite-LearningV1/Infinit_Track_BE`  
-**Base:** `origin/develop` at `cfdaed1`  
+**Date:** 2026-08-10
+**Repository:** `Infinite-LearningV1/Infinit_Track_BE`
+**Base:** `origin/develop` at `cfdaed1`
 **Branch:** `fix/inf-274-booking-pagination-envelope`
 
 ## Purpose
