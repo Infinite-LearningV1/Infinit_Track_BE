@@ -3311,47 +3311,71 @@ paths:
     get:
       tags:
         - WFA Bookings
-      summary: Get all bookings (Admin/Management only)
-      description: Retrieve all WFA booking requests with filtering options
+      summary: Get management booking queue (Admin/Management only)
+      description: |
+        Retrieve the Management Booking approval/review queue. Filtering and search are server-side
+        and applied before pagination. Default ordering is Pending, Approved, Rejected, then newest
+        `created_at`, with `booking_id` as the deterministic tie-breaker.
       parameters:
         - in: query
           name: page
           schema:
             type: integer
+            minimum: 1
             default: 1
-          description: Page number for pagination
+          description: Page number for pagination.
         - in: query
           name: limit
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
             default: 10
-          description: Number of items per page
+          description: Number of items per page.
         - in: query
           name: status
           schema:
             type: string
             enum: [pending, approved, rejected]
-          description: Filter by booking status
+          description: Filter by booking status.
         - in: query
           name: date_from
           schema:
             type: string
             format: date
-          description: Filter bookings from this date
+          description: Inclusive minimum WFA schedule date.
         - in: query
           name: date_to
           schema:
             type: string
             format: date
-          description: Filter bookings until this date
+          description: Inclusive maximum WFA schedule date; cannot precede date_from.
         - in: query
           name: user_id
           schema:
             type: integer
-          description: Filter by specific user ID
+            minimum: 1
+          description: Filter by applicant user ID.
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Trimmed server-side search against applicant full_name and NIP/NIM only.
+        - in: query
+          name: sortBy
+          deprecated: true
+          schema:
+            type: string
+          description: Deprecated compatibility-only no-op; accepted temporarily but does not change ordering.
+        - in: query
+          name: sortOrder
+          deprecated: true
+          schema:
+            type: string
+          description: Deprecated compatibility-only no-op; accepted temporarily but does not change ordering.
       responses:
         '200':
-          description: Bookings retrieved successfully
+          description: Management booking queue retrieved successfully
           content:
             application/json:
               schema:
@@ -3366,9 +3390,12 @@ paths:
                       bookings:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Booking'
+                          $ref: '#/components/schemas/BookingManagementItem'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+                    example: Daftar booking berhasil diambil
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7717,6 +7744,103 @@ components:
         message:
           type: string
 
+    BookingProcessor:
+      type: object
+      nullable: true
+      required: [id, full_name, role]
+      properties:
+        id:
+          type: integer
+          example: 12
+        full_name:
+          type: string
+          example: Eko Prasetyo
+        role:
+          type: string
+          nullable: true
+          example: Admin
+      description: Persisted human actor who processed a booking decision. Null for pending rows and automated decisions with no persisted user actor.
+
+    BookingManagementItem:
+      type: object
+      description: Stable Admin/Management booking-list projection used by the Management Booking approval/review queue.
+      properties:
+        booking_id:
+          type: integer
+          example: 42
+        user_id:
+          type: integer
+          nullable: true
+          example: 7
+        user_full_name:
+          type: string
+          nullable: true
+          example: Andi Saputra
+        user_role_name:
+          type: string
+          nullable: true
+          example: Employee
+        user_email:
+          type: string
+          format: email
+          nullable: true
+          example: andi@example.com
+        user_nip_nim:
+          type: string
+          nullable: true
+          example: EMP-007
+        user_position_name:
+          type: string
+          nullable: true
+          example: Backend Engineer
+        schedule_date:
+          type: string
+          format: date
+          example: '2026-08-12'
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        location:
+          $ref: '#/components/schemas/WfaBookingLocation'
+        notes:
+          type: string
+          example: Meeting onsite
+        suitability_score:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Canonical WFA suitability score. Null when facility evidence cannot produce a truthful ranked result; numeric zero is valid.
+        suitability_label:
+          type: string
+          nullable: true
+          description: Canonical WFA suitability label; null whenever no truthful final score exists.
+        created_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+        approved_by:
+          type: integer
+          nullable: true
+          deprecated: true
+          description: Legacy raw processor user ID kept for compatibility. New clients should use processed_by.
+        processed_by:
+          $ref: '#/components/schemas/BookingProcessor'
+        request_reason:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/WfaRequestReasonProjection'
+        rejection_reason:
+          $ref: '#/components/schemas/WfaRejectionReasonProjection'
+        radius_snapshot:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Server-owned WFA radius captured at booking submission; legacy rows may fall back to location radius.
     Booking:
       type: object
       properties:
