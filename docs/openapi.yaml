@@ -7831,7 +7831,9 @@ components:
         processed_by:
           $ref: '#/components/schemas/BookingProcessor'
         request_reason:
-          $ref: '#/components/schemas/WfaRequestReasonProjection'
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/WfaRequestReasonProjection'
         rejection_reason:
           $ref: '#/components/schemas/WfaRejectionReasonProjection'
         radius_snapshot:

@@ -67,9 +67,11 @@ test('documents processor identity and truthful nullable suitability semantics',
     type: 'string',
     nullable: true
   });
-  expect(item.properties.request_reason.$ref).toBe(
-    '#/components/schemas/WfaRequestReasonProjection'
-  );
+  expect(item.properties.request_reason).toMatchObject({
+    nullable: true,
+    allOf: [{ $ref: '#/components/schemas/WfaRequestReasonProjection' }]
+  });
+  expect(item.properties.request_reason.nullable).toBe(true);
   expect(item.properties.rejection_reason.$ref).toBe(
     '#/components/schemas/WfaRejectionReasonProjection'
   );
