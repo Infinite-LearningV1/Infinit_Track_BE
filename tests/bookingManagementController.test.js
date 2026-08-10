@@ -61,6 +61,10 @@ test('delegates the validated management query and preserves the existing respon
     pagination: {
       current_page: 2,
       total_pages: 3,
+      total_records: 11,
+      records_per_page: 5,
+      has_next_page: true,
+      has_prev_page: true,
       total_items: 11,
       items_per_page: 5
     }
@@ -82,6 +86,10 @@ test('delegates the validated management query and preserves the existing respon
       pagination: {
         current_page: 2,
         total_pages: 3,
+        total_records: 11,
+        records_per_page: 5,
+        has_next_page: true,
+        has_prev_page: true,
         total_items: 11,
         items_per_page: 5
       }

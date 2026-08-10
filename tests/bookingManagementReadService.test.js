@@ -51,6 +51,10 @@ test('executes one paginated query and maps the returned booking rows', async ()
     pagination: {
       current_page: 2,
       total_pages: 3,
+      total_records: 11,
+      records_per_page: 5,
+      has_next_page: true,
+      has_prev_page: true,
       total_items: 11,
       items_per_page: 5
     }
@@ -66,6 +70,10 @@ test('returns stable empty pagination metadata', async () => {
     pagination: {
       current_page: 1,
       total_pages: 0,
+      total_records: 0,
+      records_per_page: 10,
+      has_next_page: false,
+      has_prev_page: false,
       total_items: 0,
       items_per_page: 10
     }
