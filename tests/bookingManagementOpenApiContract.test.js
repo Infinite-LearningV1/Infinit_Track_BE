@@ -76,3 +76,30 @@ test('documents processor identity and truthful nullable suitability semantics',
     '#/components/schemas/WfaRejectionReasonProjection'
   );
 });
+
+
+test('publishes the canonical Management Booking pagination envelope with deprecated aliases', () => {
+  const operation = openapi.paths['/api/bookings'].get;
+  const paginationRef =
+    operation.responses['200'].content['application/json'].schema.properties.data.properties
+      .pagination.$ref;
+
+  expect(paginationRef).toBe('#/components/schemas/BookingManagementPagination');
+
+  const pagination = openapi.components.schemas.BookingManagementPagination;
+  expect(pagination.type).toBe('object');
+  expect(pagination.required).toEqual([
+    'current_page',
+    'total_pages',
+    'total_records',
+    'records_per_page',
+    'has_next_page',
+    'has_prev_page',
+    'total_items',
+    'items_per_page'
+  ]);
+  expect(pagination.properties.total_items.deprecated).toBe(true);
+  expect(pagination.properties.items_per_page.deprecated).toBe(true);
+  expect(pagination.properties.has_next_page.type).toBe('boolean');
+  expect(pagination.properties.has_prev_page.type).toBe('boolean');
+});
