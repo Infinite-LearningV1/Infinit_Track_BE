@@ -40,6 +40,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   },
   BookingStatus: {},
   User: { findByPk: mockUserFindByPk },
+  Photo: {},
   Position: {},
   Role: {},
   WfaRequestReason: {},
