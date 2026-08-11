@@ -96,6 +96,27 @@ describe('GET /users list projection contract (INF-261 + INF-251)', () => {
     });
   });
 
+  test('list keeps nullable photo evidence and an optional photo_file join', async () => {
+    const findAll = jest.fn().mockResolvedValue([buildUser({ photo_file: null })]);
+    const { getAllUsers } = await loadController({ findAll });
+
+    const res = buildRes();
+    await getAllUsers({ query: {} }, res, jest.fn());
+
+    expect(res.json.mock.calls[0][0].data[0]).toMatchObject({
+      photo: null,
+      photo_updated_at: null
+    });
+
+    const include = findAll.mock.calls[0][0].include;
+    const photoInclude = include.find((entry) => entry.as === 'photo_file');
+    expect(photoInclude).toMatchObject({
+      as: 'photo_file',
+      attributes: ['photo_url', 'photo_updated_at'],
+      required: false
+    });
+  });
+
   test('list row never leaks phone or raw coordinate fields', async () => {
     const findAll = jest.fn().mockResolvedValue([buildUser()]);
     const { getAllUsers } = await loadController({ findAll });

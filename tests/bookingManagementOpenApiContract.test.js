@@ -49,6 +49,16 @@ test('publishes the Management Booking list item instead of the legacy Booking s
   expect(item.properties).toHaveProperty('rejection_reason');
   expect(item.properties).toHaveProperty('location');
   expect(item.properties).toHaveProperty('approved_by');
+  expect(item.properties.user_photo).toMatchObject({
+    type: 'string',
+    format: 'uri',
+    nullable: true
+  });
+  expect(item.properties.user_photo_updated_at).toMatchObject({
+    type: 'string',
+    format: 'date-time',
+    nullable: true
+  });
   expect(item.properties.processed_by.$ref).toBe('#/components/schemas/BookingProcessor');
 });
 test('documents processor identity and truthful nullable suitability semantics', () => {

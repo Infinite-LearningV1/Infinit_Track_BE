@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 const User = { modelName: 'User' };
 const Position = { modelName: 'Position' };
 const Role = { modelName: 'Role' };
+const Photo = { modelName: 'Photo' };
 const Location = { modelName: 'Location' };
 const BookingStatus = { modelName: 'BookingStatus' };
 const WfaRequestReason = { modelName: 'WfaRequestReason' };
@@ -18,6 +19,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   User,
   Position,
   Role,
+  Photo,
   Location,
   BookingStatus,
   WfaRequestReason,
@@ -67,7 +69,13 @@ test('builds combined applicant search, booking filters, and pagination in one q
   });
   expect(applicant.include).toEqual(expect.arrayContaining([
     expect.objectContaining({ model: Position, as: 'position' }),
-    expect.objectContaining({ model: Role, as: 'role' })
+    expect.objectContaining({ model: Role, as: 'role' }),
+    {
+      model: Photo,
+      as: 'photo_file',
+      attributes: ['photo_url', 'photo_updated_at'],
+      required: false
+    }
   ]));
 });
 
@@ -87,6 +95,7 @@ test('keeps applicant optional without search and includes an optional processor
   expect(processor.include).toEqual([
     expect.objectContaining({ model: Role, as: 'role', required: false })
   ]);
+  expect(processor.include.some((item) => item.as === 'photo_file')).toBe(false);
   expect(query.include).toEqual(expect.arrayContaining([
     expect.objectContaining({ model: Location, as: 'location' }),
     expect.objectContaining({ model: BookingStatus, as: 'booking_status' }),

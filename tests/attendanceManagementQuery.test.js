@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { AttendanceStatus, User } from '../src/models/index.js';
+import { AttendanceStatus, Photo, User } from '../src/models/index.js';
 import {
   buildAttendanceDetailQuery,
   buildAttendanceListQuery,
@@ -92,4 +92,33 @@ test('builds a detail projection with its related attendance metadata', () => {
   expect(options.include.map((item) => item.as)).toEqual([
     'user', 'location', 'status', 'attendance_category'
   ]);
+});
+
+test('includes the same optional lightweight photo projection in list and detail', () => {
+  const list = buildAttendanceListQuery({ page: 1, limit: 10 });
+  const listUser = list.include.find((item) => item.as === 'user');
+  const listPhoto = listUser.include.find((item) => item.as === 'photo_file');
+
+  expect(listUser.required).toBe(false);
+  expect(listPhoto).toEqual({
+    model: Photo,
+    as: 'photo_file',
+    attributes: ['photo_url', 'photo_updated_at'],
+    required: false
+  });
+
+  const searched = buildAttendanceListQuery({ page: 1, limit: 10, search: 'Andi' });
+  expect(searched.include.find((item) => item.as === 'user').required).toBe(true);
+
+  const detail = buildAttendanceDetailQuery();
+  const detailUser = detail.include.find((item) => item.as === 'user');
+  const detailPhoto = detailUser.include.find((item) => item.as === 'photo_file');
+
+  expect(detailUser.required).toBe(false);
+  expect(detailPhoto).toEqual({
+    model: Photo,
+    as: 'photo_file',
+    attributes: ['photo_url', 'photo_updated_at'],
+    required: false
+  });
 });

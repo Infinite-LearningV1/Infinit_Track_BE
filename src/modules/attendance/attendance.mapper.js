@@ -1,4 +1,5 @@
 import { formatTimeOnly, formatWorkHour } from '../../utils/workHourFormatter.js';
+import { mapUserPhotoProjection } from '../../utils/userPhotoProjection.js';
 
 const MODES = {
   1: { key: 'wfo', label: 'WFO' },
@@ -34,6 +35,7 @@ const userOf = (row, includeEmail = false) => ({
   full_name: row.user?.full_name ?? null,
   nip_nim: row.user?.nip_nim ?? null,
   ...(includeEmail ? { email: row.user?.email ?? null } : {}),
+  ...mapUserPhotoProjection(row.user),
   role: row.user?.role?.role_name ?? null
 });
 

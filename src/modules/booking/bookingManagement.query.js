@@ -4,12 +4,14 @@ import sequelize from '../../config/database.js';
 import {
   BookingStatus,
   Location,
+  Photo,
   Position,
   Role,
   User,
   WfaRejectionReason,
   WfaRequestReason
 } from '../../models/index.js';
+import { buildUserPhotoInclude } from '../../utils/userPhotoProjection.js';
 
 const STATUS_IDS = Object.freeze({
   approved: 1,
@@ -39,7 +41,8 @@ const buildApplicantInclude = (search) => {
         as: 'role',
         attributes: ['id_roles', 'role_name'],
         required: false
-      }
+      },
+      buildUserPhotoInclude(Photo)
     ]
   };
 

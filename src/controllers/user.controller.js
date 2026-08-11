@@ -13,6 +13,7 @@ import {
   sequelize
 } from '../models/index.js';
 import logger from '../utils/logger.js';
+import { buildUserPhotoInclude, mapUserPhotoProjection } from '../utils/userPhotoProjection.js';
 import { buildUserProfilePhotoKey, uploadBufferToSpaces, deleteSpacesObject } from '../config/spaces.js';
 
 const deleteLegacyCloudinaryPhoto = async (publicId) => {
@@ -61,8 +62,7 @@ const toUserDetailProjection = (user) => ({
   division_name: user.division ? user.division.division_name : null,
   nip_nim: user.nip_nim,
   phone: user.phone,
-  photo: user.photo_file ? user.photo_file.photo_url : null,
-  photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
+  ...mapUserPhotoProjection(user),
   location: toWfhLocationProjection(user.wfh_location),
   created_at: user.created_at,
   updated_at: user.updated_at
@@ -80,8 +80,7 @@ const toUserListProjection = (user) => ({
   program_name: user.program ? user.program.program_name : null,
   division_name: user.division ? user.division.division_name : null,
   nip_nim: user.nip_nim,
-  photo: user.photo_file ? user.photo_file.photo_url : null,
-  photo_updated_at: user.photo_file ? user.photo_file.photo_updated_at : null,
+  ...mapUserPhotoProjection(user),
   location_status: user.wfh_location ? 'configured' : 'integrity_error',
   created_at: user.created_at,
   updated_at: user.updated_at
@@ -195,12 +194,7 @@ export const getAllUsers = async (req, res, next) => {
         attributes: ['division_name'],
         required: false
       },
-      {
-        model: Photo,
-        as: 'photo_file',
-        attributes: ['photo_url', 'photo_updated_at'],
-        required: false
-      },
+      buildUserPhotoInclude(Photo),
       {
         model: Location,
         as: 'wfh_location',
@@ -499,12 +493,7 @@ export const updateUser = async (req, res, next) => {
           attributes: ['division_name'],
           required: false
         },
-        {
-          model: Photo,
-          as: 'photo_file',
-          attributes: ['photo_url', 'photo_updated_at'],
-          required: false
-        },
+        buildUserPhotoInclude(Photo),
         {
           model: Location,
           as: 'wfh_location',
@@ -723,12 +712,7 @@ export const createUser = async (req, res, next) => {
           attributes: ['division_name'],
           required: false
         },
-        {
-          model: Photo,
-          as: 'photo_file',
-          attributes: ['photo_url', 'photo_updated_at'],
-          required: false
-        },
+        buildUserPhotoInclude(Photo),
         {
           model: Location,
           as: 'wfh_location',
@@ -802,12 +786,7 @@ export const getUserById = async (req, res, next) => {
           attributes: ['division_name'],
           required: false
         },
-        {
-          model: Photo,
-          as: 'photo_file',
-          attributes: ['photo_url', 'photo_updated_at'],
-          required: false
-        },
+        buildUserPhotoInclude(Photo),
         {
           model: Location,
           as: 'wfh_location',

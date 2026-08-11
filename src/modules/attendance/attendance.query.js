@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
 import {
-  AttendanceCategory, AttendanceStatus, Location, Role, User
+  AttendanceCategory, AttendanceStatus, Location, Photo, Role, User
 } from '../../models/index.js';
+import { buildUserPhotoInclude } from '../../utils/userPhotoProjection.js';
 
 const MODE_IDS = { wfo: 1, wfh: 2, wfa: 3 };
 const STATUS_IDS = { ontime: 1, late: 2, alpha: 3, early: 4 };
@@ -47,7 +48,10 @@ export const buildAttendanceListQuery = (query = {}) => {
     as: 'user',
     attributes: ['id_users', 'full_name', 'nip_nim'],
     required: Boolean(like),
-    include: [{ model: Role, as: 'role', attributes: ['role_name'], required: false }]
+    include: [
+      { model: Role, as: 'role', attributes: ['role_name'], required: false },
+      buildUserPhotoInclude(Photo)
+    ]
   };
 
   if (like) {
@@ -105,7 +109,10 @@ export const buildAttendanceDetailQuery = () => ({
       as: 'user',
       attributes: ['id_users', 'full_name', 'nip_nim', 'email'],
       required: false,
-      include: [{ model: Role, as: 'role', attributes: ['role_name'], required: false }]
+      include: [
+        { model: Role, as: 'role', attributes: ['role_name'], required: false },
+        buildUserPhotoInclude(Photo)
+      ]
     },
     {
       model: Location,

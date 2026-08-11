@@ -7,7 +7,17 @@ const row = {
   id_attendance: 42, attendance_date: '2026-07-28',
   time_in: new Date(2026, 6, 28, 8, 2), time_out: new Date(2026, 6, 28, 17, 5),
   work_hour: 9.05, category_id: 1, status_id: 1, notes: 'Verified', booking_id: 55,
-  user: { id_users: 7, full_name: 'Andi Saputra', nip_nim: 'EMP-007', email: 'andi@example.com', role: { role_name: 'User' } },
+  user: {
+    id_users: 7,
+    full_name: 'Andi Saputra',
+    nip_nim: 'EMP-007',
+    email: 'andi@example.com',
+    role: { role_name: 'User' },
+    photo_file: {
+      photo_url: 'https://cdn.example.com/users/7/profile/photo.jpg',
+      photo_updated_at: new Date('2026-08-10T08:30:00.000Z')
+    }
+  },
   attendance_category: { category_name: 'Work From Office' },
   status: { attendance_status_name: 'Tepat Waktu' },
   location: { location_id: 1, description: 'Palu Office', latitude: '-0.900291', longitude: '119.877998', radius: '100' }
@@ -17,7 +27,14 @@ test('maps only audit-table fields in the list row', () => {
   const result = mapAttendanceListRow(row);
   expect(result).toEqual({
     id_attendance: 42, attendance_date: '2026-07-28',
-    user: { id: 7, full_name: 'Andi Saputra', nip_nim: 'EMP-007', role: 'User' },
+    user: {
+      id: 7,
+      full_name: 'Andi Saputra',
+      nip_nim: 'EMP-007',
+      photo: 'https://cdn.example.com/users/7/profile/photo.jpg',
+      photo_updated_at: new Date('2026-08-10T08:30:00.000Z'),
+      role: 'User'
+    },
     time_in: '08:02', time_out: '17:05', work_duration: '09:03',
     mode: { key: 'wfo', label: 'WFO' },
     status: { key: 'ontime', label: 'On Time' },
@@ -43,6 +60,22 @@ test('does not fabricate time, duration, or location', () => {
   expect(result.location).toBeNull();
 });
 
+test('keeps photo fields present and null when the user has no linked photo', () => {
+  const noPhoto = {
+    ...row,
+    user: { ...row.user, photo_file: null }
+  };
+
+  expect(mapAttendanceListRow(noPhoto).user).toMatchObject({
+    photo: null,
+    photo_updated_at: null
+  });
+  expect(mapAttendanceDetail(noPhoto).user).toMatchObject({
+    photo: null,
+    photo_updated_at: null
+  });
+});
+
 test.each([
   [2, { key: 'wfh', label: 'WFH' }],
   [3, { key: 'wfa', label: 'WFA' }]
@@ -66,5 +99,12 @@ test('keeps unknown database labels without inventing canonical keys', () => {
   });
   expect(result.mode).toEqual({ key: null, label: 'Field Work' });
   expect(result.status).toEqual({ key: null, label: 'Reviewed' });
-  expect(result.user).toEqual({ id: null, full_name: null, nip_nim: null, role: null });
+  expect(result.user).toEqual({
+    id: null,
+    full_name: null,
+    nip_nim: null,
+    photo: null,
+    photo_updated_at: null,
+    role: null
+  });
 });

@@ -7,6 +7,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Attendance: { findAndCountAll, findByPk },
   User: {},
   Role: {},
+  Photo: {},
   Location: {},
   AttendanceStatus: {},
   AttendanceCategory: {}
@@ -33,7 +34,11 @@ describe('attendance management read service', () => {
       full_name: 'Andi Saputra',
       nip_nim: 'EMP-007',
       email: 'andi@example.com',
-      role: { role_name: 'User' }
+      role: { role_name: 'User' },
+      photo_file: {
+        photo_url: 'https://cdn.example.com/users/7/profile/photo.jpg',
+        photo_updated_at: new Date('2026-08-10T08:30:00.000Z')
+      }
     },
     attendance_category: { category_name: 'Work From Office' },
     status: { attendance_status_name: 'Tepat Waktu' },
@@ -62,7 +67,14 @@ describe('attendance management read service', () => {
     }));
     expect(result.data).toEqual([expect.objectContaining({
       id_attendance: 42,
-      user: { id: 7, full_name: 'Andi Saputra', nip_nim: 'EMP-007', role: 'User' },
+      user: {
+        id: 7,
+        full_name: 'Andi Saputra',
+        nip_nim: 'EMP-007',
+        photo: 'https://cdn.example.com/users/7/profile/photo.jpg',
+        photo_updated_at: new Date('2026-08-10T08:30:00.000Z'),
+        role: 'User'
+      },
       time_in: '08:02',
       time_out: '17:05',
       mode: { key: 'wfo', label: 'WFO' },

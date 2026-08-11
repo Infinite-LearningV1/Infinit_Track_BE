@@ -171,6 +171,8 @@ describe('POST /users create contract (INF-251)', () => {
     const payload = res.json.mock.calls[0][0];
     expect(payload.data.created_at).toEqual(new Date('2026-07-05T10:00:00.000Z'));
     expect(payload.data.updated_at).toEqual(new Date('2026-07-05T10:00:00.000Z'));
+    expect(payload.data.photo).toBe('https://cdn.example.com/cindy.jpg');
+    expect(payload.data.photo_updated_at).toEqual(new Date('2026-07-05T00:00:00.000Z'));
   });
 
   test('failed WFH location write rolls back the whole user transaction', async () => {
@@ -230,5 +232,7 @@ describe('PATCH /users/:id update contract (INF-251)', () => {
     const payload = res.json.mock.calls[0][0];
     expect(payload.data.created_at).toEqual(new Date('2026-07-05T10:00:00.000Z'));
     expect(payload.data.updated_at).toEqual(new Date('2026-07-05T10:00:00.000Z'));
+    expect(payload.data.photo).toBe('https://cdn.example.com/cindy.jpg');
+    expect(payload.data.photo_updated_at).toEqual(new Date('2026-07-05T00:00:00.000Z'));
   });
 });
