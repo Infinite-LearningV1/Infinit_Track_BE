@@ -1,3 +1,5 @@
+import { mapUserPhotoProjection } from '../../utils/userPhotoProjection.js';
+
 const numberOrNull = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
@@ -41,6 +43,7 @@ const mapLocation = (row) => row.location
 
 export const mapBookingManagementRow = (row) => {
   const location = mapLocation(row);
+  const { photo, photo_updated_at: photoUpdatedAt } = mapUserPhotoProjection(row.user);
   const radiusSnapshot = row.radius_snapshot != null
     ? numberOrNull(row.radius_snapshot)
     : location?.radius ?? null;
@@ -52,6 +55,8 @@ export const mapBookingManagementRow = (row) => {
     user_role_name: row.user?.role?.role_name ?? null,
     user_email: row.user?.email ?? null,
     user_nip_nim: row.user?.nip_nim ?? null,
+    user_photo: photo,
+    user_photo_updated_at: photoUpdatedAt,
     user_position_name: row.user?.position?.position_name ?? null,
     schedule_date: row.schedule_date,
     status: row.booking_status?.name_status ?? null,

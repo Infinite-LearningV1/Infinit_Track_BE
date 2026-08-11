@@ -8,7 +8,11 @@ const baseRow = {
     nip_nim: 'EMP-007',
     email: 'andi@example.com',
     position: { position_name: 'Backend Engineer' },
-    role: { role_name: 'Employee' }
+    role: { role_name: 'Employee' },
+    photo_file: {
+      photo_url: 'https://cdn.example.com/users/7/profile/photo.jpg',
+      photo_updated_at: new Date('2026-08-10T08:30:00.000Z')
+    }
   },
   schedule_date: '2026-08-12',
   booking_status: { name_status: 'approved' },
@@ -46,6 +50,8 @@ test('projects a manual processor identity and canonical nested WFA reason data'
     user_id: 7,
     user_full_name: 'Andi Saputra',
     user_nip_nim: 'EMP-007',
+    user_photo: 'https://cdn.example.com/users/7/profile/photo.jpg',
+    user_photo_updated_at: new Date('2026-08-10T08:30:00.000Z'),
     user_position_name: 'Backend Engineer',
     status: 'approved',
     radius_snapshot: 150,
@@ -125,4 +131,18 @@ test('preserves numeric zero as a real suitability score', () => {
 
   expect(result.suitability_score).toBe(0);
   expect(result.suitability_label).toBe('Tidak Direkomendasikan');
+});
+
+test('keeps applicant photo fields present and null without linked photo evidence', () => {
+  const result = mapBookingManagementRow({
+    ...baseRow,
+    user: { ...baseRow.user, photo_file: null },
+    processor: null,
+    request_reason: null,
+    rejection_reason_detail: null,
+    radius_snapshot: 100
+  });
+
+  expect(result.user_photo).toBeNull();
+  expect(result.user_photo_updated_at).toBeNull();
 });
