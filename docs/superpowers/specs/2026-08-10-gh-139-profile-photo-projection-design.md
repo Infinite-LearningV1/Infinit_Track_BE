@@ -1,6 +1,7 @@
 # GitHub #139 Management Profile Photo Projection Design
 
 **Date:** 2026-08-10
+**Revised:** 2026-08-11 — Management User canonical read-projection consolidation
 **Issue:** `Infinite-LearningV1/Infinit_Track_BE#139`
 **Coordination:** `Infinite-LearningV1/Infinit_Track_BE#138`
 **Downstream:** `Infinite-LearningV1/Infinite_Track_Fe#64`
@@ -11,11 +12,11 @@
 
 ## Purpose
 
-Expose the existing User profile photo as lightweight identity metadata in Management Attendance and Management Booking responses.
+Expose the existing User profile photo as lightweight identity metadata in Management Attendance and Management Booking responses, and consolidate Management User read projections onto the same canonical photo helper without changing its API contract.
 
-The Backend remains the source of truth for photo identity. Attendance and Booking do not own photo state; they only project the photo metadata needed by their management read surfaces.
+The Backend remains the source of truth for photo identity. Management User, Attendance, and Booking share one explicit read-projection primitive, while each feature remains the owner of its surrounding response shape and business semantics.
 
-This is an additive read-contract change. It does not add a photo endpoint, database migration, upload behavior, storage policy, or client-side lookup requirement.
+For Attendance and Booking this remains an additive read-contract change. For Management User it is a behavior-preserving internal consolidation only. The design does not add a photo endpoint, database migration, upload behavior, storage policy, or client-side lookup requirement.
 
 ## Verified baseline
 
@@ -38,7 +39,7 @@ The photo source already exists and needs no schema work:
 - `User.belongsTo(Photo, { as: 'photo_file', foreignKey: 'id_photos' })` is already registered.
 - a user may have no linked `photo_file`; therefore every client-facing photo projection is nullable even though `photo_url` is non-null on an existing Photo row.
 
-Management User is the reference behavior. Its list/detail queries explicitly LEFT JOIN `photo_file` with only `photo_url` and `photo_updated_at`, then expose `photo` and `photo_updated_at`.
+Management User already exposes the correct public contract: list/detail and create/update response refetches LEFT JOIN `photo_file` with only `photo_url` and `photo_updated_at`, then expose `photo` and `photo_updated_at`. However, those includes and mappings are duplicated locally in `user.controller.js` instead of using the canonical helper introduced by this issue.
 
 Management Attendance currently joins `User -> Role` but not `Photo`. Its list/detail mapper therefore cannot expose profile-photo metadata.
 
@@ -61,7 +62,8 @@ This issue covers:
 - explicit optional Photo include in the Management Booking applicant query;
 - additive Attendance and Booking response fields;
 - OpenAPI updates for the new nullable fields;
-- focused query, mapper, read-service regression, and OpenAPI contract tests.
+- focused query, mapper, read-service regression, and OpenAPI contract tests;
+- behavior-preserving Management User adoption of the same explicit photo include/mapping helper for list, detail, and create/update response refetches.
 
 Out of scope:
 
@@ -72,7 +74,8 @@ Out of scope:
 - adding photo data to the Booking processor identity;
 - changing Attendance search/filter/sort/pagination/detail ownership;
 - changing Booking search/filter/order/pagination/approval/rejection semantics;
-- refactoring the legacy Management User controller merely to adopt the new helper;
+- broader Management User modularization beyond the bounded photo read-projection consolidation;
+- Auth controller photo projection consolidation;
 - Web FE implementation from `Infinite_Track_Fe#64`.
 
 ## Approaches considered
@@ -91,7 +94,7 @@ Benefits:
 - avoids a global ORM scope;
 - keeps Attendance and Booking mapping semantics aligned;
 - stays small enough for this bounded contract change;
-- can be adopted by future identity projections without forcing a refactor of existing consumers.
+- can be adopted by existing identity projections where the contract already matches without forcing a broader controller/module refactor.
 
 ### C. Dedicated photo endpoint or global User photo scope
 
@@ -102,8 +105,8 @@ Rejected. A dedicated endpoint encourages N+1 HTTP calls for paginated tables. A
 The selected helper has two responsibilities only:
 
 ```js
-buildUserPhotoInclude(PhotoModel)
-mapUserPhotoProjection(user)
+buildUserPhotoInclude(PhotoModel);
+mapUserPhotoProjection(user);
 ```
 
 `buildUserPhotoInclude` returns an optional `photo_file` include selecting exactly `photo_url` and `photo_updated_at`. It receives the model as a dependency rather than importing the model registry itself.
@@ -128,7 +131,33 @@ export const mapUserPhotoProjection = (user) => ({
 
 The helper does not fetch, upload, transform, validate, sign, or cache image URLs. It only describes the existing association projection and null-safe output.
 
-Management User remains unchanged in this issue. Its current explicit implementation is regression/reference evidence, not a mandatory migration target.
+Management User adopts this helper only at its existing read-projection boundaries. `user.controller.js` keeps ownership of User list/detail/create/update behavior; only the duplicated optional Photo include and `{ photo, photo_updated_at }` mapping are consolidated. Photo upload/create/update persistence remains explicit write-side logic and does not use this read-projection helper.
+
+## Management User consolidation contract
+
+Management User already publishes the canonical public fields required by Web FE: `photo` and `photo_updated_at` on list/detail projections and on the refetched payload returned after create/update.
+
+This issue must not change those payloads. It only replaces duplicated read-side implementation with the same explicit helper used by Attendance and Booking:
+
+```js
+buildUserPhotoInclude(Photo);
+mapUserPhotoProjection(user);
+```
+
+The bounded read paths are:
+
+- `GET /users` list query;
+- `GET /users/:id` detail query;
+- the full-user refetch used to build the create response;
+- the full-user refetch used to build the update response.
+
+`toUserListProjection` and `toUserDetailProjection` keep ownership of their existing User-specific fields and spread only the shared photo projection. The helper must not gain knowledge of phone, location, role, program, position, timestamps, pagination, or User integrity rules.
+
+The `Photo` include remains `required: false`. A missing photo therefore yields `{ photo: null, photo_updated_at: null }` without removing a User row or changing User list pagination/count behavior.
+
+The following write-side paths remain explicit and unchanged by this consolidation: `POST /users/:id/photo`, Photo row create/update, Spaces upload/delete, legacy Cloudinary cleanup, and `User.id_photos` synchronization.
+
+Existing User error semantics also remain unchanged: a missing user returns `404 E_NOT_FOUND`, while an active user missing its required WFH location returns `409 E_USER_LOCATION_INTEGRITY`. Missing photo evidence is never either error.
 
 ## Management Attendance query contract
 
@@ -208,28 +237,28 @@ The issue does not convert Booking to a nested User object. Existing fields such
 ## Data flow
 
 ```text
-GET /api/attendance or GET /api/bookings
+GET /api/users, GET /api/attendance, or GET /api/bookings
         ↓
-existing validation/controller/read service
+existing validation/controller/read service or User controller read/refetch path
         ↓
-feature query builder explicitly includes applicant/employee User
+read boundary explicitly opts into the existing User.photo_file association
         ↓
 optional User.photo_file LEFT JOIN
         ↓
 Sequelize row
         ↓
-feature mapper uses shared null-safe photo projection
+owning projection uses shared null-safe photo mapping
         ↓
-existing response envelope + additive photo fields
+existing User response shape or additive Attendance/Booking photo fields
         ↓
-Web FE #64 renders photo or initials
+Web FE #64 renders photo or initials across Management User/Attendance/Booking
 ```
 
 There is still one list/detail database query per existing use case. No additional HTTP request is introduced and no per-row database query is executed by application code.
 
 ## Truthfulness and error semantics
 
-A missing `photo_file` is normal nullable identity evidence, not an API error. It must not cause a 404, drop the parent row, or generate a warning/error response.
+A missing `photo_file` is normal nullable identity evidence, not an API error. It must not cause a 404, 409, drop the parent row, or generate a warning/error response. Management User keeps its existing unrelated `404 E_NOT_FOUND` and `409 E_USER_LOCATION_INTEGRITY` semantics.
 
 A persisted `photo_url` is returned as stored. This issue does not probe the remote object or replace an unreachable URL; broken-image recovery belongs to Web FE presentation.
 
@@ -279,7 +308,9 @@ Focused coverage must prove:
 8. Booking mapper exposes `user_photo` and `user_photo_updated_at` for present and absent photos;
 9. Booking fixed ordering, search, filters, and canonical/deprecated pagination fields remain unchanged;
 10. OpenAPI publishes the exact nullable fields on Attendance list/detail and Booking management items;
-11. Management User photo projection remains green as reference regression coverage.
+11. Management User list/detail/create/update response projections preserve the exact existing `photo` and `photo_updated_at` contract while adopting the same helper;
+12. Management User `photo_file` joins remain optional and do not change pagination, `404 E_NOT_FOUND`, or `409 E_USER_LOCATION_INTEGRITY` behavior;
+13. Management User photo upload/storage mutation tests remain green without adopting the read helper.
 
 Likely focused tests:
 
@@ -294,6 +325,9 @@ tests/bookingManagementMapper.test.js
 tests/bookingManagementReadService.test.js
 tests/bookingManagementOpenApiContract.test.js
 tests/userListProjectionContract.test.js
+tests/userDetailProjectionContract.test.js
+tests/userCreateUpdateProjectionContract.test.js
+tests/uploadUserPhotoController.test.js
 ```
 
 Final implementation gates:
@@ -304,37 +338,40 @@ npm test -- --runInBand
 git diff --check refs/remotes/origin/develop...HEAD
 ```
 
-Runtime evidence should verify authenticated Management/Admin responses for an employee with a photo and an employee without one on both Attendance and Booking. If compatible authenticated runtime evidence is unavailable, the PR must say `Needs Verification` rather than inventing it.
+Runtime evidence should verify authenticated Management/Admin responses for a user with a photo and a user without one on Management User, Attendance, and Booking read surfaces. If compatible authenticated runtime evidence is unavailable, the PR must say `Needs Verification` rather than inventing it.
 
 ## Risks and mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Optional photo join accidentally removes rows | Nested Photo include is always `required: false`; query tests pin this |
-| Attendance pagination/search changes through join behavior | Preserve the existing parent User `required` rule, `distinct`, filters, order, limit, and offset |
-| Booking processor unnecessarily loads applicant photo semantics | Add Photo only to the applicant include; processor remains unchanged |
-| Null photo becomes a fabricated default | Shared mapper returns explicit `null`; no fallback URL exists in Backend |
-| Timestamp semantics drift | Return only persisted `photo_updated_at`; do not synthesize timestamps |
-| Contract fields differ between Attendance list/detail | Both use the same shared photo projection and exact field names |
-| Broad User controller refactor creates unrelated risk | Leave Management User implementation unchanged in #139 |
-| New helper becomes implicit global behavior | Queries must call `buildUserPhotoInclude(Photo)` explicitly |
-| OpenAPI drifts from runtime | Focused OpenAPI tests require fields and nullable semantics |
+| Risk                                                            | Mitigation                                                                                                                               |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Optional photo join accidentally removes rows                   | Nested Photo include is always `required: false`; query tests pin this                                                                   |
+| Attendance pagination/search changes through join behavior      | Preserve the existing parent User `required` rule, `distinct`, filters, order, limit, and offset                                         |
+| Booking processor unnecessarily loads applicant photo semantics | Add Photo only to the applicant include; processor remains unchanged                                                                     |
+| Null photo becomes a fabricated default                         | Shared mapper returns explicit `null`; no fallback URL exists in Backend                                                                 |
+| Timestamp semantics drift                                       | Return only persisted `photo_updated_at`; do not synthesize timestamps                                                                   |
+| Contract fields differ between Attendance list/detail           | Both use the same shared photo projection and exact field names                                                                          |
+| User consolidation expands into a broad controller refactor     | Change only the duplicated photo include/mapping at existing read/refetch boundaries; preserve controller ownership and unrelated fields |
+| New helper becomes implicit global behavior                     | Every read boundary must call `buildUserPhotoInclude(Photo)` explicitly; no model default scope or hidden auto-include                   |
+| Read helper leaks into write-side photo mutation                | Keep upload/create/update persistence explicit and verify existing mutation tests remain green                                           |
+| OpenAPI drifts from runtime                                     | Focused OpenAPI tests require fields and nullable semantics                                                                              |
 
 ## Definition of done
 
-GitHub #139 is complete when the additive photo projection is implemented and verified without changing existing Attendance/Booking business semantics.
+GitHub #139 is complete when the additive Attendance/Booking photo projection and behavior-preserving Management User consolidation are implemented and verified without changing existing business semantics.
 
 Specifically:
 
 - Attendance list returns `user.photo` and `user.photo_updated_at` on every row, nullable when evidence is absent;
 - Attendance detail returns the same two fields in its user identity object;
 - Booking management rows return `user_photo` and `user_photo_updated_at`, nullable when absent;
+- Management User list/detail/create/update responses keep their existing `photo` and `photo_updated_at` contract while using the same canonical read helper internally;
 - persisted photo URL/timestamp values are preserved without rewriting or fabrication;
-- both feature query builders opt into the same optional lightweight Photo projection;
-- missing photos do not remove Attendance or Booking rows;
+- Management User, Attendance, and Booking read boundaries opt into the same optional lightweight Photo projection explicitly;
+- missing photos do not remove Management User, Attendance, or Booking rows;
 - no new API route, DB migration, global User scope, per-row query, or photo-storage change exists;
 - existing Attendance query/detail/pagination semantics remain unchanged;
 - existing Booking search/filter/order/decision/pagination semantics remain unchanged;
+- existing Management User search/filter/sort/pagination, 404/409 integrity semantics, and photo write/storage behavior remain unchanged;
 - OpenAPI matches runtime and focused contract tests cover present/null cases;
 - `npm run lint`, the full Jest suite, and `git diff --check` pass with fresh evidence;
 - downstream Web FE #64 can consume Backend-authored photo metadata without User-detail lookup workarounds.
@@ -344,16 +381,18 @@ Specifically:
 ```text
 Change:
 shared explicit user-photo projection helper
+Management User read/refetch photo include + projection mapping
 Management Attendance User query include + mapper output
 Management Booking applicant query include + mapper output
-OpenAPI + focused tests
+Attendance/Booking OpenAPI + focused tests
 
 Do not change:
 Photo/User schema or associations
 photo upload/storage/delete behavior
+Management User business logic outside bounded read projection
+Auth photo projection
 Attendance mutations/jobs/business rules
 Booking decisions/scoring/business rules
 search/filter/sort/pagination semantics
-Management User implementation
 Web FE code
 ```
