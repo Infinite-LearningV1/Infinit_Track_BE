@@ -7262,7 +7262,7 @@ components:
           format: date
         user:
           type: object
-          required: [id, full_name, nip_nim, role]
+          required: [id, full_name, nip_nim, role, photo, photo_updated_at]
           properties:
             id:
               type: integer
@@ -7275,6 +7275,14 @@ components:
               nullable: true
             role:
               type: string
+              nullable: true
+            photo:
+              type: string
+              format: uri
+              nullable: true
+            photo_updated_at:
+              type: string
+              format: date-time
               nullable: true
         time_in:
           type: string
@@ -7331,7 +7339,7 @@ components:
           nullable: true
         user:
           type: object
-          required: [id, full_name, nip_nim, email, role]
+          required: [id, full_name, nip_nim, email, role, photo, photo_updated_at]
           properties:
             id:
               type: integer
@@ -7348,6 +7356,14 @@ components:
               nullable: true
             role:
               type: string
+              nullable: true
+            photo:
+              type: string
+              format: uri
+              nullable: true
+            photo_updated_at:
+              type: string
+              format: date-time
               nullable: true
         location:
           type: object
@@ -7789,6 +7805,14 @@ components:
           type: string
           nullable: true
           example: EMP-007
+        user_photo:
+          type: string
+          format: uri
+          nullable: true
+        user_photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
         user_position_name:
           type: string
           nullable: true
