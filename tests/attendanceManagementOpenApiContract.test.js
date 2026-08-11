@@ -56,3 +56,22 @@ test('documents the exact attendance validator error envelope', () => {
     location: { type: 'string', enum: ['query', 'params'] }
   });
 });
+
+test('documents nullable profile photo evidence on attendance list and detail users', () => {
+  const listUser = api.components.schemas.AttendanceAuditListRow.properties.user;
+  const detailUser = api.components.schemas.AttendanceAuditDetail.properties.user;
+
+  for (const user of [listUser, detailUser]) {
+    expect(user.required).toEqual(expect.arrayContaining(['photo', 'photo_updated_at']));
+    expect(user.properties.photo).toMatchObject({
+      type: 'string',
+      format: 'uri',
+      nullable: true
+    });
+    expect(user.properties.photo_updated_at).toMatchObject({
+      type: 'string',
+      format: 'date-time',
+      nullable: true
+    });
+  }
+});
