@@ -102,6 +102,25 @@ describe('GET /users/:id detail projection contract (INF-261 + INF-251)', () => 
     });
   });
 
+  test('detail keeps nullable photo evidence and an optional photo_file join', async () => {
+    const findOne = jest.fn().mockResolvedValue(buildUser({ photo_file: null }));
+    const { getUserById } = await loadController({ findOne });
+
+    const res = buildRes();
+    await getUserById({ params: { id: '5' }, user: { id: 1 } }, res, jest.fn());
+
+    expect(res.json.mock.calls[0][0].data).toMatchObject({
+      photo: null,
+      photo_updated_at: null
+    });
+
+    const include = findOne.mock.calls[0][0].include;
+    expect(include.find((entry) => entry.as === 'photo_file')).toMatchObject({
+      attributes: ['photo_url', 'photo_updated_at'],
+      required: false
+    });
+  });
+
   test('existing user without WFH location returns explicit 409 integrity error, not 404', async () => {
     const findOne = jest.fn().mockResolvedValue(buildUser({ wfh_location: null }));
     const { getUserById } = await loadController({ findOne });
