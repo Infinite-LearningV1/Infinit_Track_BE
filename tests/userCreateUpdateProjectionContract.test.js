@@ -34,6 +34,15 @@ const fullUserRecord = (overrides = {}) => ({
   ...overrides
 });
 
+const expectPhotoRefetchInclude = (options) => {
+  const photoInclude = options.include.find((entry) => entry.as === 'photo_file');
+  expect(photoInclude).toMatchObject({
+    as: 'photo_file',
+    attributes: ['photo_url', 'photo_updated_at'],
+    required: false
+  });
+};
+
 const loadController = async (models) => {
   jest.unstable_mockModule('../src/models/index.js', () => ({
     Photo: {},
@@ -173,6 +182,7 @@ describe('POST /users create contract (INF-251)', () => {
     expect(payload.data.updated_at).toEqual(new Date('2026-07-05T10:00:00.000Z'));
     expect(payload.data.photo).toBe('https://cdn.example.com/cindy.jpg');
     expect(payload.data.photo_updated_at).toEqual(new Date('2026-07-05T00:00:00.000Z'));
+    expectPhotoRefetchInclude(models.User.findByPk.mock.calls[0][1]);
   });
 
   test('failed WFH location write rolls back the whole user transaction', async () => {
@@ -234,5 +244,6 @@ describe('PATCH /users/:id update contract (INF-251)', () => {
     expect(payload.data.updated_at).toEqual(new Date('2026-07-05T10:00:00.000Z'));
     expect(payload.data.photo).toBe('https://cdn.example.com/cindy.jpg');
     expect(payload.data.photo_updated_at).toEqual(new Date('2026-07-05T00:00:00.000Z'));
+    expectPhotoRefetchInclude(findByPk.mock.calls[1][1]);
   });
 });
