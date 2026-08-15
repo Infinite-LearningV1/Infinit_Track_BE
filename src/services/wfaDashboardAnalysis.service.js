@@ -1,9 +1,15 @@
+import { Op } from 'sequelize';
+
 import { WFA_MATRIX_VERSION } from '../analytics/config.fahp.js';
+import { Booking as BookingModel } from '../models/index.js';
 import { calculateDistance } from '../utils/geofence.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
 
 const PHYSICAL_CLUSTER_RADIUS_METERS = 25;
 const RANKING_LIMIT = 5;
+const WFA_APPROVED_STATUS = 1;
+const WFA_TIMEZONE = 'Asia/Jakarta';
+const CONSISTENCY_THRESHOLD = 0.1;
 
 const CRITERION_KEYS = [
   'location_type_score',
@@ -248,3 +254,102 @@ export const buildWfaDashboardRanking = async (
 
   return ranked.sort(compareRankedLocations).slice(0, RANKING_LIMIT);
 };
+
+const countEvidence = (approvedRows, clusters, rankedLocations) => {
+  const clusterRows = (clusters ?? []).flatMap((cluster) => cluster.rows ?? []);
+
+  return {
+    approved_booking_count: approvedRows.length,
+    analyzable_booking_count: clusterRows.filter((row) => row.snapshotValidation.valid).length,
+    excluded_missing_snapshot_count: clusterRows.filter(
+      (row) => row.snapshotValidation.reason === 'MISSING_SNAPSHOT'
+    ).length,
+    excluded_incompatible_snapshot_count: clusterRows.filter(
+      (row) => row.snapshotValidation.valid === false && row.snapshotValidation.reason !== 'MISSING_SNAPSHOT'
+    ).length,
+    unique_location_count: clusters.length,
+    ranked_location_count: rankedLocations.length
+  };
+};
+
+const resolveStatus = ({ approvedCount, rankedCount }) => {
+  if (approvedCount === 0) {
+    return 'empty';
+  }
+
+  if (rankedCount === 0) {
+    return 'needs_data';
+  }
+
+  return 'ready';
+};
+
+const buildCanonicalResponse = ({ from, to, weights, ranking, evidence }) => {
+  const isConsistent = weights.consistency_ratio <= CONSISTENCY_THRESHOLD;
+
+  return {
+    type: 'wfa',
+    type_label: 'WFA',
+    status: resolveStatus({
+      approvedCount: evidence.approved_booking_count,
+      rankedCount: evidence.ranked_location_count
+    }),
+    timezone: WFA_TIMEZONE,
+    requested_window: { from, to },
+    criteria_weights: [
+      { key: 'location_type', display_label: 'Tipe Lokasi', value: weights.location_type },
+      { key: 'distance_factor', display_label: 'Faktor Jarak', value: weights.distance_factor },
+      { key: 'facility_score', display_label: 'Skor Fasilitas', value: weights.facility_score }
+    ],
+    consistency: {
+      CR: weights.consistency_ratio,
+      threshold: CONSISTENCY_THRESHOLD,
+      is_consistent: isConsistent,
+      summary_label: isConsistent ? 'Konsistensi dapat diterima' : 'Konsistensi perlu ditinjau'
+    },
+    methodology: {
+      version: weights.version,
+      weighting_method: weights.weighting_method
+    },
+    ranking_preview: { top_n: RANKING_LIMIT, items: ranking.slice(0, RANKING_LIMIT) },
+    evidence
+  };
+};
+
+export const createWfaDashboardAnalysisService = ({
+  Booking = BookingModel,
+  fuzzyEngine: fuzzyEngineDependency = fuzzyEngine,
+  distanceCalculator = calculateDistance
+} = {}) => ({
+  async buildAnalysis({ from, to }) {
+    const weights = fuzzyEngineDependency.getWfaAhpWeights();
+    const approvedRows = await Booking.findAll({
+      where: {
+        status: WFA_APPROVED_STATUS,
+        schedule_date: { [Op.between]: [from, to] }
+      },
+      include: [
+        {
+          association: 'location',
+          required: true
+        }
+      ]
+    });
+    const clusters = clusterWfaDashboardRows(approvedRows, {
+      distanceCalculator,
+      methodologyVersion: weights.version
+    });
+    const ranking = await buildWfaDashboardRanking(clusters, {
+      weights,
+      scoreCalculator: fuzzyEngineDependency.calculateWfaScore
+    });
+    const evidence = countEvidence(approvedRows, clusters, ranking);
+
+    return buildCanonicalResponse({ from, to, weights, ranking, evidence });
+  }
+});
+
+const wfaDashboardAnalysisService = createWfaDashboardAnalysisService();
+
+export const buildWfaDashboardAnalysis = ({ from, to }) =>
+  wfaDashboardAnalysisService.buildAnalysis({ from, to });

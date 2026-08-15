@@ -1,7 +1,9 @@
 import { jest } from '@jest/globals';
+import { Op } from 'sequelize';
 
 import {
   buildWfaDashboardRanking,
+  createWfaDashboardAnalysisService,
   clusterWfaDashboardRows,
   normalizeWfaDashboardDescription,
   validateWfaScoringSnapshot
@@ -282,5 +284,189 @@ describe('WFA dashboard ranking aggregation', () => {
       'Echo'
     ]);
     expect(ranking).toHaveLength(5);
+  });
+});
+
+describe('WFA dashboard analysis service facade', () => {
+  const weights = {
+    location_type: 0.41,
+    distance_factor: 0.34,
+    facility_score: 0.25,
+    consistency_ratio: 0.07,
+    weighting_method: 'mocked-engine-method',
+    version: METHODOLOGY_VERSION
+  };
+
+  const createService = ({
+    rows = [],
+    scoreResult = { score: 91.25, label: 'Sangat Tinggi' }
+  } = {}) => {
+    const bookingModel = {
+      findAll: jest.fn().mockResolvedValue(rows)
+    };
+    const engine = {
+      getWfaAhpWeights: jest.fn(() => weights),
+      calculateWfaScore: jest.fn().mockResolvedValue(scoreResult)
+    };
+    const service = createWfaDashboardAnalysisService({
+      Booking: bookingModel,
+      fuzzyEngine: engine,
+      distanceCalculator: distanceByLatitude
+    });
+
+    return { bookingModel, engine, service };
+  };
+
+  test('queries only Approved WFA bookings in the inclusive schedule-date range with required location', async () => {
+    const { bookingModel, service } = createService();
+
+    await service.buildAnalysis({ from: '2026-08-01', to: '2026-08-15' });
+
+    expect(bookingModel.findAll).toHaveBeenCalledWith({
+      where: {
+        status: 1,
+        schedule_date: { [Op.between]: ['2026-08-01', '2026-08-15'] }
+      },
+      include: [
+        {
+          association: 'location',
+          required: true
+        }
+      ]
+    });
+  });
+
+  test('returns empty state with zeroed evidence and no fabricated ranking when no Approved bookings exist', async () => {
+    const { service } = createService({ rows: [] });
+
+    const result = await service.buildAnalysis({ from: '2026-08-01', to: '2026-08-15' });
+
+    expect(result.status).toBe('empty');
+    expect(result.ranking_preview).toEqual({ top_n: 5, items: [] });
+    expect(result.evidence).toEqual({
+      approved_booking_count: 0,
+      analyzable_booking_count: 0,
+      excluded_missing_snapshot_count: 0,
+      excluded_incompatible_snapshot_count: 0,
+      unique_location_count: 0,
+      ranked_location_count: 0
+    });
+  });
+
+  test('returns needs_data when Approved bookings have no compatible snapshots', async () => {
+    const rows = [
+      row({ bookingId: 'legacy', description: 'Legacy Cafe', scoringSnapshot: null }),
+      row({
+        bookingId: 'old-method',
+        description: 'Old Method Cafe',
+        latitude: 100,
+        scoringSnapshot: snapshot({ version: 'wfa_fahp_v0' })
+      })
+    ];
+    const { engine, service } = createService({ rows });
+
+    const result = await service.buildAnalysis({ from: '2026-08-01', to: '2026-08-15' });
+
+    expect(engine.calculateWfaScore).not.toHaveBeenCalled();
+    expect(result.status).toBe('needs_data');
+    expect(result.ranking_preview.items).toEqual([]);
+    expect(result.evidence).toEqual({
+      approved_booking_count: 2,
+      analyzable_booking_count: 0,
+      excluded_missing_snapshot_count: 1,
+      excluded_incompatible_snapshot_count: 1,
+      unique_location_count: 2,
+      ranked_location_count: 0
+    });
+  });
+
+  test('returns ready state, exact evidence counters, and keeps partial valid evidence analyzable', async () => {
+    const rows = [
+      row({
+        bookingId: 'valid-a',
+        description: 'Cafe Merdeka',
+        latitude: 0,
+        scoringSnapshot: snapshot({ locationType: 80, distance: 60, facility: 90 })
+      }),
+      row({
+        bookingId: 'missing-same-cluster',
+        description: 'Cafe Merdeka',
+        latitude: 1,
+        scoringSnapshot: null
+      }),
+      row({
+        bookingId: 'valid-b',
+        description: 'Library',
+        latitude: 100,
+        scoringSnapshot: snapshot({ locationType: 70, distance: 65, facility: 75 })
+      }),
+      row({
+        bookingId: 'old-method',
+        description: 'Old Method Cafe',
+        latitude: 200,
+        scoringSnapshot: snapshot({ version: 'wfa_fahp_v0' })
+      })
+    ];
+    const { service } = createService({ rows });
+
+    const result = await service.buildAnalysis({ from: '2026-08-01', to: '2026-08-15' });
+
+    expect(result.status).toBe('ready');
+    expect(result.evidence).toEqual({
+      approved_booking_count: 4,
+      analyzable_booking_count: 2,
+      excluded_missing_snapshot_count: 1,
+      excluded_incompatible_snapshot_count: 1,
+      unique_location_count: 3,
+      ranked_location_count: 2
+    });
+    expect(result.ranking_preview.items).toHaveLength(2);
+    expect(result.ranking_preview.items[0]).toEqual(
+      expect.objectContaining({
+        location_label: expect.any(String),
+        approved_booking_count: expect.any(Number),
+        analyzable_booking_count: expect.any(Number)
+      })
+    );
+  });
+
+  test('returns criteria weights, consistency, and methodology exclusively from the engine weights', async () => {
+    const rows = [
+      row({
+        bookingId: 'snapshot-with-different-method-metadata',
+        scoringSnapshot: {
+          ...snapshot(),
+          methodology: {
+            weights: {
+              location_type: 0.99,
+              distance_factor: 0,
+              facility_score: 0.01
+            },
+            consistency_ratio: 0.99,
+            weighting_method: 'snapshot-method'
+          }
+        }
+      })
+    ];
+    const { engine, service } = createService({ rows });
+
+    const result = await service.buildAnalysis({ from: '2026-08-01', to: '2026-08-15' });
+
+    expect(engine.getWfaAhpWeights).toHaveBeenCalledTimes(1);
+    expect(result.criteria_weights).toEqual([
+      { key: 'location_type', display_label: 'Tipe Lokasi', value: 0.41 },
+      { key: 'distance_factor', display_label: 'Faktor Jarak', value: 0.34 },
+      { key: 'facility_score', display_label: 'Skor Fasilitas', value: 0.25 }
+    ]);
+    expect(result.consistency).toEqual({
+      CR: 0.07,
+      threshold: 0.1,
+      is_consistent: true,
+      summary_label: 'Konsistensi dapat diterima'
+    });
+    expect(result.methodology).toEqual({
+      version: METHODOLOGY_VERSION,
+      weighting_method: 'mocked-engine-method'
+    });
   });
 });
