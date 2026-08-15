@@ -68,10 +68,11 @@ describe('WFA dashboard snapshot validation', () => {
   test.each([
     ['missing snapshot', null, 'MISSING_SNAPSHOT'],
     ['incompatible methodology', snapshot({ version: 'wfa_fahp_v0' }), 'INCOMPATIBLE_METHODOLOGY'],
+    ['unsupported snapshot schema', { ...snapshot(), schema_version: 2 }, 'UNSUPPORTED_SNAPSHOT_SCHEMA'],
     ['non-finite criterion', snapshot({ locationType: Number.NaN }), 'INVALID_CRITERIA'],
     ['criterion above range', snapshot({ distance: 101 }), 'INVALID_CRITERIA'],
     ['criterion below range', snapshot({ facility: -1 }), 'INVALID_CRITERIA'],
-    ['malformed criteria object', { methodology_version: METHODOLOGY_VERSION, criteria: null }, 'INVALID_CRITERIA']
+    ['malformed criteria object', { schema_version: 1, methodology_version: METHODOLOGY_VERSION, criteria: null }, 'INVALID_CRITERIA']
   ])('rejects %s with explicit reason code', (_caseName, value, reason) => {
     expect(validateWfaScoringSnapshot(value, METHODOLOGY_VERSION)).toEqual({
       valid: false,
@@ -273,7 +274,7 @@ describe('WFA dashboard ranking aggregation', () => {
     expect(reversedRanking[0].location_key).toBe(forwardRanking[0].location_key);
   });
 
-  test('sorts deterministically and returns only the top five ranked locations', async () => {
+  test('sorts deterministically, assigns one-based ranks, and keeps the full ranked set before preview projection', async () => {
     const weights = {
       location_type: 0.5,
       distance_factor: 0.3,
@@ -316,9 +317,11 @@ describe('WFA dashboard ranking aggregation', () => {
       'Charlie',
       'Alpha',
       'Bravo',
-      'Echo'
+      'Echo',
+      'Foxtrot'
     ]);
-    expect(ranking).toHaveLength(5);
+    expect(ranking.map((item) => item.rank)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(ranking).toHaveLength(6);
   });
 });
 
@@ -464,6 +467,27 @@ describe('WFA dashboard analysis service facade', () => {
         analyzable_booking_count: expect.any(Number)
       })
     );
+  });
+
+  test('counts every ranked location while exposing only the top five in ranking_preview', async () => {
+    const rows = Array.from({ length: 6 }, (_, index) =>
+      row({
+        bookingId: `ranked-${index + 1}`,
+        locationId: index + 1,
+        description: `Location ${String.fromCharCode(65 + index)}`,
+        latitude: index * 100,
+        scoringSnapshot: snapshot({ locationType: 80 - index })
+      })
+    );
+    const { service } = createService({ rows });
+
+    const result = await service.buildAnalysis({ from: '2026-08-01', to: '2026-08-15' });
+
+    expect(result.status).toBe('ready');
+    expect(result.evidence.unique_location_count).toBe(6);
+    expect(result.evidence.ranked_location_count).toBe(6);
+    expect(result.ranking_preview.items).toHaveLength(5);
+    expect(result.ranking_preview.items.map((item) => item.rank)).toEqual([1, 2, 3, 4, 5]);
   });
 
   test('returns criteria weights, consistency, and methodology exclusively from the engine weights', async () => {

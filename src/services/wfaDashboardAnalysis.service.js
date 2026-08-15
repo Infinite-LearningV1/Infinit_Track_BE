@@ -10,6 +10,7 @@ const RANKING_LIMIT = 5;
 const WFA_APPROVED_STATUS = 1;
 const WFA_TIMEZONE = 'Asia/Jakarta';
 const CONSISTENCY_THRESHOLD = 0.1;
+const SUPPORTED_SNAPSHOT_SCHEMA_VERSION = 1;
 
 const CRITERION_KEYS = [
   'location_type_score',
@@ -61,6 +62,10 @@ export const validateWfaScoringSnapshot = (snapshot, methodologyVersion) => {
 
   if (snapshot.methodology_version !== methodologyVersion) {
     return { valid: false, reason: 'INCOMPATIBLE_METHODOLOGY' };
+  }
+
+  if (snapshot.schema_version !== SUPPORTED_SNAPSHOT_SCHEMA_VERSION) {
+    return { valid: false, reason: 'UNSUPPORTED_SNAPSHOT_SCHEMA' };
   }
 
   const criteria = snapshot.criteria;
@@ -254,7 +259,12 @@ export const buildWfaDashboardRanking = async (
     });
   }
 
-  return ranked.sort(compareRankedLocations).slice(0, RANKING_LIMIT);
+  return ranked
+    .sort(compareRankedLocations)
+    .map((item, index) => ({
+      ...item,
+      rank: index + 1
+    }));
 };
 
 const countEvidence = (approvedRows, clusters, rankedLocations) => {
