@@ -674,12 +674,10 @@ const buildDashboardRankingPreview = (ranking) => ({
   items: Array.isArray(ranking) ? ranking.slice(0, 5).map(buildDashboardRecapRankingItem) : []
 });
 
-export const buildFuzzyAhpDashboardRecapPayload = async ({ type }) => {
+export const buildFuzzyAhpDashboardRecapPayload = async ({ type, from, to }) => {
   if (type === 'wfa') {
-    const error = new Error('Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.');
-    error.code = 'WFA_ANALYSIS_MOVED';
-    error.status = 410;
-    throw error;
+    const { buildWfaDashboardAnalysis } = await import('./wfaDashboardAnalysis.service.js');
+    return buildWfaDashboardAnalysis({ from, to });
   }
 
   let { startAt, endAt } = getAnalysisWindow('monthly');
