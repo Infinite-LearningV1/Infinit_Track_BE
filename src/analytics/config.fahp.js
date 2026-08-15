@@ -24,6 +24,7 @@ export const TFN = {
 };
 
 export const FACILITY_MATRIX_VERSION = 'facility_equal_v1';
+export const WFA_MATRIX_VERSION = 'wfa_fahp_v1';
 
 export const FACILITY_CRITERIA = Object.freeze([
   'internet_access',

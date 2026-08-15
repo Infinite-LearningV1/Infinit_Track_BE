@@ -94,6 +94,10 @@ const Booking = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true
     },
+    wfa_scoring_snapshot: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
     rejection_reason: {
       type: DataTypes.INTEGER,
       allowNull: true
