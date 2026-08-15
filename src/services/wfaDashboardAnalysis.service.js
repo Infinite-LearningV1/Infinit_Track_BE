@@ -151,6 +151,7 @@ const createCluster = (row) => ({
   anchor: row,
   normalizedDescription: row.normalizedDescription,
   description: row.description,
+  location_key: `wfa-cluster:location:${row.locationId ?? 'unknown'}:booking:${row.bookingId ?? 'unknown'}`,
   location_label: row.description ?? `Location ${row.locationId ?? row.bookingId ?? 'Unknown'}`,
   latitude: row.latitude,
   longitude: row.longitude,
@@ -241,6 +242,7 @@ export const buildWfaDashboardRanking = async (
     );
 
     ranked.push({
+      location_key: cluster.location_key,
       location_label: cluster.location_label ?? cluster.description ?? 'Unknown WFA Location',
       score: result.score,
       label: result.label,

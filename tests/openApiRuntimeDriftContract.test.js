@@ -195,6 +195,7 @@ describe('WFA facility scoring contract versus runtime', () => {
     expect(dashboard).toContain('consistency:');
     expect(dashboard).toContain('methodology:');
     expect(dashboard).toContain('ranking_preview:');
+    expect(dashboard).toContain('location_key:');
     expect(dashboard).toContain('criteria_summary:');
     expect(dashboard).toContain('evidence:');
     expect(dashboard).not.toContain('name: period');

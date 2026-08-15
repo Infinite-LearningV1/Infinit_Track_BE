@@ -1327,6 +1327,9 @@ paths:
                               properties:
                                 rank:
                                   type: integer
+                                location_key:
+                                  type: string
+                                  description: Backend-authored deterministic physical-location cluster key.
                                 location_label:
                                   type: string
                                   nullable: true

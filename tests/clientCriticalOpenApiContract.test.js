@@ -1519,6 +1519,7 @@ describe('client-critical OpenAPI contract', () => {
     });
     expect(dataSchema.properties.ranking_preview.properties.items.items.properties).toMatchObject({
       rank: { type: 'integer' },
+      location_key: { type: 'string' },
       location_label: { type: 'string' },
       latitude: { type: 'number', format: 'float', nullable: true },
       longitude: { type: 'number', format: 'float', nullable: true },

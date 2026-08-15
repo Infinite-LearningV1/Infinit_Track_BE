@@ -224,6 +224,7 @@ describe('WFA dashboard ranking aggregation', () => {
     );
     expect(ranking).toEqual([
       expect.objectContaining({
+        location_key: 'wfa-cluster:location:10:booking:a',
         location_label: 'Cafe Merdeka',
         score: 86.43,
         label: 'Sangat Tinggi',
@@ -236,6 +237,40 @@ describe('WFA dashboard ranking aggregation', () => {
         }
       })
     ]);
+  });
+
+  test('uses the immutable cluster anchor to build a stable backend-authored location key', async () => {
+    const weights = {
+      location_type: 0.5,
+      distance_factor: 0.3,
+      facility_score: 0.2,
+      consistency_ratio: 0,
+      weighting_method: 'row_geometric_mean_fallback',
+      version: METHODOLOGY_VERSION
+    };
+    const scoreCalculator = jest.fn().mockResolvedValue({ score: 86.43, label: 'Sangat Tinggi' });
+    const rows = [
+      row({ bookingId: 'later-row', locationId: 99, description: 'Cafe Stable', latitude: 20 }),
+      row({ bookingId: 'anchor-row', locationId: 42, description: 'Cafe Stable', latitude: 0 })
+    ];
+    const reversedRows = [...rows].reverse();
+
+    const forwardRanking = await buildWfaDashboardRanking(
+      clusterWfaDashboardRows(rows, { distanceCalculator: distanceByLatitude }),
+      { weights, scoreCalculator }
+    );
+    const reversedRanking = await buildWfaDashboardRanking(
+      clusterWfaDashboardRows(reversedRows, { distanceCalculator: distanceByLatitude }),
+      { weights, scoreCalculator }
+    );
+
+    expect(forwardRanking[0]).toEqual(
+      expect.objectContaining({
+        location_key: 'wfa-cluster:location:42:booking:anchor-row',
+        location_label: 'Cafe Stable'
+      })
+    );
+    expect(reversedRanking[0].location_key).toBe(forwardRanking[0].location_key);
   });
 
   test('sorts deterministically and returns only the top five ranked locations', async () => {
@@ -423,6 +458,7 @@ describe('WFA dashboard analysis service facade', () => {
     expect(result.ranking_preview.items).toHaveLength(2);
     expect(result.ranking_preview.items[0]).toEqual(
       expect.objectContaining({
+        location_key: expect.stringMatching(/^wfa-cluster:location:/),
         location_label: expect.any(String),
         approved_booking_count: expect.any(Number),
         analyzable_booking_count: expect.any(Number)
