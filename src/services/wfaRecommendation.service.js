@@ -52,6 +52,9 @@ const compareStableId = (left, right) => {
 const compareDistanceAndId = (left, right) =>
   left.distanceMeters - right.distanceMeters || compareStableId(left, right);
 
+const isFiniteScoreDomain = (value) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+
 const emptyFacilities = () =>
   Object.fromEntries(FACILITY_KEYS.map((key) => [key, null]));
 
@@ -122,7 +125,7 @@ const publicCandidate = (candidate, {
   finalScore,
   finalLabel,
   rank = null
-}) => ({
+}, extra = {}) => ({
   place_id: candidate.placeId,
   name: candidate.name,
   address: candidate.address,
@@ -136,7 +139,8 @@ const publicCandidate = (candidate, {
   facilities,
   final_score: finalScore,
   final_label: finalLabel,
-  rank
+  rank,
+  ...extra
 });
 
 const recommendationSearchCriteria = ({
@@ -156,7 +160,12 @@ const recommendationSearchCriteria = ({
 
 const recommendationMethodology = (wfaWeights, facilityWeights) => ({
   approach: 'Fuzzy AHP facility-evidence scoring',
-  criteria_weights: { ...wfaWeights },
+  criteria_weights: {
+    location_type: wfaWeights.location_type,
+    distance_factor: wfaWeights.distance_factor,
+    facility_score: wfaWeights.facility_score,
+    consistency_ratio: wfaWeights.consistency_ratio
+  },
   facility_matrix: {
     version: facilityWeights.version,
     criteria: [...facilityWeights.criteria],
@@ -165,6 +174,44 @@ const recommendationMethodology = (wfaWeights, facilityWeights) => ({
     weighting_method: facilityWeights.weighting_method
   }
 });
+
+const buildScoringSnapshot = ({ candidate, evidence, wfaWeights, final }) => {
+  const criteria = {
+    location_type_score: candidate.locationTypeScore,
+    distance_factor_score: candidate.distanceScore,
+    facility_score: evidence.facilityScore
+  };
+
+  if (Object.values(criteria).some((value) => !isFiniteScoreDomain(value))) {
+    return null;
+  }
+
+  return {
+    schema_version: 1,
+    methodology_version: wfaWeights.version,
+    captured_at: new Date().toISOString(),
+    criteria,
+    methodology: {
+      weights: {
+        location_type: wfaWeights.location_type,
+        distance_factor: wfaWeights.distance_factor,
+        facility_score: wfaWeights.facility_score
+      },
+      consistency_ratio: wfaWeights.consistency_ratio,
+      weighting_method: wfaWeights.weighting_method
+    },
+    evidence: {
+      place_id: candidate.placeId,
+      location_type: candidate.locationType,
+      distance_meters: candidate.distanceMeters,
+      facility_confidence: evidence.facilityConfidence
+    },
+    result: {
+      score: final.score,
+      label: final.label
+    }
+  };
+};
 
 const compareFinalCandidates = (left, right) => {
   const statusDifference = STATUS_ORDER[left.status] - STATUS_ORDER[right.status];
@@ -241,7 +288,13 @@ export const createWfaRecommendationService = (dependencies = {}) => {
     });
   };
 
-  const enrichCandidate = async ({ candidate, scheduleDate, checkinWindow, wfaWeights }) => {
+  const enrichCandidate = async ({
+    candidate,
+    scheduleDate,
+    checkinWindow,
+    wfaWeights,
+    includeScoringSnapshot = false
+  }) => {
     let details;
     try {
       details = await resolved.geoapifyClient.fetchPlaceDetails(candidate.placeId);
@@ -253,7 +306,7 @@ export const createWfaRecommendationService = (dependencies = {}) => {
         facilities: emptyFacilities(),
         finalScore: null,
         finalLabel: null
-      });
+      }, includeScoringSnapshot ? { scoringSnapshot: null } : undefined);
     }
 
     const evidence = resolved.facility.scoreFacilityEvidence({
@@ -271,7 +324,7 @@ export const createWfaRecommendationService = (dependencies = {}) => {
         facilities,
         finalScore: null,
         finalLabel: null
-      });
+      }, includeScoringSnapshot ? { scoringSnapshot: null } : undefined);
     }
 
     const final = await resolved.fuzzyEngine.calculateWfaScore(
@@ -290,7 +343,16 @@ export const createWfaRecommendationService = (dependencies = {}) => {
       facilities,
       finalScore: final.score,
       finalLabel: final.label
-    });
+    }, includeScoringSnapshot
+      ? {
+          scoringSnapshot: buildScoringSnapshot({
+            candidate,
+            evidence,
+            wfaWeights,
+            final
+          })
+        }
+      : undefined);
   };
 
   const runPipeline = async ({
@@ -299,7 +361,8 @@ export const createWfaRecommendationService = (dependencies = {}) => {
     scheduleDate,
     radiusMeters,
     candidateLimit,
-    nearestOnly = false
+    nearestOnly = false,
+    includeScoringSnapshot = false
   }) => {
     const features = await resolved.geoapifyClient.searchPlaces({
       latitude,
@@ -335,7 +398,7 @@ export const createWfaRecommendationService = (dependencies = {}) => {
 
     const checkinWindow = await resolved.facility.readStrictWfaCheckinWindow();
     const enriched = await mapWithConcurrency(shortlist, DETAILS_CONCURRENCY, (candidate) =>
-      enrichCandidate({ candidate, scheduleDate, checkinWindow, wfaWeights })
+      enrichCandidate({ candidate, scheduleDate, checkinWindow, wfaWeights, includeScoringSnapshot })
     );
     let rank = 0;
     const ranked = enriched.sort(compareFinalCandidates).map((candidate) => ({
@@ -410,7 +473,8 @@ export const createWfaRecommendationService = (dependencies = {}) => {
         scheduleDate: eligibleDate,
         radiusMeters,
         candidateLimit: 1,
-        nearestOnly: true
+        nearestOnly: true,
+        includeScoringSnapshot: true
       });
     } catch (error) {
       if (error?.code === 'WFA_PROVIDER_UNAVAILABLE') {
@@ -428,15 +492,19 @@ export const createWfaRecommendationService = (dependencies = {}) => {
         status: 'insufficient_facility_data',
         suitabilityScore: null,
         suitabilityLabel: null,
+        scoringSnapshot: null,
         candidate
       };
     }
 
+    const { scoringSnapshot = null, ...publicCandidateResult } = candidate;
+
     return {
       status: 'ranked',
-      suitabilityScore: candidate.final_score,
-      suitabilityLabel: candidate.final_label,
-      candidate
+      suitabilityScore: publicCandidateResult.final_score,
+      suitabilityLabel: publicCandidateResult.final_label,
+      scoringSnapshot,
+      candidate: publicCandidateResult
     };
   };
 

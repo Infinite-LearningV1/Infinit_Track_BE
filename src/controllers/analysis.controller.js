@@ -68,10 +68,9 @@ export const getSmartAcFahp = async (_req, res, next) => {
 
 export const getFuzzyAhpDashboardRecap = async (req, res, next) => {
   try {
-    const { type } = req.query;
-    if (type === 'wfa') return sendWfaAnalysisMoved(res);
+    const { type, from, to } = req.query;
 
-    const data = await buildFuzzyAhpDashboardRecapPayload({ type });
+    const data = await buildFuzzyAhpDashboardRecapPayload({ type, from, to });
 
     return res.status(200).json({
       success: true,

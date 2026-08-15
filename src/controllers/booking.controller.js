@@ -196,7 +196,8 @@ export const createBooking = async (req, res, next) => {
     const {
       status: suitabilityStatus,
       suitabilityScore: suitability_score,
-      suitabilityLabel: suitability_label
+      suitabilityLabel: suitability_label,
+      scoringSnapshot
     } = scoreResult;
     logger.info(
       `Calculated canonical suitability for user ${userId}: ${suitabilityStatus}, ${suitability_score} (${suitability_label})`
@@ -291,6 +292,7 @@ export const createBooking = async (req, res, next) => {
         status: 3, // pending
         suitability_score,
         suitability_label,
+        wfa_scoring_snapshot: scoringSnapshot,
         request_reason_id: reason.id,
         request_other_reason: normalizedOtherReason,
         radius_snapshot: radiusMeters,

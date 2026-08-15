@@ -739,13 +739,32 @@ export const fuzzyAhpDashboardRecapValidation = [
       throw new Error('type is required');
     }
 
+    if (!['discipline', 'wfa', 'smart_ac'].includes(req.query.type)) {
+      throw new Error('type must be one of discipline, wfa, smart_ac');
+    }
+
+    if (req.query.type === 'wfa') {
+      const unsupportedQueryKey = queryKeys.find((key) => !['type', 'from', 'to'].includes(key));
+      if (unsupportedQueryKey) {
+        throw new Error('only type, from, and to query parameters are allowed for wfa dashboard');
+      }
+
+      const validationMessage = validateHistoricalDateWindowQuery({
+        period: 'custom',
+        from: req.query.from ?? null,
+        to: req.query.to ?? null
+      });
+
+      if (validationMessage) {
+        throw new Error(validationMessage);
+      }
+
+      return true;
+    }
+
     const unsupportedQueryKey = queryKeys.find((key) => key !== 'type');
     if (unsupportedQueryKey) {
       throw new Error('only type query parameter is allowed');
-    }
-
-    if (!['discipline', 'wfa', 'smart_ac'].includes(req.query.type)) {
-      throw new Error('type must be one of discipline, wfa, smart_ac');
     }
 
     return true;

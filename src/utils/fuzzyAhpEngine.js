@@ -7,6 +7,7 @@ import {
   FACILITY_MATRIX_VERSION,
   FACILITY_CRITERIA,
   FACILITY_PAIRWISE_TFN,
+  WFA_MATRIX_VERSION,
   WFA_PAIRWISE_TFN,
   DISC_PAIRWISE_TFN,
   SMART_AC_PAIRWISE_TFN
@@ -92,6 +93,7 @@ function weightedPrediction(candidates, weights, targetDate, timeIn, fallbackEnd
 function getWfaAhpWeights() {
   if (cachedWfaWeights && cachedWfaCR != null) {
     return {
+      version: WFA_MATRIX_VERSION,
       location_type: cachedWfaWeights[0],
       distance_factor: cachedWfaWeights[1],
       facility_score: cachedWfaWeights[2],
@@ -106,6 +108,7 @@ function getWfaAhpWeights() {
   cachedWfaCR = CR;
   cachedWfaWeightingMethod = method;
   return {
+    version: WFA_MATRIX_VERSION,
     location_type: weights[0],
     distance_factor: weights[1],
     facility_score: weights[2],

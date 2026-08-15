@@ -1417,20 +1417,18 @@ describe('client-critical OpenAPI contract', () => {
       .toEqual(expect.objectContaining({ internet_access: null }));
   });
 
-  test('documents exact 410 migration bodies for retired WFA analysis variants', () => {
-    for (const pathName of ['/api/analysis/fuzzy-ahp', '/api/analysis/fuzzy-ahp/dashboard']) {
-      const operation = openapi.paths[pathName].get;
-      const movedSchema = schemaAt(operation, '410');
+  test('documents exact 410 migration body for the retired generic WFA analysis variant', () => {
+    const operation = openapi.paths['/api/analysis/fuzzy-ahp'].get;
+    const movedSchema = schemaAt(operation, '410');
 
-      expect(movedSchema.properties).toMatchObject({
-        success: { type: 'boolean', example: false },
-        code: { type: 'string', example: 'WFA_ANALYSIS_MOVED' },
-        message: {
-          type: 'string',
-          example: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
-        }
-      });
-    }
+    expect(movedSchema.properties).toMatchObject({
+      success: { type: 'boolean', example: false },
+      code: { type: 'string', example: 'WFA_ANALYSIS_MOVED' },
+      message: {
+        type: 'string',
+        example: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+      }
+    });
   });
 
   test('documents Smart AC evidence sufficiency fields', () => {
@@ -1449,32 +1447,56 @@ describe('client-critical OpenAPI contract', () => {
     const responseSchema = schemaAt(operation);
     const dataSchema = responseSchema.properties.data;
     const typeParameter = operation.parameters.find((parameter) => parameter.name === 'type');
+    const fromParameter = operation.parameters.find((parameter) => parameter.name === 'from');
+    const toParameter = operation.parameters.find((parameter) => parameter.name === 'to');
 
     expect(typeParameter.required).toBe(true);
     expect(typeParameter.schema.enum).toEqual(['discipline', 'wfa', 'smart_ac']);
+    expect(fromParameter).toMatchObject({
+      in: 'query',
+      name: 'from',
+      required: false,
+      schema: { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+    });
+    expect(toParameter).toMatchObject({
+      in: 'query',
+      name: 'to',
+      required: false,
+      schema: { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+    });
     expect(operation.parameters).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'period' }),
-        expect.objectContaining({ name: 'from' }),
-        expect.objectContaining({ name: 'to' })
+        expect.objectContaining({ name: 'lat' }),
+        expect.objectContaining({ name: 'lon' }),
+        expect.objectContaining({ name: 'schedule_date' }),
+        expect.objectContaining({ name: 'radius_meters' })
       ])
     );
     expect(operation.description.toLowerCase()).toContain('dashboard-specific');
-    expect(operation.description.toLowerCase()).toContain('monthly');
-    expect(operation.description.toLowerCase()).toContain('not expose the full dedicated detail payloads');
+    expect(operation.description).toContain('type=wfa');
+    expect(operation.description).toContain('from/to');
+    expect(operation.responses).not.toHaveProperty('410');
     expect(dataSchema.properties).toMatchObject({
-      type: { type: 'string' },
+      type: { type: 'string', enum: ['discipline', 'wfa', 'smart_ac'] },
       type_label: { type: 'string', example: 'Discipline' },
       generated_at: { type: 'string', format: 'date-time' },
       timezone: { type: 'string', example: 'Asia/Jakarta' },
       requested_window: { type: 'object' },
       executed_window: { type: 'object' },
-      status: { type: 'string', example: 'ready' },
+      status: { type: 'string', enum: ['ready', 'empty', 'needs_data'], example: 'ready' },
       needs_data: { type: 'boolean', example: false },
       consistency: { type: 'object' },
       criteria_weights: { type: 'array' },
       ranking_preview: { type: 'object' },
+      methodology: { type: 'object' },
+      evidence: { type: 'object' },
       distribution: { type: 'object' }
+    });
+    expect(dataSchema.properties.requested_window.properties).toMatchObject({
+      period: { type: 'string', example: 'monthly' },
+      from: { type: 'string', format: 'date', nullable: true },
+      to: { type: 'string', format: 'date', nullable: true }
     });
     expect(dataSchema.properties.consistency.properties).toMatchObject({
       CR: { type: 'number', format: 'float' },
@@ -1490,6 +1512,36 @@ describe('client-critical OpenAPI contract', () => {
       label: { type: 'string' },
       display_label: { type: 'string', example: 'Disiplin Kehadiran' },
       value: { type: 'number', format: 'float' }
+    });
+    expect(dataSchema.properties.methodology.properties).toMatchObject({
+      version: { type: 'string', example: 'wfa_fahp_v1' },
+      weighting_method: { type: 'string', example: 'row_geometric_mean_fallback' }
+    });
+    expect(dataSchema.properties.ranking_preview.properties.items.items.properties).toMatchObject({
+      rank: { type: 'integer' },
+      location_key: { type: 'string' },
+      location_label: { type: 'string' },
+      latitude: { type: 'number', format: 'float', nullable: true },
+      longitude: { type: 'number', format: 'float', nullable: true },
+      score: { type: 'number', format: 'float', nullable: true },
+      label: { type: 'string', nullable: true },
+      criteria_summary: { type: 'object' },
+      approved_booking_count: { type: 'integer', minimum: 0 },
+      analyzable_booking_count: { type: 'integer', minimum: 0 }
+    });
+    expect(dataSchema.properties.ranking_preview.properties.items.items.properties.criteria_summary.properties)
+      .toMatchObject({
+        location_type_score: { type: 'number', format: 'float' },
+        distance_factor_score: { type: 'number', format: 'float' },
+        facility_score: { type: 'number', format: 'float' }
+      });
+    expect(dataSchema.properties.evidence.properties).toMatchObject({
+      approved_booking_count: { type: 'integer', minimum: 0 },
+      analyzable_booking_count: { type: 'integer', minimum: 0 },
+      excluded_missing_snapshot_count: { type: 'integer', minimum: 0 },
+      excluded_incompatible_snapshot_count: { type: 'integer', minimum: 0 },
+      unique_location_count: { type: 'integer', minimum: 0 },
+      ranked_location_count: { type: 'integer', minimum: 0 }
     });
     expect(dataSchema.properties).not.toHaveProperty('ranking');
     expect(dataSchema.properties).not.toHaveProperty('weights');

@@ -1,7 +1,13 @@
 import { jest } from '@jest/globals';
 
 import { AppError } from '../src/shared/errors/AppError.js';
-import { createWfaRecommendationService } from '../src/services/wfaRecommendation.service.js';
+
+jest.unstable_mockModule('../src/services/wfaFacility.service.js', () => ({
+  readStrictWfaCheckinWindow: jest.fn(),
+  scoreFacilityEvidence: jest.fn()
+}));
+
+const { createWfaRecommendationService } = await import('../src/services/wfaRecommendation.service.js');
 
 const scheduleDate = '2099-08-03';
 const facilityMatrix = Object.freeze({
@@ -88,7 +94,9 @@ const createHarness = ({
     location_type: 0.5,
     distance_factor: 0.3,
     facility_score: 0.2,
-    consistency_ratio: 0
+    consistency_ratio: 0,
+    weighting_method: 'chang_extent',
+    version: 'wfa_fahp_v1'
   },
   calculateWfaScore = null,
   fetchPlaceDetails = null,
@@ -167,6 +175,10 @@ const createHarness = ({
     readSearchRadius
   };
 };
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 test('shortlists only the top 30 candidates before Place Details enrichment', async () => {
   const features = Array.from({ length: 35 }, (_, index) =>
@@ -495,6 +507,7 @@ test('analysis validates the date without a duplicate check and honors its expli
 });
 
 test('booking scoring selects the nearest valid candidate and returns canonical ranked fields', async () => {
+  jest.useFakeTimers().setSystemTime(new Date('2026-08-15T01:02:03.000Z'));
   const harness = createHarness({
     features: [
       place({ id: 'preliminary-best', distance: 90, locationScore: 100 }),
@@ -520,6 +533,35 @@ test('booking scoring selects the nearest valid candidate and returns canonical 
     status: 'ranked',
     suitabilityScore: 82.4,
     suitabilityLabel: 'Sangat Baik',
+    scoringSnapshot: {
+      schema_version: 1,
+      methodology_version: 'wfa_fahp_v1',
+      captured_at: '2026-08-15T01:02:03.000Z',
+      criteria: {
+        location_type_score: 40,
+        distance_factor_score: 95,
+        facility_score: 75
+      },
+      methodology: {
+        weights: {
+          location_type: 0.5,
+          distance_factor: 0.3,
+          facility_score: 0.2
+        },
+        consistency_ratio: 0,
+        weighting_method: 'chang_extent'
+      },
+      evidence: {
+        place_id: 'nearest',
+        location_type: 'cafe',
+        distance_meters: 5,
+        facility_confidence: 80
+      },
+      result: {
+        score: 82.4,
+        label: 'Sangat Baik'
+      }
+    },
     candidate: expect.objectContaining({ place_id: 'nearest', status: 'ranked' })
   });
 });
@@ -537,6 +579,7 @@ test('booking scoring returns nullable suitability when discovery has no candida
     status: 'insufficient_facility_data',
     suitabilityScore: null,
     suitabilityLabel: null,
+    scoringSnapshot: null,
     candidate: null
   });
 
@@ -563,6 +606,7 @@ test('booking scoring returns nullable suitability when discovery has no candida
     status: 'insufficient_facility_data',
     suitabilityScore: null,
     suitabilityLabel: null,
+    scoringSnapshot: null,
     candidate: expect.objectContaining({
       place_id: 'insufficient',
       facility_score: 100,

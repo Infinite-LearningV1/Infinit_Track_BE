@@ -649,14 +649,19 @@ describe('analysis fuzzy ahp contract', () => {
     jest.useRealTimers();
   });
 
-  it('returns the exact move contract for the retired wfa dashboard recap', async () => {
+  it('requires an explicit date range for the WFA dashboard recap', async () => {
     const res = await request(scopedApp).get('/api/analysis/fuzzy-ahp/dashboard?type=wfa');
 
-    expect(res.status).toBe(410);
+    expect(res.status).toBe(400);
     expect(res.body).toEqual({
       success: false,
-      code: 'WFA_ANALYSIS_MOVED',
-      message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+      code: 'E_VALIDATION',
+      message: 'Parameter from dan to wajib diisi saat period=range atau custom',
+      errors: [
+        expect.objectContaining({
+          msg: 'Parameter from dan to wajib diisi saat period=range atau custom'
+        })
+      ]
     });
     expect(mockLocation.findAll).not.toHaveBeenCalled();
   });

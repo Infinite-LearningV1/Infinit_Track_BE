@@ -171,13 +171,37 @@ describe('WFA facility scoring contract versus runtime', () => {
     expect(operationBlock('/api/analysis/fuzzy-ahp/wfa', 'get')).toContain('name: schedule_date');
   });
 
-  it('documents the migration response instead of the retired combined WFA payload', () => {
+  it('documents the migration response only for the retired generic WFA payload', () => {
     const combined = operationBlock('/api/analysis/fuzzy-ahp', 'get');
     const dashboard = operationBlock('/api/analysis/fuzzy-ahp/dashboard', 'get');
 
     expect(combined).toContain("'410':");
-    expect(dashboard).toContain("'410':");
     expect(combined).toContain('WFA_ANALYSIS_MOVED');
-    expect(dashboard).toContain('WFA_ANALYSIS_MOVED');
+    expect(dashboard).not.toContain("'410':");
+    expect(dashboard).not.toContain('WFA_ANALYSIS_MOVED');
+  });
+
+  it('documents dashboard WFA as explicit date range on the reused dashboard route', () => {
+    const dashboard = operationBlock('/api/analysis/fuzzy-ahp/dashboard', 'get');
+
+    expect(dashboard).toContain('name: type');
+    expect(dashboard).toContain('enum: [discipline, wfa, smart_ac]');
+    expect(dashboard).toContain('name: from');
+    expect(dashboard).toContain('name: to');
+    expect(dashboard).toContain('type=wfa');
+    expect(dashboard).toContain('maximum inclusive window is 31 days');
+    expect(dashboard).toContain('requested_window:');
+    expect(dashboard).toContain('criteria_weights:');
+    expect(dashboard).toContain('consistency:');
+    expect(dashboard).toContain('methodology:');
+    expect(dashboard).toContain('ranking_preview:');
+    expect(dashboard).toContain('location_key:');
+    expect(dashboard).toContain('criteria_summary:');
+    expect(dashboard).toContain('evidence:');
+    expect(dashboard).not.toContain('name: period');
+    expect(dashboard).not.toContain('name: lat');
+    expect(dashboard).not.toContain('name: lon');
+    expect(dashboard).not.toContain('name: schedule_date');
+    expect(dashboard).not.toContain('name: radius_meters');
   });
 });
