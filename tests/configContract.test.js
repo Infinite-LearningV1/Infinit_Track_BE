@@ -220,13 +220,12 @@ describe('backend runtime config contract', () => {
     expect(config.autoCheckout).toBeUndefined();
   });
 
-  test('declares droplet runtime contract with immutable DOCR image selection and env-file driven config', () => {
+  test('declares local production build runtime and env-file driven config', () => {
     const compose = readDockerCompose();
 
-    expect(compose).toContain(
-      'image: ${BACKEND_IMAGE:-registry.digitalocean.com/infinit-track/infinit-track-backend}:${BACKEND_IMAGE_TAG:?BACKEND_IMAGE_TAG is required}'
-    );
-    expect(compose).not.toContain('build:');
+    expect(compose).toContain('build:');
+    expect(compose).toContain('target: production');
+    expect(compose).toContain('image: infinit-track-backend:latest');
     expect(compose).not.toContain('network: host');
     expect(compose).toContain('network_mode: host');
     expect(compose).toContain('env_file:');

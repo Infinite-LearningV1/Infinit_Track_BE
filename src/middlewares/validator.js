@@ -6,12 +6,6 @@ import { assertFutureWibScheduleDate } from '../services/wfaEligibility.service.
 import { validateHistoricalDateWindowQuery } from '../utils/historicalDateWindow.js';
 import { assertSafeUrl } from '../utils/url.js';
 
-// Remove the file system setup as we're switching to Cloudinary
-// const uploadsDir = 'uploads/face/';
-// if (!fs.existsSync(uploadsDir)) {
-//   fs.mkdirSync(uploadsDir, { recursive: true });
-// }
-
 // Use memory storage instead of disk storage for Cloudinary
 const storage = multer.memoryStorage();
 
