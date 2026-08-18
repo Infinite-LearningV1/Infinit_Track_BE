@@ -1,5 +1,7 @@
 # 🚀 Production Deployment Guide
 
+For the canonical Nginx ingress, certificate lifecycle, loopback listener, and external port-3005 verification contract, see [PRODUCTION_NGINX_INGRESS.md](PRODUCTION_NGINX_INGRESS.md). Production deployment must run `nginx -t` before reload and must not rely on Certbot mutating the tracked application vhost.
+
 ## Overview
 
 Panduan deployment backend untuk fase saat ini, dengan source of truth yang selaras ke target runtime aktif.

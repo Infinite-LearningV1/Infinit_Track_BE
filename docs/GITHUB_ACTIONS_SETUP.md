@@ -1,5 +1,7 @@
 # 🔄 GitHub Actions Setup Guide
 
+Production ingress verification uses the Droplet-side `deploy/scripts/verify-droplet-api.sh` and an external runner-side `deploy/scripts/verify-public-ingress.sh`. The external check must prove that the Droplet public IP cannot reach Express directly on TCP port `3005`; a successful response is a release blocker. Nginx syntax validation remains a required pre-reload gate.
+
 ## Overview
 
 Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:

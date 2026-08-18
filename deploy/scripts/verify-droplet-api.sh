@@ -175,6 +175,27 @@ if command -v nginx >/dev/null 2>&1; then
   printf 'NGINX_CONFIG_OK\n'
 fi
 
+if ! command -v ss >/dev/null 2>&1; then
+  printf 'LISTENER_FAIL ss is required to verify the loopback bind\n' >&2
+  exit 1
+fi
+
+printf 'Checking backend listener is loopback-only on port 3005...\n'
+LISTENERS="$(ss -ltnH 'sport = :3005' 2>/dev/null || true)"
+if [ -z "$LISTENERS" ]; then
+  printf 'LISTENER_FAIL no listener found on port 3005\n' >&2
+  exit 1
+fi
+if printf '%s\n' "$LISTENERS" | grep -Eq '0\.0\.0\.0:3005|\*:3005|\[::\]:3005|:::3005'; then
+  printf 'LISTENER_FAIL port 3005 is exposed beyond loopback\n%s\n' "$LISTENERS" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$LISTENERS" | grep -Eq '127\.0\.0\.1:3005'; then
+  printf 'LISTENER_FAIL expected 127.0.0.1:3005 listener\n%s\n' "$LISTENERS" >&2
+  exit 1
+fi
+printf 'LISTENER_OK 127.0.0.1:3005\n'
+
 printf 'Checking public HTTPS liveness at %s...\n' "$PUBLIC_LIVEZ_URL"
 check_json_endpoint "$PUBLIC_LIVEZ_URL" 'PUBLIC_LIVEZ' 'liveness'
 

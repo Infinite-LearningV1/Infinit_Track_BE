@@ -16,6 +16,7 @@ services:
       - ${BACKEND_ENV_FILE:-./deploy/env/backend.production.env}
     environment:
       NODE_ENV: production
+      APP_BIND_HOST: 127.0.0.1
       PORT: 3005
       TZ: Asia/Jakarta
       LOG_LEVEL: ${LOG_LEVEL:-info}

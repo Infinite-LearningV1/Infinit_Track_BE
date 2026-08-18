@@ -10,9 +10,15 @@ if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
 
 const env = process.env.NODE_ENV || 'development';
 const corsOrigin = process.env.CORS_ORIGIN || (env === 'production' ? '' : '*');
+const bindHost = process.env.APP_BIND_HOST || (env === 'production' ? '127.0.0.1' : undefined);
+
+if (env === 'production' && bindHost !== '127.0.0.1') {
+  throw new Error('APP_BIND_HOST must be 127.0.0.1 in production');
+}
 
 export default {
   port: process.env.PORT || 3000,
+  bindHost,
   env,
   cors: {
     origin: corsOrigin,

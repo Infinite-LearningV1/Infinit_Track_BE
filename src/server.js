@@ -44,10 +44,10 @@ import {
     }
   }
 
-  app.listen(config.port, () => {
+  app.listen(config.port, config.bindHost, () => {
     const readiness = getReadinessSnapshot();
 
-    logger.info(`Server 🚀 on port ${config.port}`);
+    logger.info(`Server 🚀 on ${config.bindHost || 'all interfaces'}:${config.port}`);
     if (readiness.ready) {
       logger.info('Startup dependencies are ready.');
     } else {
@@ -57,7 +57,7 @@ import {
       });
     }
 
-    console.log(`🚀 Server running on port ${config.port}`);
+    console.log(`🚀 Server running on ${config.bindHost || 'all interfaces'}:${config.port}`);
     if (!readiness.ready) {
       console.warn(`⚠️ Startup readiness failed: ${readiness.missing.join(', ')}`);
     }
