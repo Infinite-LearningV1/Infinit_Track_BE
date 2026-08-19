@@ -1,10 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      target: production
-      dockerfile: Dockerfile
-    image: infinit-track-backend:latest
+    image: ${BACKEND_IMAGE:-registry.digitalocean.com/infinit-track/infinit-track-backend}:${BACKEND_IMAGE_TAG:?BACKEND_IMAGE_TAG is required}
     container_name: infinit-track-app
     restart: unless-stopped
     network_mode: host

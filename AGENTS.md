@@ -42,9 +42,3 @@ attendance.controller.js, jobs/*.job.js (createGeneralAlpha, autoCheckout, resol
 
 ## DEPENDENCY RULE
 Backend adalah upstream. Sebelum tandai kontrak backend Done, pastikan verifikasi ada. Client (Web FE/Android) tidak boleh menutup task konsumen sebelum kontrak backend yang dipakainya terkunci + verified.
-
-## GENERAL
-
-| Common Mistake | Correct Behavior |
-| --- | --- |
-| Membuat PR baru hanya karena branch remote sempat hilang atau diff lokal terlihat belum terserap | Sebelum membuat PR baru, verifikasi dulu apakah PR sebelumnya sudah merged dan apakah commit/isi branch sudah atau belum masuk ke `develop`. Jika belum yakin, cek state merge PR, compare `develop` vs branch target, dan baru putuskan apakah perlu PR baru. |

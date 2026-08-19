@@ -3,6 +3,10 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 const nginxRoot = path.join(repoRoot, 'deploy/nginx');
+const ingressGuide = fs.readFileSync(
+  path.join(repoRoot, 'docs/PRODUCTION_NGINX_INGRESS.md'),
+  'utf8'
+);
 const read = (file) => fs.readFileSync(path.join(nginxRoot, file), 'utf8').replace(/\r\n/g, '\n');
 
 describe('INF-278 tracked Nginx ingress contract', () => {
@@ -25,8 +29,15 @@ describe('INF-278 tracked Nginx ingress contract', () => {
     const snippet = read('snippets/infinite-track-api-proxy.conf');
 
     expect(finalVhost).toContain('client_max_body_size 1m;');
-    expect(finalVhost).toMatch(/location = \/api\/users\s*\{[\s\S]*client_max_body_size 25m;/);
-    expect(finalVhost).toMatch(/location ~ \^\/api\/users\/[^ ]+\/photo\$\s*\{[\s\S]*client_max_body_size 25m;/);
+    expect(finalVhost).toMatch(/location ~ \^\/api\/users\/\?\$\s*\{[\s\S]*client_max_body_size 25m;/);
+    expect(finalVhost).toMatch(/location ~ \^\/api\/users\/\[\^\/\]\+\/photo\/\?\$\s*\{[\s\S]*client_max_body_size 25m;/);
     expect(`${finalVhost}\n${snippet}`).not.toMatch(/proxy_set_header\s+(Upgrade|Connection)\b/);
+  });
+
+  test('documents installing the shared snippet before enabling the vhost', () => {
+    expect(ingressGuide).toContain(
+      'sudo install -D -m 0644 deploy/nginx/snippets/infinite-track-api-proxy.conf'
+    );
+    expect(ingressGuide).toContain('/etc/nginx/snippets/infinite-track-api-proxy.conf');
   });
 });

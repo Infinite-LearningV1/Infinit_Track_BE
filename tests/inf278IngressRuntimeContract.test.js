@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import express from 'express';
 import request from 'supertest';
+
+const { default: app } = await import('../src/app.js');
 
 const repoRoot = process.cwd();
 
@@ -37,6 +38,7 @@ describe('INF-278 runtime ingress contract', () => {
   });
 
   test('trusts forwarded client IP and HTTPS protocol only through loopback', async () => {
+    const { default: express } = await import('express');
     const { configureProxyTrust } = await import('../src/configureProxyTrust.js');
     const app = express();
     configureProxyTrust(app, 'production');
@@ -54,21 +56,22 @@ describe('INF-278 runtime ingress contract', () => {
   });
 
   test('limits ordinary JSON and URL-encoded bodies to 1 MiB', async () => {
-    const app = express();
-    app.use(express.json({ limit: '1mb' }));
-    app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-    app.post('/probe', (_req, res) => res.sendStatus(204));
-
     await request(app)
-      .post('/probe')
+      .post('/livez')
       .set('Content-Type', 'application/json')
       .send({ payload: 'x'.repeat(1024) })
-      .expect(204);
+      .expect(404);
 
     await request(app)
-      .post('/probe')
+      .post('/livez')
       .set('Content-Type', 'application/json')
       .send({ payload: 'x'.repeat(1024 * 1024) })
+      .expect(413);
+
+    await request(app)
+      .post('/livez')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send(`payload=${'x'.repeat(1024 * 1024)}`)
       .expect(413);
   });
 });

@@ -10,10 +10,18 @@ Express is bound to `127.0.0.1:3005` in production. Docker Compose intentionally
 
 ## Bootstrap and certificate lifecycle
 
-1. Install `deploy/nginx/api.infinite-track.tech.bootstrap.conf` as the vhost.
+1. Install the shared proxy snippet and bootstrap vhost:
+   ```bash
+   sudo install -D -m 0644 deploy/nginx/snippets/infinite-track-api-proxy.conf \
+     /etc/nginx/snippets/infinite-track-api-proxy.conf
+   sudo install -D -m 0644 deploy/nginx/api.infinite-track.tech.bootstrap.conf \
+     /etc/nginx/sites-available/api.infinite-track.tech.conf
+   sudo ln -sfn /etc/nginx/sites-available/api.infinite-track.tech.conf \
+     /etc/nginx/sites-enabled/api.infinite-track.tech.conf
+   ```
 2. Create `/var/www/certbot` and ensure `/.well-known/acme-challenge/` is reachable over HTTP.
 3. Obtain or renew the certificate with Certbot webroot/cert-only mode.
-4. Install `deploy/nginx/api.infinite-track.tech.conf` as the canonical vhost.
+4. Install `deploy/nginx/api.infinite-track.tech.conf` as the canonical vhost at the same `sites-available` path.
 5. Confirm the certificate files exist under `/etc/letsencrypt/live/api.infinite-track.tech/`.
 6. Run `sudo nginx -t`; stop if it fails.
 7. Reload Nginx only after syntax validation succeeds: `sudo systemctl reload nginx`.
