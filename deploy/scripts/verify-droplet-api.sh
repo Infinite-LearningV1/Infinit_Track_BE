@@ -186,11 +186,13 @@ if [ -z "$LISTENERS" ]; then
   printf 'LISTENER_FAIL no listener found on port 3005\n' >&2
   exit 1
 fi
-if printf '%s\n' "$LISTENERS" | grep -Eq '0\.0\.0\.0:3005|\*:3005|\[::\]:3005|:::3005'; then
-  printf 'LISTENER_FAIL port 3005 is exposed beyond loopback\n%s\n' "$LISTENERS" >&2
+INVALID_LISTENERS="$(printf '%s\n' "$LISTENERS" | awk '$4 !~ /^127\.0\.0\.1:3005$/ { print }')"
+if [ -n "$INVALID_LISTENERS" ]; then
+  printf 'LISTENER_FAIL every port 3005 listener must be exactly 127.0.0.1:3005\n%s\n' "$LISTENERS" >&2
   exit 1
 fi
-if ! printf '%s\n' "$LISTENERS" | grep -Eq '127\.0\.0\.1:3005'; then
+LOOPBACK_LISTENER_COUNT="$(printf '%s\n' "$LISTENERS" | awk '$4 == "127.0.0.1:3005" { count += 1 } END { print count + 0 }')"
+if [ "$LOOPBACK_LISTENER_COUNT" -lt 1 ]; then
   printf 'LISTENER_FAIL expected 127.0.0.1:3005 listener\n%s\n' "$LISTENERS" >&2
   exit 1
 fi

@@ -44,10 +44,11 @@ This proves Nginx syntax, local `/livez` and `/health`, the loopback-only `3005`
 From an external runner:
 
 ```bash
-PUBLIC_IP=<droplet-ip> bash deploy/scripts/verify-public-ingress.sh
+DOMAIN=api.infinite-track.tech PUBLIC_IP=<droplet-ip> \
+  bash deploy/scripts/verify-public-ingress.sh
 ```
 
-The direct `http://<droplet-ip>:3005/livez` request must fail. A successful response is a release blocker. Public port 80 redirect, port 443 API ingress, Web FE credentialed CORS/session smoke, Android representative API smoke, and the existing production smoke pack remain separate external evidence gates.
+The direct TCP connection and `http://<droplet-ip>:3005/livez` request must fail without proxy use. A successful connection or response is a release blocker. The verifier also requires the public HTTP endpoint to return `301` to the HTTPS domain. Port 443 API ingress, Web FE credentialed CORS/session smoke, Android representative API smoke, and the existing production smoke pack remain separate external evidence gates.
 
 ## Rollback
 
