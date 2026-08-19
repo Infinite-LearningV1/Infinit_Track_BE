@@ -149,6 +149,11 @@ jobs:
             docker compose exec -T app npm run migrate:status
           "
 
+      - name: Run external ingress and direct-port negative gate
+        run: |
+          chmod +x ./deploy/scripts/verify-public-ingress.sh
+          DOMAIN="$PRODUCTION_PUBLIC_DOMAIN" PUBLIC_IP="$PRODUCTION_EXPECTED_IP" ./deploy/scripts/verify-public-ingress.sh
+
       - name: Run blocking smoke gate against production host
         run: npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"
 

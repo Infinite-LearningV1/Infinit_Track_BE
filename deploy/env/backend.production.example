@@ -3,6 +3,7 @@
 
 # Runtime
 NODE_ENV=production
+APP_BIND_HOST=127.0.0.1
 PORT=3005
 TZ=Asia/Jakarta
 LOG_LEVEL=info
