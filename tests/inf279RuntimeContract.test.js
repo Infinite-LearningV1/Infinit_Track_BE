@@ -20,4 +20,19 @@ describe('INF-279 backend runtime contract alignment', () => {
     expect(productionEnv).not.toContain('it-mysql-staging-sgp1');
     expect(productionEnv).not.toContain('infinite-track-staging-sgp1');
   });
+
+  test('defines an optional credentialed Web FE CORS/session smoke surface', () => {
+    const smoke = read('scripts/smoke-test.js');
+
+    expect(smoke).toContain('const WEB_ORIGIN = process.env.WEB_ORIGIN');
+    expect(smoke).toContain('Web FE Credentialed CORS / Session Surface');
+    expect(smoke).toContain('Origin: WEB_ORIGIN');
+    expect(smoke).toContain("'X-Client-Type': 'web'");
+    expect(smoke).toContain('/api/auth/login');
+    expect(smoke).toContain('/api/auth/refresh');
+    expect(smoke).toContain("response.headers['access-control-allow-origin'] === WEB_ORIGIN");
+    expect(smoke).toContain("response.headers['access-control-allow-credentials'] === 'true'");
+    expect(smoke).toContain('WEB_ORIGIN not provided');
+    expect(smoke).toContain('logSkip');
+  });
 });
