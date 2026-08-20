@@ -3,11 +3,12 @@
 ## Repository Evidence
 
 - `npm run lint`: PASS (exit code `0`).
-- Focused INF-279/configuration contracts: PASS (`41/41` tests).
+- Focused INF-279/configuration contracts: PASS (`42/42` tests).
 - Inherited INF-278 deployment verification contracts: PASS (`9/9` tests in the combined focused run).
 - Full non-integration regression suite: PASS (`162` suites, `1547` tests, `0` failures).
-- Implementation commit before this evidence report: `e1d2865`.
-- Final worktree state: clean; branch is ahead of `origin/develop` by seven commits.
+- Generic `.env.example` uses `SPACES_BUCKET=your_spaces_bucket`; it no longer promotes the staging bucket identifier.
+- The initial implementation evidence was captured before the follow-up generic-env correction; the follow-up is included in the final branch state below.
+- Final worktree state after the follow-up commit: clean; branch is ahead of `origin/develop` by nine commits.
 
 ## Staging Runtime Evidence
 
@@ -28,3 +29,9 @@
 - `NEEDS VERIFICATION / NEEDS DECISION`: the `production` GitHub environment currently reports no protection rules.
 - The active `master-protection` ruleset requires one pull-request approval, resolved review threads, and the `build` status check, but it does not prove staging-before-production ordering.
 - Staging and production remain independently triggered from `master` in repository YAML; an explicit promotion-ordering decision or verified external protection rule is still required.
+
+## Audit Cross-check
+
+- Active documentation uses `api.infinite-track.tech` as the canonical production API endpoint; no active note was found that assigns it to the staging Droplet or staging database.
+- `docs/infra-config-truth-audit.md` is explicitly labeled as a historical snapshot and is not an active deployment instruction.
+- INF-279 does not define a separate staging env filename. The existing `BACKEND_ENV_FILE` Compose override remains the host-local operator boundary; no new path was invented without verified Droplet evidence.

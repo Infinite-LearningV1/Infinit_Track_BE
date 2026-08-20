@@ -12,6 +12,13 @@ describe('INF-279 backend runtime contract alignment', () => {
     expect(envExample).not.toContain('PORT=3000');
   });
 
+  test('keeps the generic env example free of staging resource identifiers', () => {
+    const envExample = read('.env.example');
+
+    expect(envExample).toContain('SPACES_BUCKET=your_spaces_bucket');
+    expect(envExample).not.toContain('infinite-track-staging-sgp1');
+  });
+
   test('keeps the production env template production-specific and secret-free', () => {
     const productionEnv = read('deploy/env/backend.production.example');
     expect(productionEnv).toContain('CORS_ORIGIN=https://infinite-track.tech');
