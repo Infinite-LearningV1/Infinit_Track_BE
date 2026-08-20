@@ -8,21 +8,25 @@
 - Full non-integration regression suite: PASS (`162` suites, `1547` tests, `0` failures).
 - Generic `.env.example` uses `SPACES_BUCKET=your_spaces_bucket`; it no longer promotes the staging bucket identifier.
 - The initial implementation evidence was captured before the follow-up generic-env correction; the follow-up is included in the final branch state below.
-- Final worktree state after the follow-up commit: clean; branch is ahead of `origin/develop` by nine commits.
+- Final worktree state after the follow-up documentation update: clean; branch state includes the implementation and runtime-evidence commits.
 
 ## Staging Runtime Evidence
 
-- Runtime deployment smoke was not executed in this implementation cycle.
+- Read-only runtime verification against `https://api.infinite-track.tech` reached `168.144.33.33` and passed DNS resolution, HTTP `301` redirect to HTTPS, `/livez`, and `/health` readiness.
+- Direct public access to `168.144.33.33:3005` timed out, which is the expected negative TCP/HTTP result for the blocked application port.
+- `WEB_ORIGIN=https://infinite-track.tech npm run smoke-test https://api.infinite-track.tech` passed `16/16` checks, including credentialed CORS/session, database/scheduler readiness, and auth protection.
+- The repository `verify-public-ingress.sh` could not be invoked directly in this Windows worktree because Bash is unavailable; its TCP, HTTP redirect, and direct-port checks were run equivalently with proxy bypass.
 - GitHub `staging` environment inspection found no `STAGING_WEB_ORIGIN` variable.
-- The deployed staging Web FE browser origin could not be established from the available evidence, so no staging Web-origin value was invented and no staging Web-compatibility smoke was claimed.
+- The deployed staging Web FE browser origin could not be established from the available evidence. The observed runtime currently answers with the production origin `https://infinite-track.tech`, but that does not prove it is the intended staging Web FE origin.
 - Required follow-up before staging rollout: configure `STAGING_WEB_ORIGIN` from the observed staging Web FE origin, then verify it equals the running container `CORS_ORIGIN` and run the blocking credentialed Web smoke.
 
 ## Production Runtime Evidence
 
-- Runtime deployment smoke and public ingress checks were not executed in this implementation cycle.
+- No separate production runtime was found: the DigitalOcean account exposes only `it-backend-staging-sgp1` at `168.144.33.33`, and GitHub production variables point to the same IP and API URL as staging.
+- The successful public smoke above therefore cannot be claimed as production evidence.
 - GitHub `production` environment inspection found no `PRODUCTION_WEB_ORIGIN` variable.
 - The existing GitHub `CORS_ORIGIN` variable still contains the legacy origin together with the canonical origin; this is not proof of the exact single-origin runtime contract.
-- Required follow-up before production rollout: configure `PRODUCTION_WEB_ORIGIN=https://infinite-track.tech`, reconcile the host-local runtime `CORS_ORIGIN`, and run the workflow's deployed-container comparison, credentialed Web smoke, ingress, liveness, and readiness gates.
+- Required follow-up before production rollout: identify/provision the separate production Droplet, configure `PRODUCTION_WEB_ORIGIN=https://infinite-track.tech`, reconcile the production host-local runtime `CORS_ORIGIN`, and run the workflow's deployed-container comparison, credentialed Web smoke, ingress, liveness, and readiness gates.
 
 ## Release Protection Evidence
 
