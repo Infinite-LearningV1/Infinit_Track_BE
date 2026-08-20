@@ -35,4 +35,21 @@ describe('INF-279 backend runtime contract alignment', () => {
     expect(smoke).toContain('WEB_ORIGIN not provided');
     expect(smoke).toContain('logSkip');
   });
+
+  test('production deploy independently verifies Web origin and syncs executed runtime artifacts', () => {
+    const workflow = read('.github/workflows/deploy-production.yml');
+
+    expect(workflow).toContain('PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}');
+    expect(workflow).toContain('"$PRODUCTION_WEB_ORIGIN"');
+    expect(workflow).toContain('docker-compose.yml');
+    expect(workflow).toContain('deploy/scripts/verify-droplet-api.sh');
+    expect(workflow).toContain('docker compose exec -T app printenv CORS_ORIGIN');
+    expect(workflow).toContain('DEPLOYED_CORS_ORIGIN');
+    expect(workflow).toContain('PRODUCTION_WEB_ORIGIN');
+    expect(workflow).toContain('WEB_ORIGIN="$PRODUCTION_WEB_ORIGIN" npm run smoke-test');
+    expect(workflow).not.toContain('WEB_ORIGIN="$DEPLOYED_CORS_ORIGIN" npm run smoke-test');
+    expect(workflow).not.toContain('deploy/env/backend.production.env');
+    expect(workflow).toContain('https://infinite-track.tech');
+    expect(workflow).toContain('PRODUCTION_WEB_ORIGIN must equal the canonical Web FE origin');
+  });
 });
