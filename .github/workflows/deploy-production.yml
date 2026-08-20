@@ -20,6 +20,7 @@ env:
   PRODUCTION_PUBLIC_DOMAIN: ${{ vars.PRODUCTION_PUBLIC_DOMAIN }}
   PRODUCTION_PUBLIC_BASE_URL: ${{ vars.PRODUCTION_PUBLIC_BASE_URL }}
   PRODUCTION_EXPECTED_IP: ${{ vars.PRODUCTION_EXPECTED_IP }}
+  PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
 
 jobs:
   test:
@@ -118,7 +119,8 @@ jobs:
             "$PRODUCTION_DEPLOY_PATH" \
             "$PRODUCTION_PUBLIC_DOMAIN" \
             "$PRODUCTION_PUBLIC_BASE_URL" \
-            "$PRODUCTION_EXPECTED_IP"
+            "$PRODUCTION_EXPECTED_IP" \
+            "$PRODUCTION_WEB_ORIGIN"
           do
             if [ -z "$value" ]; then
               echo "Missing required production runtime variable. Check GitHub environment vars."
@@ -126,12 +128,27 @@ jobs:
             fi
           done
 
+          if [ "$PRODUCTION_WEB_ORIGIN" != "https://infinite-track.tech" ]; then
+            echo "PRODUCTION_WEB_ORIGIN must equal the canonical Web FE origin https://infinite-track.tech."
+            exit 1
+          fi
+
       - name: Configure SSH key
         run: |
           mkdir -p "$HOME/.ssh"
           printf '%s\n' '${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}' > "$HOME/.ssh/production.key"
           chmod 600 "$HOME/.ssh/production.key"
           ssh-keyscan -H "$PRODUCTION_SSH_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Sync tracked runtime artifacts
+        run: |
+          set -euo pipefail
+          tar -czf - docker-compose.yml deploy/scripts/verify-droplet-api.sh \
+            | ssh -i "$HOME/.ssh/production.key" -o IdentitiesOnly=yes "$PRODUCTION_SSH_USER@$PRODUCTION_SSH_HOST" "
+                set -euo pipefail
+                mkdir -p '$PRODUCTION_DEPLOY_PATH/deploy/scripts'
+                tar -xzf - -C '$PRODUCTION_DEPLOY_PATH'
+              "
 
       - name: Deploy selected image on production droplet
         run: |
@@ -154,8 +171,25 @@ jobs:
           chmod +x ./deploy/scripts/verify-public-ingress.sh
           DOMAIN="$PRODUCTION_PUBLIC_DOMAIN" PUBLIC_IP="$PRODUCTION_EXPECTED_IP" ./deploy/scripts/verify-public-ingress.sh
 
-      - name: Run blocking smoke gate against production host
-        run: npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"
+      - name: Verify production Web-origin contract and run blocking smoke
+        run: |
+          set -euo pipefail
+          DEPLOYED_CORS_ORIGIN="$(ssh -i "$HOME/.ssh/production.key" -o IdentitiesOnly=yes "$PRODUCTION_SSH_USER@$PRODUCTION_SSH_HOST" "
+            cd '$PRODUCTION_DEPLOY_PATH'
+            docker compose exec -T app printenv CORS_ORIGIN
+          " | tr -d '\r\n')"
+
+          if [ -z "$DEPLOYED_CORS_ORIGIN" ]; then
+            echo "Production deployed CORS_ORIGIN is empty."
+            exit 1
+          fi
+
+          if [ "$DEPLOYED_CORS_ORIGIN" != "$PRODUCTION_WEB_ORIGIN" ]; then
+            echo "Production CORS mismatch: deployed backend origin does not match PRODUCTION_WEB_ORIGIN."
+            exit 1
+          fi
+
+          WEB_ORIGIN="$PRODUCTION_WEB_ORIGIN" npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"
 
       - name: Deployment summary
         run: |

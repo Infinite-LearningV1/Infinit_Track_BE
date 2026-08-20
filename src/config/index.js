@@ -17,7 +17,7 @@ if (env === 'production' && bindHost !== '127.0.0.1') {
 }
 
 export default {
-  port: process.env.PORT || 3000,
+  port: process.env.PORT || 3005,
   bindHost,
   env,
   cors: {

@@ -81,6 +81,20 @@ curl -fsS https://<public-domain>/livez
 curl -fsS https://<public-domain>/health
 ```
 
+## Runtime env ownership
+
+`deploy/env/backend.production.env` is host-local runtime state. Deployment artifact synchronization must not replace it. The running container's `CORS_ORIGIN` must match the expected browser origin configured for the environment.
+
+## Web-origin smoke
+
+Staging:
+`WEB_ORIGIN="$STAGING_WEB_ORIGIN" npm run smoke-test "$STAGING_PUBLIC_BASE_URL"`
+
+Production:
+`WEB_ORIGIN="$PRODUCTION_WEB_ORIGIN" npm run smoke-test "$PRODUCTION_PUBLIC_BASE_URL"`
+
+A generic smoke invocation without `WEB_ORIGIN` remains useful for backend-only checks but does not constitute Web FE CORS/session evidence.
+
 ## Rollback procedure
 1. Set `BACKEND_IMAGE_TAG` kembali ke SHA terakhir yang diketahui sehat.
 2. Pull image tersebut:

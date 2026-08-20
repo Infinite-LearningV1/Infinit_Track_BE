@@ -113,6 +113,16 @@ describe('backend runtime config contract', () => {
     expect(config.db.sslRejectUnauthorized).toBe(false);
   });
 
+  test('defaults the backend listener to port 3005 when PORT is unset', async () => {
+    delete process.env.PORT;
+    process.env.JWT_SECRET = 'test-secret';
+    setRequiredBaseEnv();
+
+    const config = await loadRuntimeConfig();
+
+    expect(config.port).toBe(3005);
+  });
+
   test('fails closed when production credentialed CORS origin resolves empty', async () => {
     const { config, validateCorsOrigin } = await loadProductionCorsValidation('');
 
