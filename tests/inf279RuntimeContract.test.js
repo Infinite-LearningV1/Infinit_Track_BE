@@ -66,4 +66,22 @@ describe('INF-279 backend runtime contract alignment', () => {
     expect(workflow).not.toContain('deploy/env/backend.production.env');
     expect(workflow).not.toContain('https://infinite-track.tech');
   });
+
+  test('documents Web-origin inputs and current droplet runtime truth without unsupported HA claims', () => {
+    const readme = read('README.md');
+    const actionsGuide = read('docs/GITHUB_ACTIONS_SETUP.md');
+    const productionGuide = read('docs/PRODUCTION_DEPLOYMENT.md');
+    const dropletGuide = read('docs/droplet-docr-runtime.md');
+
+    expect(actionsGuide).toContain('STAGING_WEB_ORIGIN');
+    expect(actionsGuide).toContain('PRODUCTION_WEB_ORIGIN');
+    expect(readme).not.toContain('2+ (HA)');
+    expect(readme).not.toContain('Check environment variable in DO Dashboard');
+    expect(readme).toContain('docker compose exec -T app printenv CORS_ORIGIN');
+    expect(productionGuide).toContain('expected Web origin');
+    expect(productionGuide).toContain('tracked runtime artifacts');
+    expect(productionGuide).toContain('repository YAML does not enforce staging-before-production ordering');
+    expect(dropletGuide).toContain('WEB_ORIGIN');
+    expect(dropletGuide).toContain('host-local');
+  });
 });
