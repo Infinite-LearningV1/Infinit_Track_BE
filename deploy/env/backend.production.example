@@ -9,16 +9,16 @@ TZ=Asia/Jakarta
 LOG_LEVEL=info
 
 # Public clients
-# Use the exact browser origin of the deployed frontend.
-CORS_ORIGIN=https://orca-app-58alv.ondigitalocean.app
+# Exact browser origin for the canonical production Web FE.
+CORS_ORIGIN=https://infinite-track.tech
 
 # DigitalOcean Managed MySQL
-# Use the connection details from cluster it-mysql-staging-sgp1.
-DB_HOST=replace-with-managed-mysql-host
+# Use the production managed MySQL connection details from the target runtime.
+DB_HOST=replace-with-production-managed-mysql-host
 DB_PORT=25060
-DB_USER=replace-with-managed-mysql-user
-DB_PASS=replace-with-managed-mysql-password
-DB_NAME=replace-with-managed-mysql-database
+DB_USER=replace-with-production-managed-mysql-user
+DB_PASS=replace-with-production-managed-mysql-password
+DB_NAME=replace-with-production-managed-mysql-database
 DB_SSL=true
 DB_SSL_REJECT_UNAUTHORIZED=true
 
@@ -32,7 +32,7 @@ JWT_REFRESH_INACTIVITY_WINDOW_SECONDS=172800
 # DigitalOcean Spaces
 SPACES_ENDPOINT=sgp1.digitaloceanspaces.com
 SPACES_REGION=sgp1
-SPACES_BUCKET=infinite-track-staging-sgp1
+SPACES_BUCKET=replace-with-production-spaces-bucket
 SPACES_ACCESS_KEY_ID=replace-with-rotated-spaces-access-key
 SPACES_SECRET_ACCESS_KEY=replace-with-rotated-spaces-secret-key
 
