@@ -20,6 +20,7 @@ env:
   STAGING_PUBLIC_DOMAIN: ${{ vars.STAGING_PUBLIC_DOMAIN }}
   STAGING_PUBLIC_BASE_URL: ${{ vars.STAGING_PUBLIC_BASE_URL }}
   STAGING_EXPECTED_IP: ${{ vars.STAGING_EXPECTED_IP }}
+  STAGING_WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
 
 jobs:
   test:
@@ -118,7 +119,8 @@ jobs:
             "$STAGING_DEPLOY_PATH" \
             "$STAGING_PUBLIC_DOMAIN" \
             "$STAGING_PUBLIC_BASE_URL" \
-            "$STAGING_EXPECTED_IP"
+            "$STAGING_EXPECTED_IP" \
+            "$STAGING_WEB_ORIGIN"
           do
             if [ -z "$value" ]; then
               echo "Missing required staging runtime variable. Check GitHub environment vars."
@@ -132,6 +134,16 @@ jobs:
           printf '%s\n' '${{ secrets.STAGING_SSH_PRIVATE_KEY }}' > "$HOME/.ssh/staging.key"
           chmod 600 "$HOME/.ssh/staging.key"
           ssh-keyscan -H "$STAGING_SSH_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Sync tracked runtime artifacts
+        run: |
+          set -euo pipefail
+          tar -czf - docker-compose.yml deploy/scripts/verify-droplet-api.sh \
+            | ssh -i "$HOME/.ssh/staging.key" -o IdentitiesOnly=yes "$STAGING_SSH_USER@$STAGING_SSH_HOST" "
+                set -euo pipefail
+                mkdir -p '$STAGING_DEPLOY_PATH/deploy/scripts'
+                tar -xzf - -C '$STAGING_DEPLOY_PATH'
+              "
 
       - name: Deploy selected image on staging droplet
         run: |
@@ -149,8 +161,25 @@ jobs:
             docker compose exec -T app npm run migrate:status
           "
 
-      - name: Run blocking smoke gate against staging host
-        run: npm run smoke-test "$STAGING_PUBLIC_BASE_URL"
+      - name: Verify staging Web-origin contract and run blocking smoke
+        run: |
+          set -euo pipefail
+          DEPLOYED_CORS_ORIGIN="$(ssh -i "$HOME/.ssh/staging.key" -o IdentitiesOnly=yes "$STAGING_SSH_USER@$STAGING_SSH_HOST" "
+            cd '$STAGING_DEPLOY_PATH'
+            docker compose exec -T app printenv CORS_ORIGIN
+          " | tr -d '\r\n')"
+
+          if [ -z "$DEPLOYED_CORS_ORIGIN" ]; then
+            echo "Staging deployed CORS_ORIGIN is empty."
+            exit 1
+          fi
+
+          if [ "$DEPLOYED_CORS_ORIGIN" != "$STAGING_WEB_ORIGIN" ]; then
+            echo "Staging CORS mismatch: deployed backend origin does not match STAGING_WEB_ORIGIN."
+            exit 1
+          fi
+
+          WEB_ORIGIN="$STAGING_WEB_ORIGIN" npm run smoke-test "$STAGING_PUBLIC_BASE_URL"
 
       - name: Deployment summary
         run: |
