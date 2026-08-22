@@ -10,6 +10,7 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Location: {},
   Position: {},
   Role: {},
+  Division: {},
   User: { findByPk: mockUserFindByPk }
 }));
 
@@ -40,7 +41,8 @@ describe('personal attendance report service', () => {
       full_name: 'Febri User',
       nip_nim: 'NIP-42',
       role: { role_name: 'User' },
-      position: { position_name: 'Engineer' }
+      position: { position_name: 'Engineer' },
+      division: { division_name: 'Information Systems' }
     });
     mockAttendanceFindAll.mockResolvedValue([]);
   });
@@ -100,8 +102,94 @@ describe('personal attendance report service', () => {
       is_empty: true,
       message: 'No attendance records are available for this period.'
     });
-    expect(payload.summary.attendance_rate_percent).toBeNull();
-    expect(payload.summary.attendance_rate_note).toContain('Unavailable');
+    expect(payload.summary.attendance_rate).toBeNull();
+    expect(payload.summary.attendance_rate_label).toBe('N/A');
+    expect(payload.summary.attendance_rate_note).toContain('No counted attendance days');
+    expect(payload.summary.expected_working_days_label).toBe('Unavailable');
+  });
+
+  it('builds UI-ready summary metrics from counted attendance days and exposes identity details', async () => {
+    mockAttendanceFindAll.mockResolvedValueOnce([
+      {
+        id_attendance: 21,
+        user_id: 42,
+        category_id: 1,
+        status_id: 1,
+        attendance_date: '2026-07-01',
+        time_in: new Date('2026-07-01T08:00:00Z'),
+        time_out: new Date('2026-07-01T17:00:00Z'),
+        work_hour: 9,
+        notes: '',
+        attendance_category: { category_name: 'Work From Office' },
+        status: { attendance_status_name: 'ontime' },
+        location: { description: 'Kantor Utama' }
+      },
+      {
+        id_attendance: 22,
+        user_id: 42,
+        category_id: 3,
+        status_id: 2,
+        attendance_date: '2026-07-02',
+        time_in: new Date('2026-07-02T08:30:00Z'),
+        time_out: new Date('2026-07-02T17:00:00Z'),
+        work_hour: 8.5,
+        notes: '',
+        attendance_category: { category_name: 'Work From Anywhere' },
+        status: { attendance_status_name: 'late' },
+        location: { description: 'Client Site' }
+      },
+      {
+        id_attendance: 23,
+        user_id: 42,
+        category_id: 1,
+        status_id: 3,
+        attendance_date: '2026-07-03',
+        time_in: new Date('2026-07-03T00:00:00Z'),
+        time_out: null,
+        work_hour: 0,
+        notes: 'Alpha',
+        attendance_category: { category_name: 'Work From Office' },
+        status: { attendance_status_name: 'alpha' },
+        location: null
+      }
+    ]);
+
+    const payload = await buildPersonalAttendanceReportPayload({
+      userId: 42,
+      query: { period: 'monthly' },
+      now: new Date('2026-07-07T00:30:00+07:00')
+    });
+
+    expect(payload.user).toEqual(
+      expect.objectContaining({
+        full_name: 'Febri User',
+        nip_nim: 'NIP-42',
+        role: 'User',
+        position: 'Engineer',
+        division: 'Information Systems'
+      })
+    );
+    expect(payload.summary).toEqual(
+      expect.objectContaining({
+        attendance_rate: 67,
+        attendance_rate_percent: 67,
+        attendance_rate_label: '67%',
+        attendance_rate_denominator: 'total_counted_days',
+        total_present: 2,
+        total_absent: 1,
+        total_counted_days: 3,
+        on_time_days: 1,
+        late_days: 1,
+        alpha_days: 1,
+        total_work_hours: 17.5,
+        total_work_hours_label: '17h 30m',
+        expected_working_days: null,
+        expected_working_days_label: 'Unavailable'
+      })
+    );
+    expect(payload.status_distribution.on_time).toEqual({ key: 'on_time', label: 'On Time', count: 1, percentage: 33 });
+    expect(payload.status_distribution.late).toEqual({ key: 'late', label: 'Late', count: 1, percentage: 33 });
+    expect(payload.status_distribution.alpha).toEqual({ key: 'alpha', label: 'Alpha', count: 1, percentage: 33 });
   });
 
   it('keeps alpha rows from rendering misleading time range or work hours', async () => {

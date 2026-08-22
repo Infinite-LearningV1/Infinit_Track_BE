@@ -546,6 +546,7 @@ PRODUCTION_DEPLOY_PATH=<absolute-path-to-backend-compose-runtime>
 PRODUCTION_PUBLIC_DOMAIN=<production-public-domain>
 PRODUCTION_PUBLIC_BASE_URL=<production-public-base-url>
 PRODUCTION_EXPECTED_IP=<production-public-ip>
+PRODUCTION_WEB_ORIGIN=https://infinite-track.tech
 ```
 
 #### **Step 3: Deploy**
@@ -602,14 +603,14 @@ Canonical production release should do this in order:
 
 #### **Critical Differences: Staging vs Production**
 
-| Component          | Staging                | Production                   |
-| ------------------ | ---------------------- | ---------------------------- |
-| **Database**       | Staging DB (test data) | Production DB (**separate**) |
-| **JWT_SECRET**     | Staging secret         | **Different** secret         |
-| **CORS_ORIGIN**    | Staging frontend       | Production frontend          |
-| **Deploy Trigger** | Automatic from `master` | Automatic from `master` after reviewed, verified promotion |
-| **Instance Count** | 1                      | 2+ (HA)                      |
-| **Log Level**      | `info`                 | `warn`                       |
+| Component             | Staging                                      | Production                                                                            |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Database**          | Staging DB (test data)                       | Production DB (**separate**)                                                         |
+| **JWT_SECRET**        | Staging secret                               | **Different** secret                                                                  |
+| **CORS_ORIGIN**       | Must equal `STAGING_WEB_ORIGIN`             | Must equal `https://infinite-track.tech` / `PRODUCTION_WEB_ORIGIN`                   |
+| **Deploy Trigger**    | `master` workflow                            | `master` workflow; ordering/protection requires external GitHub evidence              |
+| **Runtime instances** | One tracked `app` service                    | One tracked `app` service; HA is not established by repository runtime config         |
+| **Log level**         | Environment-controlled                       | Environment-controlled; tracked production template currently uses `info`             |
 
 **⚠️ NEVER:**
 
@@ -815,13 +816,11 @@ git push origin feature/new-feature
 
 #### **CORS Errors**
 
-```bash
-# Verify CORS_ORIGIN
-1. Check environment variable in DO Dashboard
-2. Must match frontend URL exactly
-3. Include protocol: https://
-4. No trailing slash
-```
+1. SSH to the target backend droplet.
+2. Enter the configured backend deploy path.
+3. Run `docker compose exec -T app printenv CORS_ORIGIN`.
+4. Compare the value exactly with `STAGING_WEB_ORIGIN` or `PRODUCTION_WEB_ORIGIN` from the corresponding GitHub environment.
+5. For production, the expected browser origin is `https://infinite-track.tech` with no trailing slash.
 
 ## 9. Testing & Quality Assurance
 

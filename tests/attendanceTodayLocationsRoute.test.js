@@ -95,6 +95,7 @@ jest.unstable_mockModule('../src/controllers/attendance.controller.js', () => ({
   debugCheckInTime: mockDebugCheckInTime,
   deleteAttendance: jest.fn(),
   getAllAttendances: jest.fn(),
+  getAttendanceDetail: jest.fn(),
   manualAutoCheckout: jest.fn(),
   getAutoCheckoutSettings: jest.fn(),
   manualResolveWfaBookings: jest.fn(),

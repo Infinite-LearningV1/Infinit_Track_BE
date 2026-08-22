@@ -200,10 +200,27 @@ describe('getAttendanceHistory timeline contract', () => {
     expect(body.data.summary).toEqual(
       expect.objectContaining({
         total_ontime: 1,
+        total_late: 0,
+        total_early: 0,
+        total_alpha: 0,
+        total_present: 1,
+        total_absent: 0,
+        total_counted_days: 1,
+        total_working_days: null,
+        attendance_rate: 100,
+        attendance_rate_label: '100%',
+        attendance_rate_denominator: 'total_counted_days',
         total_wfo: 1,
         total_wfh: 2,
         total_wfa: 3,
-        total_work_hours: 12.75
+        total_work_hours: 12.75,
+        total_work_hours_label: '12h 45m',
+        mode_distribution: {
+          total: 6,
+          wfo: { key: 'wfo', label: 'WFO', count: 1, percentage: 17 },
+          wfh: { key: 'wfh', label: 'WFH', count: 2, percentage: 33 },
+          wfa: { key: 'wfa', label: 'WFA', count: 3, percentage: 50 }
+        }
       })
     );
     expect(body.data.attendances[0]).toEqual(
@@ -216,6 +233,9 @@ describe('getAttendanceHistory timeline contract', () => {
         time_in: '08:04',
         time_out: null,
         time_range: '08:04 - --:--',
+        raw_time_in: '08:04',
+        raw_time_out: null,
+        raw_time_range: '08:04 - --:--',
         status_key: 'ontime',
         status_label: 'On Time',
         display_badge_key: 'active',
@@ -300,8 +320,63 @@ describe('getAttendanceHistory timeline contract', () => {
         status_label: 'Alpha',
         display_badge_key: 'alpha',
         display_badge_label: 'Alpha',
+        time_in: null,
+        time_out: null,
+        time_range: '--:-- - --:--',
+        raw_time_in: '00:00',
+        raw_time_out: '07:00',
+        raw_time_range: '00:00 - 07:00',
         work_hour: null,
         work_hour_raw: 32
+      })
+    );
+  });
+
+  it('returns nullable attendance rate and zeroed mode distribution when counted days are empty', async () => {
+    const activeAttendance = {
+      id_attendance: 700,
+      user_id: 42,
+      category_id: 1,
+      status_id: 1,
+      attendance_date: '2026-05-03',
+      time_in: new Date('2026-05-03T08:04:00+07:00'),
+      time_out: null,
+      work_hour: 0,
+      notes: 'Manual attendance',
+      attendance_category: { category_name: 'Work From Office' },
+      status: { attendance_status_name: 'ontime' },
+      location: { description: 'Kantor Utama' }
+    };
+
+    mockControllerDependencies({
+      findAllResults: [[], [], [{ total_work_hours: null }]],
+      findAndCountAllResult: { count: 1, rows: [activeAttendance] }
+    });
+    const { getAttendanceHistory } = await import('../src/controllers/attendance.controller.js');
+
+    const req = { user: { id: 42 }, query: { period: 'monthly', page: '1', limit: '5' } };
+    const res = buildRes();
+
+    await getAttendanceHistory(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.summary).toEqual(
+      expect.objectContaining({
+        total_present: 0,
+        total_absent: 0,
+        total_counted_days: 0,
+        total_working_days: null,
+        attendance_rate: null,
+        attendance_rate_label: 'N/A',
+        attendance_rate_denominator: 'total_counted_days',
+        total_work_hours: 0,
+        total_work_hours_label: '0h',
+        mode_distribution: {
+          total: 0,
+          wfo: { key: 'wfo', label: 'WFO', count: 0, percentage: 0 },
+          wfh: { key: 'wfh', label: 'WFH', count: 0, percentage: 0 },
+          wfa: { key: 'wfa', label: 'WFA', count: 0, percentage: 0 }
+        }
       })
     );
   });

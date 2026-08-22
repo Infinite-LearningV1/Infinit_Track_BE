@@ -66,6 +66,38 @@ const Booking = sequelize.define(
       type: DataTypes.STRING(50),
       allowNull: true
     },
+    request_reason_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'wfa_request_reasons',
+        key: 'id'
+      }
+    },
+    request_other_reason: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    rejection_reason_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'wfa_rejection_reasons',
+        key: 'id'
+      }
+    },
+    rejection_note: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    radius_snapshot: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    wfa_scoring_snapshot: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
     rejection_reason: {
       type: DataTypes.INTEGER,
       allowNull: true

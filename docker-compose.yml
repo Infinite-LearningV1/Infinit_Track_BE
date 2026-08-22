@@ -1,9 +1,6 @@
 services:
   app:
     image: ${BACKEND_IMAGE:-registry.digitalocean.com/infinit-track/infinit-track-backend}:${BACKEND_IMAGE_TAG:?BACKEND_IMAGE_TAG is required}
-    # Canonical droplet runtime is image-first via DOCR + immutable BACKEND_IMAGE_TAG.
-    # This compose file is the droplet runtime surface, so it must fail fast when the
-    # selected immutable tag is missing instead of silently falling back to `latest`.
     container_name: infinit-track-app
     restart: unless-stopped
     network_mode: host
@@ -16,6 +13,7 @@ services:
       - ${BACKEND_ENV_FILE:-./deploy/env/backend.production.env}
     environment:
       NODE_ENV: production
+      APP_BIND_HOST: 127.0.0.1
       PORT: 3005
       TZ: Asia/Jakarta
       LOG_LEVEL: ${LOG_LEVEL:-info}

@@ -13,14 +13,23 @@ import roleGuard from '../middlewares/roleGuard.js';
 import {
   validateUpdateUser,
   validateCreateUser,
+  validateListUsers,
   validate,
   upload
 } from '../middlewares/validator.js';
 
 const router = express.Router();
 
-// GET /users - Get all users with full profile details (admin and management only)
-router.get('/', verifyToken, roleGuard(['Admin', 'Management']), getAllUsers);
+// GET /users - user directory list (admin and management only).
+// Slim projection; supports the INF-250 server-driven query matrix.
+router.get(
+  '/',
+  verifyToken,
+  roleGuard(['Admin', 'Management']),
+  validateListUsers,
+  validate,
+  getAllUsers
+);
 
 // GET /users/:id - Get user by ID with full profile details (admin and management only)
 router.get('/:id', verifyToken, roleGuard(['Admin', 'Management']), getUserById);

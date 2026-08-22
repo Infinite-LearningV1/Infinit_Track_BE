@@ -136,4 +136,66 @@ describe('errorHandler middleware', () => {
       hint: 'Jalankan dry_run=true atau siapkan approved WFA booking/lokasi untuk user conflict.'
     });
   });
+
+  // Characterization cases (INF-252 Phase 1). These describe behavior that
+  // already exists, so they must pass on first run. They exist to prove the
+  // AppError branch added afterwards changes nothing here.
+
+  it('maps SequelizeValidationError to 400 with field errors', () => {
+    const err = Object.assign(new Error('Validation failed'), {
+      name: 'SequelizeValidationError',
+      errors: [
+        { path: 'email', message: 'email must be unique' },
+        { path: 'nip_nim', message: 'nip_nim cannot be null' }
+      ]
+    });
+    const res = createResponse();
+
+    errorHandler(err, { path: '/api/users', method: 'POST', ip: '127.0.0.1' }, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Validation error',
+      errors: [
+        { field: 'email', message: 'email must be unique' },
+        { field: 'nip_nim', message: 'nip_nim cannot be null' }
+      ]
+    });
+  });
+
+  it('maps SequelizeUniqueConstraintError to 400', () => {
+    const err = Object.assign(new Error('duplicate'), {
+      name: 'SequelizeUniqueConstraintError'
+    });
+    const res = createResponse();
+
+    errorHandler(err, { path: '/api/users', method: 'POST', ip: '127.0.0.1' }, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Resource already exists'
+    });
+  });
+
+  it('maps JsonWebTokenError to 401', () => {
+    const err = Object.assign(new Error('jwt malformed'), { name: 'JsonWebTokenError' });
+    const res = createResponse();
+
+    errorHandler(err, { path: '/api/users', method: 'GET', ip: '127.0.0.1' }, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid token' });
+  });
+
+  it('maps TokenExpiredError to 401', () => {
+    const err = Object.assign(new Error('jwt expired'), { name: 'TokenExpiredError' });
+    const res = createResponse();
+
+    errorHandler(err, { path: '/api/users', method: 'GET', ip: '127.0.0.1' }, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Token expired' });
+  });
 });

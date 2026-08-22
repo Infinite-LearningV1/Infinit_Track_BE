@@ -13,5 +13,72 @@ module.exports = {
 	},
 	rules: {
 		'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
-	}
+	},
+	// Modular MVC layer contract (ADR-009). Scoped to src/modules/** so legacy
+	// layer-first folders are unaffected during migration.
+	overrides: [
+		{
+			files: ['src/modules/*/*.controller.js'],
+			rules: {
+				'no-restricted-imports': [
+					'error',
+					{
+						patterns: [
+							{
+								group: ['sequelize', 'sequelize/*'],
+								message:
+									'Controllers must not touch the ORM. Move the query into a repository or query object.'
+							},
+							{
+								group: ['**/models', '**/models/*'],
+								message: 'Controllers must not import models. Go through a service.'
+							},
+							{
+								// config/database.js exports the configured Sequelize instance,
+								// which is how legacy controllers obtain transactions. Without
+								// this the "controllers must not touch the ORM" guarantee has a
+								// hole wide enough to drive a transaction through.
+								group: ['**/config/database', '**/config/database.js'],
+								message:
+									'Controllers must not reach the ORM through the database config. Transactions belong to the service.'
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			files: ['src/modules/*/*.service.js'],
+			rules: {
+				'no-restricted-imports': [
+					'error',
+					{
+						patterns: [
+							{
+								group: ['express', 'express/*'],
+								message: 'Services must not know about HTTP. Keep Express in the controller.'
+							}
+						]
+					}
+				],
+				'id-denylist': ['error', 'req', 'res', 'next']
+			}
+		},
+		{
+			files: ['src/modules/*/*.repository.js'],
+			rules: {
+				'no-restricted-imports': [
+					'error',
+					{
+						patterns: [
+							{
+								group: ['express', 'express/*'],
+								message: 'Repositories must not answer HTTP.'
+							}
+						]
+					}
+				]
+			}
+		}
+	]
 };

@@ -1,5 +1,9 @@
 import { jest } from '@jest/globals';
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import Ajv from 'ajv';
+import { load as loadStrictYaml } from 'js-yaml';
 import request from 'supertest';
 
 import {
@@ -50,10 +54,11 @@ const buildApp = async ({ verifyTokenImpl } = {}) => {
   return app;
 };
 
-const buildValidatorApp = () => {
+const buildValidatorApp = ({ onCreate } = {}) => {
   const app = express();
   app.use(express.json());
   app.post('/bookings', createBookingValidation, validate, (req, res) => {
+    onCreate?.(req);
     res.status(201).json({ ok: true });
   });
   app.patch('/bookings/:id', updateStatusValidation, validate, (req, res) => {
@@ -64,8 +69,23 @@ const buildValidatorApp = () => {
 
 const validBookingPayload = {
   schedule_date: '2026-05-04',
+  request_reason_id: 1,
   latitude: -6.2,
   longitude: 106.8
+};
+
+const validateBookingValidationEnvelope = (body) => {
+  const openapi = loadStrictYaml(
+    fs.readFileSync(path.resolve(process.cwd(), 'docs/openapi.yaml'), 'utf8')
+  );
+  const schema = openapi.paths['/api/bookings'].post.responses['400']
+    .content['application/json'].schema;
+  const validateSchema = new Ajv({ allErrors: true, nullable: true }).compile({
+    components: openapi.components,
+    ...schema
+  });
+
+  expect(validateSchema(body)).toBe(true);
 };
 
 describe('bookings route contract', () => {
@@ -98,12 +118,143 @@ describe('bookings route contract', () => {
 });
 
 describe('bookings validator contract', () => {
+  test.each([
+    ['abc', 'Location ID harus berupa integer positif'],
+    ['7.5', 'Location ID harus berupa integer positif'],
+    [0, 'Location ID harus berupa integer positif'],
+    [-1, 'Location ID harus berupa integer positif'],
+    [[7], 'Location ID harus berupa integer positif'],
+    [null, 'Location ID harus berupa integer positif'],
+    [{ id: 7 }, 'Location ID harus berupa integer positif'],
+    [true, 'Location ID harus berupa integer positif']
+  ])('rejects malformed location_id %p before the booking controller boundary', async (locationId, message) => {
+    const onCreate = jest.fn();
+    const response = await request(buildValidatorApp({ onCreate }))
+      .post('/bookings')
+      .send({ ...validBookingPayload, location_id: locationId })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'E_VALIDATION',
+      message,
+      errors: [{ path: 'location_id', msg: message, location: 'body' }]
+    });
+    expect(onCreate).not.toHaveBeenCalled();
+    validateBookingValidationEnvelope(response.body);
+  });
+
+  test('preserves absent location_id for canonical coordinate lookup', async () => {
+    const onCreate = jest.fn();
+    await request(buildValidatorApp({ onCreate }))
+      .post('/bookings')
+      .send(validBookingPayload)
+      .expect(201);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onCreate.mock.calls[0][0].body).not.toHaveProperty('location_id');
+  });
+
+  test.each([7, '7'])('accepts and normalizes a positive integer location_id %p for scoped reuse', async (locationId) => {
+    const onCreate = jest.fn();
+    await request(buildValidatorApp({ onCreate }))
+      .post('/bookings')
+      .send({ ...validBookingPayload, location_id: locationId })
+      .expect(201);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onCreate.mock.calls[0][0].body.location_id).toBe(7);
+  });
+
   test('missing schedule_date returns 400', async () => {
     const app = buildValidatorApp();
     const payload = { ...validBookingPayload };
     delete payload.schedule_date;
 
     await request(app).post('/bookings').send(payload).expect(400);
+  });
+
+  test.each(['10-08-2026', '08-10-2026', '2026-02-30'])(
+    'schedule_date %s returns INVALID_SCHEDULE_DATE',
+    async (scheduleDate) => {
+      const app = buildValidatorApp();
+
+      const res = await request(app)
+        .post('/bookings')
+        .send({ ...validBookingPayload, schedule_date: scheduleDate });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_SCHEDULE_DATE');
+    }
+  );
+
+  test('returns the documented Express Validator item for a calendar-invalid booking date', async () => {
+    const response = await request(buildValidatorApp())
+      .post('/bookings')
+      .send({ ...validBookingPayload, schedule_date: '2026-02-30' })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      success: false,
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid',
+      errors: [{
+        type: 'field',
+        value: '2026-02-30',
+        msg: 'schedule_date tidak merepresentasikan tanggal kalender yang valid',
+        path: 'schedule_date',
+        location: 'body',
+        code: 'INVALID_SCHEDULE_DATE'
+      }]
+    });
+    validateBookingValidationEnvelope(response.body);
+  });
+
+  test.each([
+    ['latitude', 0, 'E_VALIDATION', 'Latitude tidak boleh 0'],
+    ['request_reason_id', 0, 'WFA_REQUEST_REASON_REQUIRED', 'request_reason_id wajib diisi'],
+    ['request_reason_id', null, 'WFA_REQUEST_REASON_REQUIRED', 'request_reason_id wajib diisi']
+  ])(
+    'preserves original %s input in the documented booking validation envelope',
+    async (field, value, code, message) => {
+      const response = await request(buildValidatorApp())
+        .post('/bookings')
+        .send({ ...validBookingPayload, [field]: value })
+        .expect(400);
+
+      expect(response.body).toMatchObject({
+        success: false,
+        code,
+        message,
+        errors: [{ type: 'field', value, msg: message, path: field, location: 'body' }]
+      });
+      validateBookingValidationEnvelope(response.body);
+    }
+  );
+
+  test('missing request_reason_id returns WFA_REQUEST_REASON_REQUIRED', async () => {
+    const app = buildValidatorApp();
+    const payload = { ...validBookingPayload };
+    delete payload.request_reason_id;
+
+    const res = await request(app).post('/bookings').send(payload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('WFA_REQUEST_REASON_REQUIRED');
+  });
+
+  test('accepts compatibility radius and suitability fields without trusting their shape', async () => {
+    const app = buildValidatorApp();
+
+    await request(app)
+      .post('/bookings')
+      .send({
+        ...validBookingPayload,
+        radius: 9999,
+        suitability_score: 999,
+        suitability_label: 'client-controlled'
+      })
+      .expect(201);
   });
 
   test.each([
@@ -138,10 +289,28 @@ describe('bookings validator contract', () => {
     await request(app).post('/bookings').send(payload).expect(400);
   });
 
-  test.each(['approved', 'rejected'])('status %s passes', async (status) => {
+  test('status approved passes without rejection fields', async () => {
     const app = buildValidatorApp();
 
-    await request(app).patch('/bookings/123').send({ status }).expect(200);
+    await request(app).patch('/bookings/123').send({ status: 'approved' }).expect(200);
+  });
+
+  test('status rejected requires rejection_reason_id', async () => {
+    const app = buildValidatorApp();
+
+    const res = await request(app).patch('/bookings/123').send({ status: 'rejected' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('REJECTION_REASON_REQUIRED');
+  });
+
+  test('status rejected accepts an integer reason and optional note', async () => {
+    const app = buildValidatorApp();
+
+    await request(app)
+      .patch('/bookings/123')
+      .send({ status: 'rejected', rejection_reason_id: 2, rejection_note: 'Konteks' })
+      .expect(200);
   });
 
   test('any other status returns 400', async () => {

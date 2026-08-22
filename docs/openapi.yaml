@@ -322,7 +322,7 @@ paths:
         - in: query
           name: type
           required: true
-          description: Selects the legacy response shape. Payload fields vary by type; see the separate 200 examples.
+          description: Selects a legacy analysis type. `wfa` is retired and returns the documented 410 migration response; the 200 examples apply only to discipline and Smart AC.
           schema:
             type: string
             enum: [wfa, discipline, smart_ac]
@@ -336,7 +336,7 @@ paths:
             default: monthly
       responses:
         '200':
-          description: Legacy combined analysis response. The `data` payload varies by `type`; this deprecated route is transition-only and does not replace the dedicated canonical endpoint contracts.
+          description: Legacy combined analysis response for discipline and Smart AC only. This deprecated route is transition-only and does not replace the dedicated canonical endpoint contracts.
           content:
             application/json:
               schema:
@@ -374,49 +374,6 @@ paths:
                           entity_kind:
                             type: string
                             example: user
-                          consistency:
-                            type: object
-                            additionalProperties: true
-                          weights:
-                            type: object
-                            additionalProperties: true
-                          distribution:
-                            type: object
-                            additionalProperties:
-                              type: integer
-                          ranking:
-                            type: array
-                            items:
-                              type: object
-                              additionalProperties: true
-                      - type: object
-                        description: Legacy WFA payload shape from `getFuzzyAhpAnalysis`. Canonical live provider-boundary behavior is documented on `/api/analysis/fuzzy-ahp/wfa`.
-                        properties:
-                          type:
-                            type: string
-                            enum: [wfa]
-                          period:
-                            type: string
-                            enum: [weekly, monthly]
-                            example: monthly
-                          generated_at:
-                            type: string
-                            format: date-time
-                          timezone:
-                            type: string
-                            example: Asia/Jakarta
-                          window:
-                            type: object
-                            properties:
-                              start_at:
-                                type: string
-                                format: date-time
-                              end_at:
-                                type: string
-                                format: date-time
-                          entity_kind:
-                            type: string
-                            example: place
                           consistency:
                             type: object
                             additionalProperties: true
@@ -521,47 +478,6 @@ paths:
                             lateness_frequency: 5
                             work_hour_consistency: 95
                     message: 'Fuzzy AHP analysis retrieved successfully'
-                wfa:
-                  summary: Legacy `type=wfa` response shape
-                  value:
-                    success: true
-                    data:
-                      type: wfa
-                      period: monthly
-                      generated_at: '2026-04-23T03:30:00.000Z'
-                      timezone: Asia/Jakarta
-                      window:
-                        start_at: '2026-03-31T17:00:00.000Z'
-                        end_at: '2026-04-23T03:30:00.000Z'
-                      entity_kind: place
-                      consistency:
-                        CR: 0.058
-                        CI: 0
-                        lambda_max: 0
-                        threshold: 0.1
-                        is_consistent: true
-                        verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
-                      weights:
-                        criteria: [location_type, distance_factor, amenity_score]
-                        values: [0.8205461382121108, 0.17945386178788933, 0]
-                        method: "Chang's Extent Analysis"
-                      distribution:
-                        Sangat Tinggi: 1
-                        Tinggi: 0
-                        Sedang: 0
-                        Rendah: 0
-                        Sangat Rendah: 0
-                      ranking:
-                        - rank: 1
-                          id: 3
-                          name: Cafe Example Palu
-                          score: 78.4
-                          label: Sangat Tinggi
-                          breakdown:
-                            location_type: cafe
-                            amenity_score: 50
-                            distance: 1000
-                    message: Fuzzy AHP analysis retrieved successfully
                 smart_ac:
                   summary: Legacy `type=smart_ac` response shape
                   value:
@@ -610,6 +526,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '410':
+          description: '`type=wfa` has moved to the dedicated facility-scoring analysis endpoint.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_ANALYSIS_MOVED
+                  message:
+                    type: string
+                    example: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+              example:
+                success: false
+                code: WFA_ANALYSIS_MOVED
+                message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
 
   /api/analysis/fuzzy-ahp/discipline:
     get:
@@ -828,9 +765,10 @@ paths:
       tags:
         - Analysis
       summary: Get WFA Fuzzy AHP analysis
-      description: Retrieve dedicated WFA FAHP analysis using Geoapify live Places data. The legacy combined `/api/analysis/fuzzy-ahp?type=wfa` endpoint remains temporarily supported for compatibility.
+      description: Retrieve canonical WFA facility-evidence analysis. `schedule_date` is validated as a strict future WIB date; the retired legacy combined WFA route returns 410 and directs clients here.
       security:
         - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - in: query
           name: lat
@@ -850,6 +788,15 @@ paths:
             minimum: -180
             maximum: 180
             example: 119.8707
+        - in: query
+          name: schedule_date
+          required: true
+          description: Strict future WFA date in the Asia/Jakarta business calendar.
+          schema:
+            type: string
+            format: date
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+            example: '2099-08-10'
         - in: query
           name: radius_meters
           required: false
@@ -873,172 +820,203 @@ paths:
                     example: true
                   data:
                     type: object
+                    required: [candidates, searchCriteria, methodology]
                     properties:
-                      type:
-                        type: string
-                        example: wfa
-                      timezone:
-                        type: string
-                        example: Asia/Jakarta
-                      data_source:
-                        type: string
-                        example: geoapify_live
-                      query:
-                        type: object
-                        properties:
-                          lat:
-                            type: number
-                            example: -0.8917
-                          lon:
-                            type: number
-                            example: 119.8707
-                          radius_meters:
-                            type: integer
-                            example: 5000
-                      entity_kind:
-                        type: string
-                        example: place
-                      consistency:
-                        type: object
-                        properties:
-                          CR:
-                            type: number
-                            example: 0.058
-                          CI:
-                            type: number
-                            example: 0
-                          lambda_max:
-                            type: number
-                            example: 0
-                          threshold:
-                            type: number
-                            example: 0.1
-                          is_consistent:
-                            type: boolean
-                            example: true
-                          verdict:
-                            type: string
-                            example: 'Matriks perbandingan konsisten (CR < 0.10)'
-                      weights:
-                        type: object
-                        properties:
-                          criteria:
-                            type: array
-                            items:
-                              type: string
-                            example: [location_type, distance_factor, amenity_score]
-                          values:
-                            type: array
-                            items:
-                              type: number
-                            example: [0.8205461382121108, 0.17945386178788933, 0]
-                          method:
-                            type: string
-                            example: "Chang's Extent Analysis"
-                      distribution:
-                        type: object
-                        additionalProperties:
-                          type: integer
-                      ranking:
+                      candidates:
                         type: array
                         items:
-                          type: object
-                          properties:
-                            rank:
-                              type: integer
-                            place_id:
+                          $ref: '#/components/schemas/WFARecommendation'
+                      searchCriteria:
+                        type: object
+                        required: [center_latitude, center_longitude, search_radius_meters, categories_searched, total_candidates_found, recommendations_returned]
+                        properties:
+                          center_latitude:
+                            type: number
+                            example: -0.8917
+                          center_longitude:
+                            type: number
+                            example: 119.8707
+                          search_radius_meters:
+                            type: integer
+                            example: 5000
+                          categories_searched:
+                            type: array
+                            minItems: 4
+                            maxItems: 4
+                            uniqueItems: true
+                            items:
                               type: string
-                            name:
-                              type: string
-                            score:
-                              type: number
-                            label:
-                              type: string
-                            breakdown:
-                              type: object
-                              properties:
-                                location_type:
-                                  type: string
-                                distance_m:
-                                  type: integer
-                                amenity_score:
-                                  type: integer
-                      empty_real:
-                        type: boolean
+                              enum: [catering, accommodation, office, education]
+                            example: [catering, accommodation, office, education]
+                          total_candidates_found:
+                            type: integer
+                          recommendations_returned:
+                            type: integer
+                      methodology:
+                        type: object
+                        required: [approach, criteria_weights, facility_matrix]
+                        properties:
+                          approach:
+                            type: string
+                            example: Fuzzy AHP facility-evidence scoring
+                          criteria_weights:
+                            type: object
+                            required: [location_type, distance_factor, facility_score, consistency_ratio, weighting_method]
+                            properties:
+                              location_type:
+                                type: number
+                              distance_factor:
+                                type: number
+                              facility_score:
+                                type: number
+                              consistency_ratio:
+                                type: number
+                                example: 0.0576
+                              weighting_method:
+                                type: string
+                                example: row_geometric_mean_fallback
+                          facility_matrix:
+                            type: object
+                            required: [version, criteria, weights, consistency_ratio, weighting_method]
+                            properties:
+                              version:
+                                type: string
+                                enum: [facility_equal_v1]
+                              criteria:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]]
+                              weights:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[0.2, 0.2, 0.2, 0.2, 0.2]]
+                              consistency_ratio:
+                                type: number
+                                enum: [0]
+                              weighting_method:
+                                type: string
+                                enum: [chang_extent]
                   message:
                     type: string
                     example: WFA Fuzzy AHP analysis retrieved successfully
-              example:
-                success: true
-                data:
-                  type: wfa
-                  timezone: Asia/Jakarta
-                  data_source: geoapify_live
-                  query:
-                    lat: -0.8917
-                    lon: 119.8707
-                    radius_meters: 5000
-                  entity_kind: place
-                  consistency:
-                    CR: 0.058
-                    CI: 0
-                    lambda_max: 0
-                    threshold: 0.1
-                    is_consistent: true
-                    verdict: 'Matriks perbandingan konsisten (CR < 0.10)'
-                  weights:
-                    criteria: [location_type, distance_factor, amenity_score]
-                    values: [0.8205461382121108, 0.17945386178788933, 0]
-                    method: "Chang's Extent Analysis"
-                  distribution:
-                    Sangat Tinggi: 1
-                    Tinggi: 0
-                    Sedang: 0
-                    Rendah: 0
-                    Sangat Rendah: 0
-                  ranking:
-                    - rank: 1
-                      place_id: geoapify:1
-                      name: Cafe Example Palu
-                      score: 78.4
-                      label: Sangat Tinggi
-                      breakdown:
-                        location_type: cafe
-                        distance_m: 412
-                        amenity_score: 83
-                  empty_real: false
-                message: WFA Fuzzy AHP analysis retrieved successfully
+              examples:
+                ranked:
+                  summary: Candidate with verified facility evidence is ranked.
+                  value:
+                    success: true
+                    data:
+                      candidates:
+                        - place_id: geoapify:1
+                          name: Cafe Example Palu
+                          address: 'Jl. Merdeka, Palu'
+                          latitude: -0.8917
+                          longitude: 119.8707
+                          status: ranked
+                          distance_meters: 412
+                          location_type: cafe
+                          facility_score: 80
+                          facility_confidence: 100
+                          facilities: { internet_access: 1, air_conditioning: 1, toilets: 1, opening_hours: 1, wheelchair_accessibility: 0 }
+                          final_score: 78.4
+                          final_label: Sangat Baik
+                          rank: 1
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: WFA Fuzzy AHP analysis retrieved successfully
+                insufficient_facility_data:
+                  summary: Discovery succeeded but facility evidence is insufficient to rank.
+                  value:
+                    success: true
+                    data:
+                      candidates:
+                        - place_id: geoapify:2
+                          name: Sparse Cafe
+                          address: null
+                          latitude: -0.892
+                          longitude: 119.871
+                          status: insufficient_facility_data
+                          distance_meters: 500
+                          location_type: cafe
+                          facility_score: 100
+                          facility_confidence: 20
+                          facilities: { internet_access: 1, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: WFA Fuzzy AHP analysis retrieved successfully
+                facility_enrichment_failed:
+                  summary: Candidate details could not be enriched; no score is fabricated.
+                  value:
+                    success: true
+                    data:
+                      candidates:
+                        - place_id: geoapify:3
+                          name: Unavailable Details
+                          address: null
+                          latitude: -0.893
+                          longitude: 119.872
+                          status: facility_enrichment_failed
+                          distance_meters: 700
+                          location_type: office
+                          facility_score: null
+                          facility_confidence: null
+                          facilities: { internet_access: null, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                empty:
+                  summary: No nearby venue matches the search categories.
+                  value:
+                    success: true
+                    data:
+                      candidates: []
+                      searchCriteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 0, recommendations_returned: 0 }
+                      methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: WFA Fuzzy AHP analysis retrieved successfully
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/WfaQueryValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '503':
-          description: Geoapify authentication or provider is unavailable
+          description: Geoapify provider discovery is unavailable; no result is fabricated.
           content:
             application/json:
               schema:
                 type: object
-                required: [success, code, provider, reason]
+                required: [success, code, message]
                 properties:
                   success:
                     type: boolean
                     example: false
                   code:
                     type: string
-                    example: AUTH_OR_PROVIDER_UNAVAILABLE
-                  provider:
+                    example: WFA_PROVIDER_UNAVAILABLE
+                  message:
                     type: string
-                    example: geoapify
-                  reason:
-                    type: string
-                    example: auth_missing
+                    example: 'Internal server error'
               example:
                 success: false
-                code: AUTH_OR_PROVIDER_UNAVAILABLE
-                provider: geoapify
-                reason: auth_missing
+                code: WFA_PROVIDER_UNAVAILABLE
+                message: 'Internal server error'
+
+        '500':
+          description: WFA check-in-window configuration is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+              example:
+                success: false
+                code: WFA_CONFIG_UNAVAILABLE
+                message: 'Internal server error'
 
   /api/analysis/fuzzy-ahp/smart-ac:
     get:
@@ -1209,17 +1187,33 @@ paths:
       tags:
         - Analysis
       summary: Get dashboard recap for Fuzzy AHP analysis
-      description: Retrieve a dashboard-specific monthly recap for a single FAHP type. This additive route reuses the legacy `type` query values `discipline`, `wfa`, and `smart_ac`, applies the monthly window internally, and does not expose the full dedicated detail payloads.
+      description: Retrieve a dashboard-specific FAHP recap. Discipline and Smart AC use the existing dashboard monthly recap semantics. `type=wfa` reuses this dashboard endpoint with explicit `from/to` date boundaries; both are required for WFA, scoped to `Booking.schedule_date` in Asia/Jakarta semantics, and the maximum inclusive window is 31 days. WFA dashboard requests accept only `type`, `from`, and `to`; live latitude/longitude/schedule-date/radius analysis remains on `/api/analysis/fuzzy-ahp/wfa`.
       security:
         - bearerAuth: []
       parameters:
         - in: query
           name: type
           required: true
-          description: Required dashboard recap type selector using the legacy combined-contract values.
+          description: Required dashboard recap type selector. Use `from` and `to` when `type=wfa`.
           schema:
             type: string
             enum: [discipline, wfa, smart_ac]
+        - in: query
+          name: from
+          required: false
+          description: Required when `type=wfa`. Inclusive WFA dashboard start date in `YYYY-MM-DD` format.
+          schema:
+            type: string
+            format: date
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - in: query
+          name: to
+          required: false
+          description: Required when `type=wfa`. Inclusive WFA dashboard end date in `YYYY-MM-DD` format. The inclusive WFA range must not exceed 31 days.
+          schema:
+            type: string
+            format: date
+            pattern: '^\d{4}-\d{2}-\d{2}$'
       responses:
         '200':
           description: Fuzzy AHP dashboard recap retrieved successfully
@@ -1251,7 +1245,18 @@ paths:
                         properties:
                           period:
                             type: string
+                            nullable: true
                             example: monthly
+                          from:
+                            type: string
+                            format: date
+                            nullable: true
+                            example: '2026-08-01'
+                          to:
+                            type: string
+                            format: date
+                            nullable: true
+                            example: '2026-08-15'
                       executed_window:
                         type: object
                         properties:
@@ -1263,6 +1268,7 @@ paths:
                             format: date-time
                       status:
                         type: string
+                        enum: [ready, empty, needs_data]
                         example: ready
                       needs_data:
                         type: boolean
@@ -1288,14 +1294,26 @@ paths:
                           properties:
                             key:
                               type: string
+                              enum: [alpha_rate, lateness_severity, lateness_frequency, work_focus, attendance, location_type, distance_factor, facility_score, history, checkin_pattern, context, transition]
                             label:
                               type: string
+                              nullable: true
                             display_label:
                               type: string
                               example: Disiplin Kehadiran
                             value:
                               type: number
                               format: float
+                      methodology:
+                        type: object
+                        description: Present for WFA dashboard analysis; values are Backend-authored by the canonical WFA FAHP engine.
+                        properties:
+                          version:
+                            type: string
+                            example: wfa_fahp_v1
+                          weighting_method:
+                            type: string
+                            example: row_geometric_mean_fallback
                       ranking_preview:
                         type: object
                         properties:
@@ -1309,6 +1327,21 @@ paths:
                               properties:
                                 rank:
                                   type: integer
+                                location_key:
+                                  type: string
+                                  description: Backend-authored deterministic physical-location cluster key.
+                                location_label:
+                                  type: string
+                                  nullable: true
+                                  example: Cafe Merdeka
+                                latitude:
+                                  type: number
+                                  format: float
+                                  nullable: true
+                                longitude:
+                                  type: number
+                                  format: float
+                                  nullable: true
                                 id:
                                   type: integer
                                   nullable: true
@@ -1322,6 +1355,49 @@ paths:
                                 label:
                                   type: string
                                   nullable: true
+                                criteria_summary:
+                                  type: object
+                                  nullable: true
+                                  properties:
+                                    location_type_score:
+                                      type: number
+                                      format: float
+                                    distance_factor_score:
+                                      type: number
+                                      format: float
+                                    facility_score:
+                                      type: number
+                                      format: float
+                                approved_booking_count:
+                                  type: integer
+                                  minimum: 0
+                                  nullable: true
+                                analyzable_booking_count:
+                                  type: integer
+                                  minimum: 0
+                                  nullable: true
+                      evidence:
+                        type: object
+                        description: Present for WFA dashboard analysis; counts Approved WFA rows, analyzable snapshot evidence, and exclusions.
+                        properties:
+                          approved_booking_count:
+                            type: integer
+                            minimum: 0
+                          analyzable_booking_count:
+                            type: integer
+                            minimum: 0
+                          excluded_missing_snapshot_count:
+                            type: integer
+                            minimum: 0
+                          excluded_incompatible_snapshot_count:
+                            type: integer
+                            minimum: 0
+                          unique_location_count:
+                            type: integer
+                            minimum: 0
+                          ranked_location_count:
+                            type: integer
+                            minimum: 0
                       distribution:
                         type: object
                         additionalProperties:
@@ -1335,7 +1411,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   # Attendance Endpoints
   /api/attendance/today-locations:
     get:
@@ -1616,30 +1691,65 @@ paths:
           name: page
           schema:
             type: integer
+            minimum: 1
+            maximum: 90071992547410
             default: 1
-          description: Page number for pagination
+          description: Positive page number for pagination.
         - in: query
           name: limit
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
             default: 10
-          description: Number of items per page
+          description: Number of audit rows per page.
         - in: query
           name: search
           schema:
             type: string
-          description: Search by user name or email
+          description: Case-insensitive literal search across user full name, NIP/NIM, and email.
         - in: query
-          name: date
+          name: from
           schema:
             type: string
             format: date
-          description: Filter by specific date (YYYY-MM-DD)
+          description: Inclusive attendance-date lower bound (YYYY-MM-DD).
         - in: query
-          name: user_id
+          name: to
           schema:
-            type: integer
-          description: Filter by specific user ID
+            type: string
+            format: date
+          description: Inclusive attendance-date upper bound (YYYY-MM-DD); must not precede from.
+        - in: query
+          name: mode
+          schema:
+            type: string
+            enum: [wfo, wfh, wfa]
+          description: Filter by canonical work mode.
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [ontime, late, alpha, early]
+          description: Filter by canonical attendance status.
+        - in: query
+          name: checkout_state
+          schema:
+            type: string
+            enum: [completed, open]
+          description: Filter completed records (time_out present) or open records (time_out absent).
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [attendance_date, time_in, time_out, full_name, status, created_at]
+          description: Allowlisted audit sort key.
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [ASC, DESC]
+          description: Sort direction, normalized to uppercase.
       responses:
         '200':
           description: Attendance records retrieved successfully
@@ -1651,15 +1761,17 @@ paths:
                   success:
                     type: boolean
                     example: true
+                  message:
+                    type: string
+                    example: Data absensi berhasil diambil
                   data:
-                    type: object
-                    properties:
-                      attendances:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Attendance'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AttendanceAuditListRow'
+                  pagination:
+                    $ref: '#/components/schemas/AttendanceAuditPagination'
+        '400':
+          $ref: '#/components/responses/AttendanceValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2023,6 +2135,29 @@ paths:
                           total_alpha:
                             type: integer
                             example: 0
+                          total_present:
+                            type: integer
+                            example: 11
+                          total_absent:
+                            type: integer
+                            example: 1
+                          total_counted_days:
+                            type: integer
+                            example: 12
+                          total_working_days:
+                            type: integer
+                            nullable: true
+                            example: null
+                          attendance_rate:
+                            type: integer
+                            nullable: true
+                            example: 92
+                          attendance_rate_label:
+                            type: string
+                            example: 92%
+                          attendance_rate_denominator:
+                            type: string
+                            example: total_counted_days
                           total_wfo:
                             type: integer
                             example: 6
@@ -2036,6 +2171,60 @@ paths:
                             type: number
                             format: float
                             example: 88.5
+                          total_work_hours_label:
+                            type: string
+                            example: 88h 30m
+                          mode_distribution:
+                            type: object
+                            properties:
+                              total:
+                                type: integer
+                                example: 11
+                              wfo:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    example: wfo
+                                  label:
+                                    type: string
+                                    example: WFO
+                                  count:
+                                    type: integer
+                                    example: 6
+                                  percentage:
+                                    type: integer
+                                    example: 55
+                              wfa:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    example: wfa
+                                  label:
+                                    type: string
+                                    example: WFA
+                                  count:
+                                    type: integer
+                                    example: 3
+                                  percentage:
+                                    type: integer
+                                    example: 27
+                              wfh:
+                                type: object
+                                properties:
+                                  key:
+                                    type: string
+                                    example: wfh
+                                  label:
+                                    type: string
+                                    example: WFH
+                                  count:
+                                    type: integer
+                                    example: 2
+                                  percentage:
+                                    type: integer
+                                    example: 18
                       attendances:
                         type: array
                         items:
@@ -2071,13 +2260,30 @@ paths:
                             time_in:
                               type: string
                               nullable: true
+                              description: UI-facing check-in display. Null for alpha rows.
                               example: '08:04'
                             time_out:
                               type: string
                               nullable: true
+                              description: UI-facing check-out display. Null for alpha rows.
                               example: '17:06'
                             time_range:
                               type: string
+                              description: UI-facing time range. Alpha rows use '--:-- - --:--'.
+                              example: '08:04 - 17:06'
+                            raw_time_in:
+                              type: string
+                              nullable: true
+                              description: Raw backend/system-generated check-in time retained for audit/debug.
+                              example: '08:04'
+                            raw_time_out:
+                              type: string
+                              nullable: true
+                              description: Raw backend/system-generated check-out time retained for audit/debug.
+                              example: '17:06'
+                            raw_time_range:
+                              type: string
+                              description: Raw backend/system-generated time range retained for audit/debug.
                               example: '08:04 - 17:06'
                             work_hour:
                               type: string
@@ -2670,6 +2876,47 @@ paths:
           description: Unexpected trigger execution failure
 
   /api/attendance/{id}:
+    get:
+      tags:
+        - Attendance
+      summary: Get attendance audit detail (Admin/Management only)
+      description: Retrieve the full audit evidence for one attendance record. The location is only the location linked to this attendance row; no user WFH location is substituted.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+          description: Positive attendance record ID.
+      responses:
+        '200':
+          description: Attendance detail retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, message, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Detail absensi berhasil diambil
+                  data:
+                    $ref: '#/components/schemas/AttendanceAuditDetail'
+        '400':
+          $ref: '#/components/responses/AttendanceValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags:
         - Attendance
@@ -2709,38 +2956,84 @@ paths:
       tags:
         - User Management
       summary: Get all users (Admin/Management only)
-      description: Retrieve all users with full profile details
+      description: |
+        Retrieve the user directory list projection. This response is intentionally slim:
+        it never contains phone numbers or raw WFH location data (latitude, longitude,
+        radius, description) — those are detail-surface data available only on
+        `GET /api/users/{id}`. WFH readiness is exposed through `location_status`;
+        the value `integrity_error` marks an active user whose required WFH location
+        is missing, which is a data-integrity violation and must not be rendered as a
+        normal "not configured" state.
+
+        Pagination is opt-in (INF-250 migration phase A): sending `page` and/or `limit`
+        switches the response to the paginated envelope with a `pagination` object as a
+        sibling of `data`. Omitting both preserves the legacy full-array response so
+        existing clients keep working. Invalid values for any documented parameter
+        return a deterministic 400 E_VALIDATION.
       parameters:
         - in: query
           name: page
           schema:
             type: integer
+            minimum: 1
             default: 1
-          description: Page number for pagination
+          description: Page number. Sending page or limit opts in to the paginated envelope.
         - in: query
           name: limit
           schema:
             type: integer
-            default: 10
-          description: Number of items per page
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Page size (max 100). Sending page or limit opts in to the paginated envelope.
         - in: query
           name: search
           schema:
             type: string
-          description: Search by name or email
+          description: Search by full name, NIP/NIM, or email. LIKE wildcards are escaped and match literally.
         - in: query
-          name: role_id
+          name: role
           schema:
             type: integer
           description: Filter by role ID
         - in: query
-          name: division_id
+          name: program
+          schema:
+            type: integer
+          description: Filter by program ID
+        - in: query
+          name: division
           schema:
             type: integer
           description: Filter by division ID
+        - in: query
+          name: position
+          schema:
+            type: integer
+          description: Filter by position ID
+        - in: query
+          name: location_status
+          schema:
+            type: string
+            enum: [configured, integrity_error]
+          description: Filter by WFH location readiness (integrity_error = active user missing their required WFH location)
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [full_name, email, nip_nim, created_at, updated_at]
+            default: created_at
+          description: Column to sort by (strict whitelist; other values return 400)
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+          description: Sort direction (case-insensitive)
       responses:
         '200':
-          description: Users retrieved successfully
+          description: Users retrieved successfully. The pagination object is present only when page or limit was sent.
           content:
             application/json:
               schema:
@@ -2750,14 +3043,30 @@ paths:
                     type: boolean
                     example: true
                   data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserListItem'
+                  pagination:
                     type: object
+                    description: Canonical list pagination envelope (INF-250). Present only in paginated mode.
                     properties:
-                      users:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/User'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
+                      page:
+                        type: integer
+                        example: 1
+                      limit:
+                        type: integer
+                        example: 20
+                      total:
+                        type: integer
+                        example: 53
+                      totalPages:
+                        type: integer
+                        example: 3
+                  message:
+                    type: string
+                    example: 'Users fetched successfully'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2778,9 +3087,14 @@ paths:
                 - email
                 - password
                 - full_name
-                - role_id
-                - position_id
-                - division_id
+                - phone
+                - nip_nim
+                - id_roles
+                - id_programs
+                - id_position
+                - latitude
+                - longitude
+                - face_photo
               properties:
                 email:
                   type: string
@@ -2789,27 +3103,60 @@ paths:
                 password:
                   type: string
                   format: password
-                  minLength: 6
+                  minLength: 8
                   example: 'password123'
                 full_name:
                   type: string
                   example: 'John Doe'
-                role_id:
+                phone:
+                  type: string
+                  example: '081234567890'
+                nip_nim:
+                  type: string
+                  example: 'A12345'
+                id_roles:
                   type: integer
                   example: 2
-                position_id:
+                id_programs:
                   type: integer
                   example: 1
-                division_id:
+                id_position:
                   type: integer
                   example: 1
+                id_divisions:
+                  type: integer
+                  nullable: true
+                  example: 1
+                latitude:
+                  type: number
+                  format: double
+                  minimum: -90
+                  maximum: 90
+                  description: Required WFH latitude. Zero is rejected.
+                  example: -6.2
+                longitude:
+                  type: number
+                  format: double
+                  minimum: -180
+                  maximum: 180
+                  description: Required WFH longitude. Zero is rejected.
+                  example: 106.8
+                radius:
+                  type: number
+                  description: Optional WFH geofence radius in meters. Canonical backend default is 100 when omitted.
+                  example: 100
+                description:
+                  type: string
+                  nullable: true
+                  description: Optional WFH location description. Stored as null when omitted — the backend never fabricates a placeholder.
+                  example: 'Rumah utama'
                 face_photo:
                   type: string
                   format: binary
                   description: Face photo file upload
       responses:
         '201':
-          description: User created successfully
+          description: User created and required WFH location persisted atomically in one transaction. A failed WFH location write rolls back the whole user creation.
           content:
             application/json:
               schema:
@@ -2822,7 +3169,7 @@ paths:
                     type: string
                     example: 'User created successfully'
                   data:
-                    $ref: '#/components/schemas/User'
+                    $ref: '#/components/schemas/UserDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2837,7 +3184,10 @@ paths:
       tags:
         - User Management
       summary: Get user by ID (Admin/Management only)
-      description: Retrieve detailed information about a specific user
+      description: |
+        Retrieve detailed information about a specific user. This is the detail
+        surface: it includes `phone` and the full WFH `location` object that are
+        intentionally absent from the `GET /api/users` list projection.
       parameters:
         - in: path
           name: id
@@ -2857,13 +3207,29 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: '#/components/schemas/User'
+                    $ref: '#/components/schemas/UserDetail'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Data-integrity violation — the user exists but has no required WFH location. Clients must show an explicit error/recovery state, not a normal "not configured" state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: 'E_USER_LOCATION_INTEGRITY'
+                  message:
+                    type: string
+                    example: 'User data integrity violation: required WFH location is missing'
 
     patch:
       tags:
@@ -2918,7 +3284,7 @@ paths:
                     type: string
                     example: 'User updated successfully'
                   data:
-                    $ref: '#/components/schemas/User'
+                    $ref: '#/components/schemas/UserDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3021,47 +3387,71 @@ paths:
     get:
       tags:
         - WFA Bookings
-      summary: Get all bookings (Admin/Management only)
-      description: Retrieve all WFA booking requests with filtering options
+      summary: Get management booking queue (Admin/Management only)
+      description: |
+        Retrieve the Management Booking approval/review queue. Filtering and search are server-side
+        and applied before pagination. Default ordering is Pending, Approved, Rejected, then newest
+        `created_at`, with `booking_id` as the deterministic tie-breaker.
       parameters:
         - in: query
           name: page
           schema:
             type: integer
+            minimum: 1
             default: 1
-          description: Page number for pagination
+          description: Page number for pagination.
         - in: query
           name: limit
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
             default: 10
-          description: Number of items per page
+          description: Number of items per page.
         - in: query
           name: status
           schema:
             type: string
             enum: [pending, approved, rejected]
-          description: Filter by booking status
+          description: Filter by booking status.
         - in: query
           name: date_from
           schema:
             type: string
             format: date
-          description: Filter bookings from this date
+          description: Inclusive minimum WFA schedule date.
         - in: query
           name: date_to
           schema:
             type: string
             format: date
-          description: Filter bookings until this date
+          description: Inclusive maximum WFA schedule date; cannot precede date_from.
         - in: query
           name: user_id
           schema:
             type: integer
-          description: Filter by specific user ID
+            minimum: 1
+          description: Filter by applicant user ID.
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Trimmed server-side search against applicant full_name and NIP/NIM only.
+        - in: query
+          name: sortBy
+          deprecated: true
+          schema:
+            type: string
+          description: Deprecated compatibility-only no-op; accepted temporarily but does not change ordering.
+        - in: query
+          name: sortOrder
+          deprecated: true
+          schema:
+            type: string
+          description: Deprecated compatibility-only no-op; accepted temporarily but does not change ordering.
       responses:
         '200':
-          description: Bookings retrieved successfully
+          description: Management booking queue retrieved successfully
           content:
             application/json:
               schema:
@@ -3076,9 +3466,12 @@ paths:
                       bookings:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Booking'
+                          $ref: '#/components/schemas/BookingManagementItem'
                       pagination:
-                        $ref: '#/components/schemas/Pagination'
+                        $ref: '#/components/schemas/BookingManagementPagination'
+                  message:
+                    type: string
+                    example: Daftar booking berhasil diambil
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3090,7 +3483,15 @@ paths:
       tags:
         - WFA Bookings
       summary: Create WFA booking
-      description: Create a new Work From Anywhere booking request
+      description: |
+        Create a pending Work From Anywhere booking request. The authenticated user, request radius,
+        suitability result, and initial status are owned by the backend. `schedule_date` must be a real
+        ISO calendar date. When the selected request reason has `is_other=true`, `request_other_reason`
+        is required; otherwise it must be omitted. Stable validation codes include
+        `INVALID_SCHEDULE_DATE`, `PAST_DATE_NOT_ALLOWED`, `SAME_DAY_NOT_ALLOWED`,
+        `WFA_REQUEST_REASON_REQUIRED`, `WFA_REQUEST_REASON_NOT_FOUND`,
+        `WFA_REQUEST_REASON_NOT_ACTIVE`, and `WFA_OTHER_REASON_REQUIRED`.
+        A same-user/same-date conflict returns `DUPLICATE_BOOKING`.
       requestBody:
         required: true
         content:
@@ -3099,13 +3500,24 @@ paths:
               type: object
               required:
                 - schedule_date
+                - request_reason_id
                 - latitude
                 - longitude
               properties:
                 schedule_date:
                   type: string
                   format: date
-                  example: '2026-04-29'
+                  pattern: '^\d{4}-\d{2}-\d{2}$'
+                  example: '2099-12-31'
+                request_reason_id:
+                  type: integer
+                  minimum: 1
+                  example: 2
+                request_other_reason:
+                  type: string
+                  maxLength: 500
+                  nullable: true
+                  example: 'Client incident response'
                 latitude:
                   type: number
                   format: float
@@ -3114,9 +3526,13 @@ paths:
                   type: number
                   format: float
                   example: 106.816666
-                radius:
-                  type: number
-                  example: 100
+                location_id:
+                  oneOf:
+                    - type: integer
+                      minimum: 1
+                    - type: string
+                      pattern: '^[1-9][0-9]*$'
+                  description: Optional existing WFA location for the same authenticated user and WFA category; its exact latitude and longitude must match the submitted coordinates. Numeric strings are normalized to integers by the request validator.
                 description:
                   type: string
                   example: 'WFA smoke gate location'
@@ -3136,31 +3552,209 @@ paths:
                     example: true
                   message:
                     type: string
-                    example: 'Booking WFA berhasil diajukan dan menunggu persetujuan.'
+                    example: 'Booking WFA berhasil dibuat.'
                   data:
                     type: object
+                    required:
+                      - booking_id
+                      - schedule_date
+                      - status
+                      - request_reason
+                      - location
+                      - radius_snapshot
+                      - suitability_score
+                      - suitability_label
+                      - suitability_status
+                      - created_at
                     properties:
                       booking_id:
                         type: integer
                       schedule_date:
                         type: string
-                      location_id:
-                        type: integer
                       status:
                         type: string
                         example: pending
+                      request_reason:
+                        $ref: '#/components/schemas/WfaRequestReasonProjection'
+                      location:
+                        $ref: '#/components/schemas/WfaBookingLocation'
+                      radius_snapshot:
+                        type: integer
+                        minimum: 1
+                        example: 100
                       suitability_score:
                         type: number
                         nullable: true
                       suitability_label:
                         type: string
                         nullable: true
+                      suitability_status:
+                        type: string
+                        enum: [ranked, insufficient_facility_data]
+                        description: Canonical facility-scoring outcome for this booking. Scores and label are null when status is insufficient_facility_data.
+                      created_at:
+                        type: string
+                        format: date-time
+              examples:
+                insufficient_facility_data:
+                  summary: Booking is created when discovery succeeds but facility evidence cannot support ranking.
+                  value:
+                    success: true
+                    message: 'Booking WFA berhasil dibuat.'
+                    data:
+                      booking_id: 123
+                      schedule_date: '2099-08-10'
+                      status: pending
+                      request_reason: { id: 2, label: 'Client meeting', is_other: false, other_text: null }
+                      location: { location_id: 45, latitude: -0.8917, longitude: 119.8707, radius: 100, description: 'WFA Location' }
+                      radius_snapshot: 100
+                      suitability_score: null
+                      suitability_label: null
+                      suitability_status: insufficient_facility_data
+                      created_at: '2026-08-02T00:00:00.000Z'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: 'Booking validation can fail in one of three runtime envelopes: Express Validator input errors, eligibility date errors, or request-reason service errors.'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/BookingExpressValidatorError'
+                  - $ref: '#/components/schemas/BookingEligibilityError'
+                  - $ref: '#/components/schemas/BookingRequestReasonError'
+              examples:
+                invalid_schedule_date:
+                  summary: The supplied date matches YYYY-MM-DD but is not a real calendar date.
+                  value:
+                    success: false
+                    code: INVALID_SCHEDULE_DATE
+                    message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+                    errors:
+                      - type: field
+                        value: '2026-02-30'
+                        msg: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+                        path: schedule_date
+                        location: body
+                        code: INVALID_SCHEDULE_DATE
+                past_date_not_allowed:
+                  summary: Eligibility rejects a real calendar date in the past before policy reads.
+                  value:
+                    success: false
+                    code: PAST_DATE_NOT_ALLOWED
+                    message: 'Validasi booking gagal.'
+                    errors:
+                      - field: schedule_date
+                        code: PAST_DATE_NOT_ALLOWED
+                        message: 'Tanggal booking tidak boleh di masa lalu.'
+                request_reason_not_found:
+                  summary: Request-reason service errors use the legacy 400 envelope without errors.
+                  value:
+                    success: false
+                    code: WFA_REQUEST_REASON_NOT_FOUND
+                    message: 'Alasan pengajuan WFA tidak ditemukan.'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: opaque location validation failure. The response does not disclose location ownership or existence.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, message, errors]
+                properties:
+                  success:
+                    type: boolean
+                    enum: [false]
+                  message:
+                    type: string
+                    enum: ['Validasi booking gagal.']
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, code, message]
+                      properties:
+                        field:
+                          type: string
+                          enum: [location_id]
+                        code:
+                          type: string
+                          enum: [LOCATION_NOT_FOUND]
+                        message:
+                          type: string
+                          enum: ['Lokasi tidak ditemukan atau tidak valid.']
+              example:
+                success: false
+                message: 'Validasi booking gagal.'
+                errors:
+                  - field: location_id
+                    code: LOCATION_NOT_FOUND
+                    message: 'Lokasi tidak ditemukan atau tidak valid.'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: A pending or approved booking already exists for the authenticated user and schedule date.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message, errors]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: DUPLICATE_BOOKING
+                  message:
+                    type: string
+                    example: 'Validasi booking gagal.'
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, code, message]
+                      properties:
+                        field:
+                          type: string
+                          example: schedule_date
+                        code:
+                          type: string
+                          example: DUPLICATE_BOOKING
+                        message:
+                          type: string
+                          example: 'Anda sudah memiliki booking pada tanggal tersebut.'
+              examples:
+                duplicate_booking:
+                  summary: The authenticated user already has a pending or approved booking on the requested date.
+                  value:
+                    success: false
+                    code: DUPLICATE_BOOKING
+                    message: 'Validasi booking gagal.'
+                    errors:
+                      - field: schedule_date
+                        code: DUPLICATE_BOOKING
+                        message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+        '503':
+          description: Facility scoring is unavailable before the booking write transaction starts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_SCORING_UNAVAILABLE
+                  message:
+                    type: string
+                    example: 'Internal server error'
+              example:
+                success: false
+                code: WFA_SCORING_UNAVAILABLE
+                message: 'Internal server error'
+        '500':
+          $ref: '#/components/responses/WfaConfigUnavailableError'
 
   /api/bookings/history:
     get:
@@ -3271,7 +3865,11 @@ paths:
       tags:
         - WFA Bookings
       summary: Update booking status (Admin/Management only)
-      description: Approve or reject a WFA booking request
+      description: |
+        Approve or reject a WFA booking request. Rejection requires `rejection_reason_id`; when that
+        catalog item has `is_other=true`, `rejection_note` is required. Approval clears structured
+        rejection fields. Stable rejection codes are `REJECTION_REASON_REQUIRED`,
+        `REJECTION_REASON_NOT_FOUND`, `REJECTION_REASON_NOT_ACTIVE`, and `REJECTION_NOTE_REQUIRED`.
       parameters:
         - in: path
           name: id
@@ -3292,9 +3890,17 @@ paths:
                   type: string
                   enum: [approved, rejected]
                   example: 'approved'
-                admin_notes:
+                rejection_reason_id:
+                  type: integer
+                  minimum: 1
+                  nullable: true
+                  description: Required when status is rejected; must reference an active rejection reason.
+                rejection_note:
                   type: string
-                  example: 'Approved for client meeting'
+                  maxLength: 500
+                  nullable: true
+                  description: Required only when the selected rejection reason has is_other=true.
+                  example: 'The submitted location does not meet the current operational need.'
       responses:
         '200':
           description: Booking status updated successfully
@@ -3353,42 +3959,89 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/wfa/request-config:
+    get:
+      tags:
+        - WFA System
+      summary: Get WFA request configuration
+      description: Return the backend-authoritative request radius and active request-reason catalog.
+      responses:
+        '200':
+          description: WFA request configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - radius_meters
+                      - reasons
+                    properties:
+                      radius_meters:
+                        type: integer
+                        minimum: 1
+                        example: 100
+                      reasons:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WfaPublicReason'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: WFA configuration storage is missing or invalid (`WFA_CONFIG_UNAVAILABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+
   # WFA Recommendations
   /api/wfa/recommendations:
     get:
       tags:
         - WFA System
       summary: Get WFA recommendations
-      description: Get Work From Anywhere location recommendations based on user location using Fuzzy AHP algorithm
+      description: Get authenticated-user WFA recommendations using canonical facility evidence. `schedule_date` is a strict future WIB date; candidates without sufficient or retrievable facility evidence remain visible with truthful nullable scores.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - in: query
-          name: latitude
+          name: lat
           required: true
           schema:
             type: number
             format: float
+            minimum: -90
+            maximum: 90
           example: -6.200000
           description: User's current latitude
         - in: query
-          name: longitude
+          name: lng
           required: true
           schema:
             type: number
             format: float
+            minimum: -180
+            maximum: 180
           example: 106.816666
           description: User's current longitude
         - in: query
-          name: radius
+          name: schedule_date
+          required: true
+          description: Strict future WFA date in the Asia/Jakarta business calendar.
           schema:
-            type: integer
-            default: 5000
-          description: Search radius in meters
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            default: 10
-          description: Maximum number of recommendations
+            type: string
+            format: date
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+            example: '2099-08-10'
       responses:
         '200':
           description: WFA recommendations retrieved successfully
@@ -3396,50 +4049,252 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [success, data, message]
                 properties:
                   success:
                     type: boolean
                     example: true
                   data:
                     type: object
+                    required: [recommendations, search_criteria, fahp_methodology]
                     properties:
                       recommendations:
                         type: array
                         items:
                           $ref: '#/components/schemas/WFARecommendation'
-                      search_location:
+                      search_criteria:
                         type: object
+                        required: [center_latitude, center_longitude, search_radius_meters, categories_searched, total_candidates_found, recommendations_returned]
                         properties:
-                          latitude:
+                          center_latitude:
                             type: number
                             format: float
                             example: -6.200000
-                          longitude:
+                          center_longitude:
                             type: number
                             format: float
                             example: 106.816666
-                      algorithm_info:
-                        type: object
-                        properties:
-                          method:
-                            type: string
-                            example: 'Fuzzy AHP'
-                          criteria:
+                          search_radius_meters:
+                            type: integer
+                          categories_searched:
                             type: array
+                            minItems: 4
+                            maxItems: 4
+                            uniqueItems: true
                             items:
                               type: string
-                            example: ['wifi_quality', 'noise_level', 'amenities', 'distance']
+                              enum: [catering, accommodation, office, education]
+                            example: [catering, accommodation, office, education]
+                          total_candidates_found:
+                            type: integer
+                          recommendations_returned:
+                            type: integer
+                      fahp_methodology:
+                        type: object
+                        required: [approach, criteria_weights, facility_matrix]
+                        properties:
+                          approach:
+                            type: string
+                            example: Fuzzy AHP facility-evidence scoring
+                          criteria_weights:
+                            type: object
+                            required: [location_type, distance_factor, facility_score, consistency_ratio, weighting_method]
+                            properties:
+                              location_type:
+                                type: number
+                              distance_factor:
+                                type: number
+                              facility_score:
+                                type: number
+                              consistency_ratio:
+                                type: number
+                                example: 0.0576
+                              weighting_method:
+                                type: string
+                                example: row_geometric_mean_fallback
+                          facility_matrix:
+                            type: object
+                            required: [version, criteria, weights, consistency_ratio, weighting_method]
+                            properties:
+                              version:
+                                type: string
+                                enum: [facility_equal_v1]
+                              criteria:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]]
+                              weights:
+                                type: array
+                                minItems: 5
+                                maxItems: 5
+                                enum: [[0.2, 0.2, 0.2, 0.2, 0.2]]
+                              consistency_ratio:
+                                type: number
+                                enum: [0]
+                              weighting_method:
+                                type: string
+                                enum: [chang_extent]
+                  message:
+                    type: string
+                    example: 'Rekomendasi WFA berhasil diambil.'
+              examples:
+                ranked:
+                  summary: Candidate with sufficient facility evidence receives a rank.
+                  value:
+                    success: true
+                    data:
+                      recommendations:
+                        - place_id: geoapify:1
+                          name: Cafe Example Palu
+                          address: 'Jl. Merdeka, Palu'
+                          latitude: -0.8917
+                          longitude: 119.8707
+                          status: ranked
+                          distance_meters: 412
+                          location_type: cafe
+                          facility_score: 80
+                          facility_confidence: 100
+                          facilities: { internet_access: 1, air_conditioning: 1, toilets: 1, opening_hours: 1, wheelchair_accessibility: 0 }
+                          final_score: 78.4
+                          final_label: Sangat Baik
+                          rank: 1
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                insufficient_facility_data:
+                  summary: Candidate remains visible but cannot receive a final rank from partial facility evidence.
+                  value:
+                    success: true
+                    data:
+                      recommendations:
+                        - place_id: geoapify:2
+                          name: Sparse Cafe
+                          address: null
+                          latitude: -0.892
+                          longitude: 119.871
+                          status: insufficient_facility_data
+                          distance_meters: 500
+                          location_type: cafe
+                          facility_score: 100
+                          facility_confidence: 20
+                          facilities: { internet_access: 1, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                facility_enrichment_failed:
+                  summary: Candidate remains visible when provider detail enrichment cannot be completed.
+                  value:
+                    success: true
+                    data:
+                      recommendations:
+                        - place_id: geoapify:3
+                          name: Unavailable Details
+                          address: null
+                          latitude: -0.893
+                          longitude: 119.872
+                          status: facility_enrichment_failed
+                          distance_meters: 700
+                          location_type: office
+                          facility_score: null
+                          facility_confidence: null
+                          facilities: { internet_access: null, air_conditioning: null, toilets: null, opening_hours: null, wheelchair_accessibility: null }
+                          final_score: null
+                          final_label: null
+                          rank: null
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 1, recommendations_returned: 1 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
+                empty:
+                  summary: No nearby venue matches the search categories.
+                  value:
+                    success: true
+                    data:
+                      recommendations: []
+                      search_criteria: { center_latitude: -0.8917, center_longitude: 119.8707, search_radius_meters: 5000, categories_searched: [catering, accommodation, office, education], total_candidates_found: 0, recommendations_returned: 0 }
+                      fahp_methodology: { approach: Fuzzy AHP facility-evidence scoring, criteria_weights: { location_type: 0.6335, distance_factor: 0.2604, facility_score: 0.1061, consistency_ratio: 0.0576, weighting_method: row_geometric_mean_fallback }, facility_matrix: { version: facility_equal_v1, criteria: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility], weights: [0.2, 0.2, 0.2, 0.2, 0.2], consistency_ratio: 0, weighting_method: chang_extent } }
+                    message: 'Rekomendasi WFA berhasil diambil.'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/WfaQueryValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The authenticated user already has a pending or approved booking on schedule_date.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message, details]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: DUPLICATE_BOOKING
+                  message:
+                    type: string
+                    example: 'Anda sudah memiliki booking pada tanggal tersebut.'
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                          example: schedule_date
+                        code:
+                          type: string
+                          example: DUPLICATE_BOOKING
+              example:
+                success: false
+                code: DUPLICATE_BOOKING
+                message: 'Anda sudah memiliki booking pada tanggal tersebut.'
+                details: [{ field: schedule_date, code: DUPLICATE_BOOKING }]
+        '503':
+          description: Geoapify provider discovery is unavailable; no result is fabricated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, code, message]
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  code:
+                    type: string
+                    example: WFA_PROVIDER_UNAVAILABLE
+                  message:
+                    type: string
+                    example: 'Internal server error'
+              example:
+                success: false
+                code: WFA_PROVIDER_UNAVAILABLE
+                message: 'Internal server error'
+        '500':
+          description: WFA check-in-window configuration is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WfaConfigUnavailableError'
+              example:
+                success: false
+                code: WFA_CONFIG_UNAVAILABLE
+                message: 'Internal server error'
 
   /api/wfa/ahp-config:
     get:
       tags:
         - WFA System
       summary: Get AHP configuration
-      description: Retrieve current Fuzzy AHP algorithm configuration and criteria weights
+      description: Retrieve the authenticated canonical WFA Fuzzy AHP configuration and criteria weights.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       responses:
         '200':
           description: AHP configuration retrieved successfully
@@ -3447,35 +4302,65 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [success, data, message]
                 properties:
                   success:
                     type: boolean
                     example: true
                   data:
                     type: object
+                    required: [current_weights, consistency_ratio, is_consistent, method, criteria_explanation, weight_calculation, scoring_method]
                     properties:
-                      criteria_weights:
+                      current_weights:
                         type: object
+                        required: [location_type, distance_factor, facility_score]
                         properties:
-                          wifi_quality:
+                          location_type:
                             type: number
-                            format: float
-                            example: 0.35
-                          noise_level:
+                            example: 0.633524839963704
+                          distance_factor:
                             type: number
-                            format: float
-                            example: 0.25
-                          amenities:
+                            example: 0.2604011016177943
+                          facility_score:
                             type: number
-                            format: float
-                            example: 0.25
-                          distance:
-                            type: number
-                            format: float
-                            example: 0.15
-                      fuzzy_scales:
+                            example: 0.10607405841850168
+                      consistency_ratio:
+                        type: number
+                        example: 0.057629117460781754
+                      is_consistent:
+                        type: boolean
+                        example: true
+                      method:
+                        type: string
+                        example: 'Fuzzy AHP dengan fallback geometric mean'
+                      criteria_explanation:
                         type: object
-                        description: Fuzzy scale definitions for each criterion
+                        additionalProperties:
+                          type: string
+                      weight_calculation:
+                        type: string
+                      scoring_method:
+                        type: string
+                  message:
+                    type: string
+                    example: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
+              example:
+                success: true
+                data:
+                  current_weights:
+                    location_type: 0.633524839963704
+                    distance_factor: 0.2604011016177943
+                    facility_score: 0.10607405841850168
+                  consistency_ratio: 0.057629117460781754
+                  is_consistent: true
+                  method: 'Fuzzy AHP dengan fallback geometric mean'
+                  criteria_explanation:
+                    location_type: 'Penilaian berdasarkan kategori tempat (cafe, hotel, coworking space, dll)'
+                    facility_score: 'Penilaian berdasarkan internet_access, air_conditioning, toilets, opening_hours, dan wheelchair accessibility.'
+                    distance_factor: 'Penilaian berdasarkan jarak dari pusat pencarian'
+                  weight_calculation: 'Pembobotan pairwise TFN dengan row geometric mean fallback karena Chang menghasilkan bobot nol'
+                  scoring_method: 'Weighted scoring model dengan normalisasi 0-100'
+                message: 'Konfigurasi Fuzzy AHP Engine berhasil diambil'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -4190,7 +5075,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
+                    example: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4276,7 +5161,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
+                    example: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4362,7 +5247,7 @@ paths:
                     example: E_VALIDATION
                   message:
                     type: string
-                    example: Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom
+                    example: 'Parameter period harus berupa: daily, weekly, monthly, range, 30d, current_month, atau custom'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4828,6 +5713,118 @@ paths:
         '500':
           $ref: '#/components/responses/OperationalSettingsIntegrityError'
 
+  /api/settings/wfa/request-reasons:
+    get:
+      tags: [Settings]
+      summary: List all WFA request reasons (Admin/Management only)
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Settings]
+      summary: Create a WFA request reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonCreateRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/settings/wfa/request-reasons/{id}:
+    patch:
+      tags: [Settings]
+      summary: Update a WFA request reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      parameters:
+        - $ref: '#/components/parameters/WfaReasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/settings/wfa/rejection-reasons:
+    get:
+      tags: [Settings]
+      summary: List all WFA rejection reasons (Admin/Management only)
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Settings]
+      summary: Create a WFA rejection reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonCreateRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/settings/wfa/rejection-reasons/{id}:
+    patch:
+      tags: [Settings]
+      summary: Update a WFA rejection reason (Admin/Management only)
+      description: Rejects invalid input with `E_VALIDATION` and the single-Other invariant with `WFA_REASON_CATALOG_CONFLICT`.
+      parameters:
+        - $ref: '#/components/parameters/WfaReasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfaReasonUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/WfaReasonMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # Reference Data Endpoints
   /api/roles:
     get:
@@ -4966,12 +5963,22 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token passed as `Authorization: Bearer <token>`.
+      description: 'Access token passed as `Authorization: Bearer <token>`.'
     cookieAuth:
       type: apiKey
       in: cookie
       name: token
       description: Access token stored in the HTTP-only `token` cookie for browser flows.
+
+  parameters:
+    WfaReasonId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: WFA reason catalog item ID.
 
   schemas:
     LoginRequest:
@@ -5406,6 +6413,150 @@ components:
           format: date-time
           example: '2025-07-01T10:00:00.000Z'
 
+    UserListItem:
+      type: object
+      description: |
+        Slim user directory row for `GET /api/users`. Never contains phone or raw
+        WFH coordinates — those are detail-surface fields on `UserDetail`.
+      properties:
+        id:
+          type: integer
+          example: 1
+        full_name:
+          type: string
+          example: 'John Doe'
+        email:
+          type: string
+          format: email
+          example: 'user@company.com'
+        role_name:
+          type: string
+          nullable: true
+          example: 'User'
+        position_name:
+          type: string
+          nullable: true
+          example: 'Engineer'
+        program_name:
+          type: string
+          nullable: true
+          example: 'Program A'
+        division_name:
+          type: string
+          nullable: true
+          example: 'Division A'
+        nip_nim:
+          type: string
+          example: 'A12345'
+        photo:
+          type: string
+          nullable: true
+          example: 'https://spaces.example.com/users/1/profile/photo.jpg'
+        photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-07-01T00:00:00.000Z'
+        location_status:
+          type: string
+          enum: [configured, integrity_error]
+          description: |
+            WFH location readiness indicator. `configured` means the required WFH
+            location exists. `integrity_error` means the active user has no WFH
+            location — a data-integrity violation that clients must render as an
+            explicit error/recovery state, never as a normal "not configured" state.
+          example: 'configured'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-01T10:00:00.000Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-02T10:00:00.000Z'
+
+    UserDetail:
+      type: object
+      description: |
+        Full user projection for detail, create, and update responses. This is the
+        only user-management surface that carries `phone` and the raw WFH `location`.
+      properties:
+        id:
+          type: integer
+          example: 1
+        full_name:
+          type: string
+          example: 'John Doe'
+        email:
+          type: string
+          format: email
+          example: 'user@company.com'
+        role_name:
+          type: string
+          nullable: true
+          example: 'User'
+        position_name:
+          type: string
+          nullable: true
+          example: 'Engineer'
+        program_name:
+          type: string
+          nullable: true
+          example: 'Program A'
+        division_name:
+          type: string
+          nullable: true
+          example: 'Division A'
+        nip_nim:
+          type: string
+          example: 'A12345'
+        phone:
+          type: string
+          nullable: true
+          example: '081234567890'
+        photo:
+          type: string
+          nullable: true
+          example: 'https://spaces.example.com/users/1/profile/photo.jpg'
+        photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-07-01T00:00:00.000Z'
+        location:
+          type: object
+          description: Required WFH location. Never null in a successful response for an active user; a missing location yields `409 E_USER_LOCATION_INTEGRITY` instead.
+          properties:
+            location_id:
+              type: integer
+              example: 10
+            latitude:
+              type: number
+              format: double
+              example: -6.2
+            longitude:
+              type: number
+              format: double
+              example: 106.8
+            radius:
+              type: number
+              example: 100
+            description:
+              type: string
+              nullable: true
+              example: 'Rumah utama'
+            category_name:
+              type: string
+              example: 'Work From Home'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-01T10:00:00.000Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-02T10:00:00.000Z'
+
     OperationalSettings:
       type: object
       description: |
@@ -5414,6 +6565,11 @@ components:
         This schema intentionally exposes only the approved operational settings. It does not include arbitrary
         settings-table rows or analysis configuration such as `AHP_CR_THRESHOLD`.
       properties:
+        wfaRequestRadiusM:
+          type: integer
+          minimum: 1
+          example: 100
+          description: Backend-authoritative radius in meters for every newly submitted WFA request.
         geofenceRadiusDefaultM:
           type: integer
           minimum: 1
@@ -5440,6 +6596,7 @@ components:
           example: '17:00:00'
           description: Default fallback shift end time normalized to HH:mm:ss.
       required:
+        - wfaRequestRadiusM
         - geofenceRadiusDefaultM
         - autoCheckoutIdleMin
         - autoCheckoutTBufferMin
@@ -5455,6 +6612,10 @@ components:
         Only the approved operational settings may be sent. `defaultShiftEnd` accepts `HH:mm` or `HH:mm:ss` on input
         and is normalized to `HH:mm:ss` in the success response.
       properties:
+        wfaRequestRadiusM:
+          type: integer
+          minimum: 1
+          example: 150
         geofenceRadiusDefaultM:
           type: integer
           minimum: 1
@@ -6142,6 +7303,189 @@ components:
           type: string
           example: 'Engineering'
 
+    AttendanceAuditMode:
+      type: object
+      required: [key, label]
+      properties:
+        key:
+          type: string
+          nullable: true
+          enum: [wfo, wfh, wfa]
+        label:
+          type: string
+          nullable: true
+
+    AttendanceAuditStatus:
+      type: object
+      required: [key, label]
+      properties:
+        key:
+          type: string
+          nullable: true
+          enum: [ontime, late, alpha, early]
+        label:
+          type: string
+          nullable: true
+
+    AttendanceAuditListRow:
+      type: object
+      required: [id_attendance, attendance_date, user, time_in, time_out, work_duration, mode, status, location]
+      properties:
+        id_attendance:
+          type: integer
+        attendance_date:
+          type: string
+          format: date
+        user:
+          type: object
+          required: [id, full_name, nip_nim, role, photo, photo_updated_at]
+          properties:
+            id:
+              type: integer
+              nullable: true
+            full_name:
+              type: string
+              nullable: true
+            nip_nim:
+              type: string
+              nullable: true
+            role:
+              type: string
+              nullable: true
+            photo:
+              type: string
+              format: uri
+              nullable: true
+            photo_updated_at:
+              type: string
+              format: date-time
+              nullable: true
+        time_in:
+          type: string
+          nullable: true
+        time_out:
+          type: string
+          nullable: true
+        work_duration:
+          type: string
+          nullable: true
+        mode:
+          $ref: '#/components/schemas/AttendanceAuditMode'
+        status:
+          $ref: '#/components/schemas/AttendanceAuditStatus'
+        location:
+          type: object
+          required: [available, id, description]
+          properties:
+            available:
+              type: boolean
+            id:
+              type: integer
+              nullable: true
+            description:
+              type: string
+              nullable: true
+
+    AttendanceAuditDetail:
+      type: object
+      required: [id_attendance, attendance_date, time_in, time_out, work_duration, mode, status, notes, booking_id, user, location]
+      properties:
+        id_attendance:
+          type: integer
+        attendance_date:
+          type: string
+          format: date
+        time_in:
+          type: string
+          nullable: true
+        time_out:
+          type: string
+          nullable: true
+        work_duration:
+          type: string
+          nullable: true
+        mode:
+          $ref: '#/components/schemas/AttendanceAuditMode'
+        status:
+          $ref: '#/components/schemas/AttendanceAuditStatus'
+        notes:
+          type: string
+        booking_id:
+          type: integer
+          nullable: true
+        user:
+          type: object
+          required: [id, full_name, nip_nim, email, role, photo, photo_updated_at]
+          properties:
+            id:
+              type: integer
+              nullable: true
+            full_name:
+              type: string
+              nullable: true
+            nip_nim:
+              type: string
+              nullable: true
+            email:
+              type: string
+              format: email
+              nullable: true
+            role:
+              type: string
+              nullable: true
+            photo:
+              type: string
+              format: uri
+              nullable: true
+            photo_updated_at:
+              type: string
+              format: date-time
+              nullable: true
+        location:
+          type: object
+          nullable: true
+          required: [id, description, latitude, longitude, radius]
+          properties:
+            id:
+              type: integer
+              nullable: true
+            description:
+              type: string
+              nullable: true
+            latitude:
+              type: number
+              format: float
+              nullable: true
+            longitude:
+              type: number
+              format: float
+              nullable: true
+            radius:
+              type: number
+              format: float
+              nullable: true
+
+    AttendanceAuditPagination:
+      type: object
+      required: [current_page, total_pages, total_records, records_per_page, has_next_page, has_prev_page]
+      properties:
+        current_page:
+          type: integer
+          minimum: 1
+        total_pages:
+          type: integer
+          minimum: 0
+        total_records:
+          type: integer
+          minimum: 0
+        records_per_page:
+          type: integer
+          minimum: 1
+        has_next_page:
+          type: boolean
+        has_prev_page:
+          type: boolean
+
     Attendance:
       type: object
       properties:
@@ -6264,6 +7608,381 @@ components:
           example: 100
           description: 'Geofence radius in meters'
 
+    WfaReason:
+      type: object
+      required: [id, label, is_other, is_active, sort_order, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          example: 2
+        label:
+          type: string
+          example: 'Client meeting'
+        is_other:
+          type: boolean
+          example: false
+        is_active:
+          type: boolean
+          example: true
+        sort_order:
+          type: integer
+          example: 20
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WfaPublicReason:
+      type: object
+      required: [id, label, is_other, sort_order]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          example: 2
+        label:
+          type: string
+          example: 'Client meeting'
+        is_other:
+          type: boolean
+          example: false
+        sort_order:
+          type: integer
+          example: 20
+
+    WfaReasonCreateRequest:
+      type: object
+      required: [label]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        is_other:
+          type: boolean
+          default: false
+        is_active:
+          type: boolean
+          default: true
+        sort_order:
+          type: integer
+          minimum: 0
+          default: 0
+
+    WfaReasonUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: '`is_other` is immutable; deactivate a catalog item with `is_active=false` instead of deleting it.'
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 120
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+          minimum: 0
+
+    WfaRequestReasonProjection:
+      type: object
+      required: [id, label, is_other, other_text]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        is_other:
+          type: boolean
+        other_text:
+          type: string
+          nullable: true
+
+    WfaRejectionReasonProjection:
+      type: object
+      nullable: true
+      required: [id, label, is_other, note]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        is_other:
+          type: boolean
+        note:
+          type: string
+          nullable: true
+
+    WfaBookingLocation:
+      type: object
+      required: [location_id, latitude, longitude, radius]
+      properties:
+        location_id:
+          type: integer
+        latitude:
+          type: number
+          format: float
+        longitude:
+          type: number
+          format: float
+        radius:
+          type: integer
+          minimum: 1
+        description:
+          type: string
+          nullable: true
+
+    WfaConfigUnavailableError:
+      type: object
+      required: [success, code, message]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: WFA_CONFIG_UNAVAILABLE
+        message:
+          type: string
+          example: 'Internal server error'
+
+    BookingExpressValidatorError:
+      type: object
+      description: Booking request-body validation failure emitted by Express Validator before the controller runs.
+      required: [success, code, message, errors]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          example: INVALID_SCHEDULE_DATE
+        message:
+          type: string
+          example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+        errors:
+          type: array
+          items:
+            type: object
+            required: [type, msg, path, location]
+            properties:
+              type:
+                type: string
+                enum: [field]
+              value:
+                description: Any original JSON request value preserved by Express Validator; omitted when the request-body field is missing.
+                example: '2026-02-30'
+              msg:
+                type: string
+                example: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+              path:
+                type: string
+                example: schedule_date
+              location:
+                type: string
+                enum: [body]
+              code:
+                type: string
+                nullable: true
+                description: Present when the validator rule uses a typed WFA code.
+                example: INVALID_SCHEDULE_DATE
+
+    BookingEligibilityError:
+      type: object
+      description: Controller eligibility failure for invalid, past, or same-day WFA schedule dates.
+      required: [success, code, message, errors]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+        message:
+          type: string
+          enum: ['Validasi booking gagal.']
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field:
+                type: string
+                enum: [schedule_date]
+              code:
+                type: string
+                enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+              message:
+                type: string
+
+    BookingRequestReasonError:
+      type: object
+      description: Request-reason service 400 forwarded through the legacy error handler without an errors array.
+      required: [success, code, message]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        code:
+          type: string
+          enum: [WFA_REQUEST_REASON_NOT_FOUND, WFA_REQUEST_REASON_NOT_ACTIVE, WFA_OTHER_REASON_REQUIRED]
+        message:
+          type: string
+
+    BookingProcessor:
+      type: object
+      nullable: true
+      required: [id, full_name, role]
+      properties:
+        id:
+          type: integer
+          example: 12
+        full_name:
+          type: string
+          example: Eko Prasetyo
+        role:
+          type: string
+          nullable: true
+          example: Admin
+      description: Persisted human actor who processed a booking decision. Null for pending rows and automated decisions with no persisted user actor.
+
+    BookingManagementItem:
+      type: object
+      description: Stable Admin/Management booking-list projection used by the Management Booking approval/review queue.
+      properties:
+        booking_id:
+          type: integer
+          example: 42
+        user_id:
+          type: integer
+          nullable: true
+          example: 7
+        user_full_name:
+          type: string
+          nullable: true
+          example: Andi Saputra
+        user_role_name:
+          type: string
+          nullable: true
+          example: Employee
+        user_email:
+          type: string
+          format: email
+          nullable: true
+          example: andi@example.com
+        user_nip_nim:
+          type: string
+          nullable: true
+          example: EMP-007
+        user_photo:
+          type: string
+          format: uri
+          nullable: true
+        user_photo_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        user_position_name:
+          type: string
+          nullable: true
+          example: Backend Engineer
+        schedule_date:
+          type: string
+          format: date
+          example: '2026-08-12'
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        location:
+          $ref: '#/components/schemas/WfaBookingLocation'
+        notes:
+          type: string
+          example: Meeting onsite
+        suitability_score:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Canonical WFA suitability score. Null when facility evidence cannot produce a truthful ranked result; numeric zero is valid.
+        suitability_label:
+          type: string
+          nullable: true
+          description: Canonical WFA suitability label; null whenever no truthful final score exists.
+        created_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+        approved_by:
+          type: integer
+          nullable: true
+          deprecated: true
+          description: Legacy raw processor user ID kept for compatibility. New clients should use processed_by.
+        processed_by:
+          $ref: '#/components/schemas/BookingProcessor'
+        request_reason:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/WfaRequestReasonProjection'
+        rejection_reason:
+          $ref: '#/components/schemas/WfaRejectionReasonProjection'
+        radius_snapshot:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Server-owned WFA radius captured at booking submission; legacy rows may fall back to location radius.
+
+    BookingManagementPagination:
+      type: object
+      required: [current_page, total_pages, total_records, records_per_page, has_next_page, has_prev_page, total_items, items_per_page]
+      properties:
+        current_page:
+          type: integer
+          minimum: 1
+          example: 2
+        total_pages:
+          type: integer
+          minimum: 0
+          example: 3
+        total_records:
+          type: integer
+          minimum: 0
+          example: 11
+        records_per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 5
+        has_next_page:
+          type: boolean
+          example: true
+        has_prev_page:
+          type: boolean
+          example: true
+        total_items:
+          type: integer
+          minimum: 0
+          deprecated: true
+          description: Deprecated compatibility alias for total_records.
+          example: 11
+        items_per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          deprecated: true
+          description: Deprecated compatibility alias for records_per_page.
+          example: 5
+
     Booking:
       type: object
       properties:
@@ -6273,13 +7992,20 @@ components:
         user_id:
           type: integer
           example: 1
-        date:
+        schedule_date:
           type: string
           format: date
-          example: '2025-07-10'
-        location_name:
-          type: string
-          example: 'Coffee Shop Downtown'
+          example: '2026-07-30'
+        request_reason:
+          $ref: '#/components/schemas/WfaRequestReasonProjection'
+        rejection_reason:
+          $ref: '#/components/schemas/WfaRejectionReasonProjection'
+        radius_snapshot:
+          type: integer
+          minimum: 1
+          example: 100
+        location:
+          $ref: '#/components/schemas/WfaBookingLocation'
         latitude:
           type: number
           format: float
@@ -6288,9 +8014,6 @@ components:
           type: number
           format: float
           example: 106.816666
-        reason:
-          type: string
-          example: 'Working on client presentation'
         notes:
           type: string
           nullable: true
@@ -6299,10 +8022,6 @@ components:
           type: string
           enum: [pending, approved, rejected]
           example: 'pending'
-        admin_notes:
-          type: string
-          nullable: true
-          example: 'Approved for client meeting'
         approved_by:
           type: integer
           nullable: true
@@ -6389,6 +8108,15 @@ components:
           format: date
           example: '2025-07-15'
           description: Scheduled WFA date
+        request_reason:
+          $ref: '#/components/schemas/WfaRequestReasonProjection'
+        rejection_reason:
+          $ref: '#/components/schemas/WfaRejectionReasonProjection'
+        radius_snapshot:
+          type: integer
+          minimum: 1
+          example: 100
+          description: Server-owned WFA request radius captured when the booking was submitted.
         status:
           type: string
           enum: [pending, approved, rejected]
@@ -6466,149 +8194,73 @@ components:
 
     WFARecommendation:
       type: object
-      description: Work From Anywhere location recommendation with Fuzzy AHP scoring
+      description: Canonical WFA candidate. Scores are null whenever facility evidence is insufficient or enrichment fails; no fallback score is generated.
+      required: [place_id, name, address, latitude, longitude, status, distance_meters, location_type, facility_score, facility_confidence, facilities, final_score, final_label, rank]
       properties:
-        location_id:
-          type: integer
-          example: 15
-          description: Unique location identifier
+        place_id:
+          type: string
+          example: geoapify:1
         name:
           type: string
-          example: 'Starbucks Senayan City'
-          description: Location name
+          example: Cafe Example Palu
         address:
           type: string
-          example: 'Senayan City Mall, Lt. 2, Jakarta Selatan'
-          description: Full address of the location
-        distance:
+          nullable: true
+        latitude:
           type: number
           format: float
-          example: 850.5
-          description: Distance from user location in meters
-        coordinates:
-          type: object
-          properties:
-            latitude:
-              type: number
-              format: float
-              example: -6.225014
-            longitude:
-              type: number
-              format: float
-              example: 106.799415
-        fuzzy_ahp_score:
+        longitude:
           type: number
           format: float
-          example: 87.0
-          description: Overall Fuzzy AHP score (0-100 scale)
-        suitability_label:
+        status:
           type: string
-          example: 'Sangat Baik'
-          enum: ['Rendah', 'Cukup', 'Baik', 'Sangat Baik']
-          description: Human-readable suitability assessment
-        criteria_scores:
-          type: object
-          description: Individual criteria scores
-          properties:
-            wifi_quality:
-              type: object
-              properties:
-                score:
-                  type: number
-                  format: float
-                  example: 4.5
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.9
-                weight:
-                  type: number
-                  format: float
-                  example: 0.35
-            noise_level:
-              type: object
-              properties:
-                score:
-                  type: number
-                  format: float
-                  example: 3.2
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.64
-                weight:
-                  type: number
-                  format: float
-                  example: 0.25
-            amenities:
-              type: object
-              properties:
-                score:
-                  type: integer
-                  example: 8
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.8
-                weight:
-                  type: number
-                  format: float
-                  example: 0.25
-            distance:
-              type: object
-              properties:
-                score:
-                  type: number
-                  format: float
-                  example: 850.5
-                normalized_score:
-                  type: number
-                  format: float
-                  example: 0.7
-                weight:
-                  type: number
-                  format: float
-                  example: 0.15
-        ranking:
-          type: integer
-          example: 1
-          description: Ranking position among all recommendations
-        recommendation_confidence:
+          enum: [ranked, insufficient_facility_data, facility_enrichment_failed]
+        distance_meters:
           type: number
           format: float
-          example: 0.92
-          description: Confidence level of the recommendation (0-1)
-        features:
-          type: array
-          items:
-            type: string
-          example: ['WiFi', 'AC', 'Power Outlets', 'Quiet Area', 'Coffee']
-          description: Available features/amenities at the location
-        operating_hours:
+          minimum: 0
+        location_type:
+          type: string
+        facility_score:
+          type: number
+          nullable: true
+        facility_confidence:
+          type: number
+          nullable: true
+        facilities:
           type: object
+          required: [internet_access, air_conditioning, toilets, opening_hours, wheelchair_accessibility]
           properties:
-            open:
-              type: string
-              format: time
-              example: '07:00:00'
-            close:
-              type: string
-              format: time
-              example: '22:00:00'
-            is_24_hours:
-              type: boolean
-              example: false
-        contact_info:
-          type: object
-          properties:
-            phone:
-              type: string
+            internet_access:
+              type: integer
+              enum: [0, 1, null]
               nullable: true
-              example: '+62-21-12345678'
-            website:
-              type: string
+            air_conditioning:
+              type: integer
+              enum: [0, 1, null]
               nullable: true
-              example: 'https://starbucks.co.id'
+            toilets:
+              type: integer
+              enum: [0, 1, null]
+              nullable: true
+            opening_hours:
+              type: integer
+              enum: [0, 1, null]
+              nullable: true
+            wheelchair_accessibility:
+              type: integer
+              enum: [0, 1, null]
+              nullable: true
+        final_score:
+          type: number
+          nullable: true
+        final_label:
+          type: string
+          nullable: true
+          enum: [Rendah, Cukup, Baik, Sangat Baik, null]
+        rank:
+          type: integer
+          nullable: true
 
     Pagination:
       type: object
@@ -6633,6 +8285,188 @@ components:
           example: false
 
   responses:
+    WfaQueryValidationError:
+      description: Canonical WFA query validation failed before provider discovery or analysis.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, code, message, errors]
+            properties:
+              success:
+                type: boolean
+                enum: [false]
+              code:
+                type: string
+                enum: [E_VALIDATION]
+              message:
+                type: string
+              errors:
+                type: array
+                items:
+                  type: object
+                  required: [type, msg, path, location]
+                  properties:
+                    type:
+                      type: string
+                      enum: [field]
+                    value:
+                      type: string
+                      nullable: true
+                      example: not-a-coordinate
+                    msg:
+                      type: string
+                      example: lat must be a valid latitude
+                    path:
+                      type: string
+                      example: lat
+                    location:
+                      type: string
+                      enum: [query]
+                    code:
+                      type: string
+                      enum: [INVALID_SCHEDULE_DATE, PAST_DATE_NOT_ALLOWED, SAME_DAY_NOT_ALLOWED]
+          examples:
+            missing_schedule_date:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: schedule_date is required
+                errors:
+                  - type: field
+                    msg: schedule_date is required
+                    path: schedule_date
+                    location: query
+            invalid_schedule_date:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Tanggal WFA tidak valid.'
+                errors:
+                  - type: field
+                    value: '2099-02-30'
+                    msg: 'Tanggal WFA tidak valid.'
+                    path: schedule_date
+                    location: query
+                    code: INVALID_SCHEDULE_DATE
+            past_date_not_allowed:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Tanggal booking tidak boleh di masa lalu.'
+                errors:
+                  - type: field
+                    value: '2026-08-01'
+                    msg: 'Tanggal booking tidak boleh di masa lalu.'
+                    path: schedule_date
+                    location: query
+                    code: PAST_DATE_NOT_ALLOWED
+            same_day_not_allowed:
+              value:
+                success: false
+                code: E_VALIDATION
+                message: 'Booking di hari yang sama tidak diperbolehkan.'
+                errors:
+                  - type: field
+                    value: '2026-08-02'
+                    msg: 'Booking di hari yang sama tidak diperbolehkan.'
+                    path: schedule_date
+                    location: query
+                    code: SAME_DAY_NOT_ALLOWED
+          example:
+            success: false
+            code: E_VALIDATION
+            message: lat must be a valid latitude
+            errors:
+              - type: field
+                value: not-a-coordinate
+                msg: lat must be a valid latitude
+                path: lat
+                location: query
+
+    WfaConfigUnavailableError:
+      description: WFA configuration is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WfaConfigUnavailableError'
+          example:
+            success: false
+            code: WFA_CONFIG_UNAVAILABLE
+            message: 'Internal server error'
+
+    AttendanceValidationError:
+      description: Attendance query or path validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, code, message, errors]
+            properties:
+              success:
+                type: boolean
+                enum: [false]
+              code:
+                type: string
+                enum: [E_VALIDATION]
+              message:
+                type: string
+              errors:
+                type: array
+                items:
+                  type: object
+                  required: [type, value, msg, path, location]
+                  properties:
+                    type:
+                      type: string
+                      enum: [field]
+                    value: {}
+                    msg:
+                      type: string
+                    path:
+                      type: string
+                    location:
+                      type: string
+                      enum: [query, params]
+
+    WfaReasonCatalogResponse:
+      description: WFA reason catalog retrieved successfully, including active and inactive entries.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, data]
+            properties:
+              success:
+                type: boolean
+                example: true
+              data:
+                type: object
+                required: [reasons]
+                properties:
+                  reasons:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WfaReason'
+
+    WfaReasonMutationResponse:
+      description: WFA reason catalog item saved successfully.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [success, data]
+            properties:
+              success:
+                type: boolean
+                example: true
+              data:
+                type: object
+                required: [reason]
+                properties:
+                  reason:
+                    $ref: '#/components/schemas/WfaReason'
+
     BadRequest:
       description: Bad request - Invalid input data
       content:

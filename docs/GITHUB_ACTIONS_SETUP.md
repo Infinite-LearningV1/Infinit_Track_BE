@@ -1,5 +1,7 @@
 # 🔄 GitHub Actions Setup Guide
 
+Production ingress verification uses the Droplet-side `deploy/scripts/verify-droplet-api.sh` and an external runner-side `deploy/scripts/verify-public-ingress.sh`. The external check must prove that the Droplet public IP cannot reach Express directly on TCP port `3005`; a successful response is a release blocker. Nginx syntax validation remains a required pre-reload gate.
+
 ## Overview
 
 Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
@@ -26,7 +28,7 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 - **Required secret:** `DIGITALOCEAN_ACCESS_TOKEN`
 
 ### 3. Staging droplet rollout (`deploy-staging.yml`)
-- **Trigger:** push to `master`, pull request to `master`, and manual dispatch
+- **Trigger:** push to `master` and pull request to `master`
 - **Purpose:** run lint/test, publish the immutable image for non-PR events, then roll staging droplet forward via Docker Compose
 - **Output:** real staging rollout, migration execution, remote health verification, and blocking smoke gate
 - **PR behavior:** pull requests execute validation only; image publish and droplet rollout are skipped for `pull_request` events
@@ -58,8 +60,11 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 - `STAGING_PUBLIC_DOMAIN`
 - `STAGING_PUBLIC_BASE_URL`
 - `STAGING_EXPECTED_IP`
+- `STAGING_WEB_ORIGIN`
+  - Exact browser origin of the deployed staging Web FE.
+  - Must equal the staging backend container `CORS_ORIGIN`.
 
-`deploy-staging.yml` validates all of the staging variables above before remote rollout starts.
+`deploy-staging.yml` requires and validates all of the staging variables above before remote rollout starts.
 
 #### Production environment variables
 - `PRODUCTION_SSH_HOST`
@@ -68,8 +73,11 @@ Guide untuk setup GitHub Actions backend sesuai source of truth saat ini:
 - `PRODUCTION_PUBLIC_DOMAIN`
 - `PRODUCTION_PUBLIC_BASE_URL`
 - `PRODUCTION_EXPECTED_IP`
+- `PRODUCTION_WEB_ORIGIN`
+  - Canonical value: `https://infinite-track.tech`.
+  - Deployment fails if this differs from the deployed backend container `CORS_ORIGIN`.
 
-`deploy-production.yml` validates all of the production variables above before remote rollout starts.
+`deploy-production.yml` requires and validates all of the production variables above before remote rollout starts.
 
 ### No longer active for backend deploy truth
 These may still exist historically, but are not part of the active backend image publication path:

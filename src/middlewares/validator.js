@@ -2,14 +2,9 @@ import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 
 import User from '../models/user.model.js';
+import { assertFutureWibScheduleDate } from '../services/wfaEligibility.service.js';
 import { validateHistoricalDateWindowQuery } from '../utils/historicalDateWindow.js';
 import { assertSafeUrl } from '../utils/url.js';
-
-// Remove the file system setup as we're switching to Cloudinary
-// const uploadsDir = 'uploads/face/';
-// if (!fs.existsSync(uploadsDir)) {
-//   fs.mkdirSync(uploadsDir, { recursive: true });
-// }
 
 // Use memory storage instead of disk storage for Cloudinary
 const storage = multer.memoryStorage();
@@ -34,6 +29,11 @@ export const upload = multer({
 const passwordBlacklist = ['password', 'password123', '12345678', 'qwerty123', 'abcdefg1'];
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TODAY_LOCATIONS_LIMIT_MAX = 500;
+const WFA_SCHEDULE_DATE_ERROR_CODES = new Set([
+  'INVALID_SCHEDULE_DATE',
+  'PAST_DATE_NOT_ALLOWED',
+  'SAME_DAY_NOT_ALLOWED'
+]);
 
 const parseStrictDateOnly = (value) => {
   if (typeof value !== 'string' || !DATE_ONLY_PATTERN.test(value)) return null;
@@ -51,6 +51,27 @@ const parseStrictDateOnly = (value) => {
 
   return parsed;
 };
+
+const strictFutureScheduleDateQuery = (field) =>
+  query(field)
+    .exists()
+    .withMessage(`${field} is required`)
+    .bail()
+    .custom((value) => {
+      try {
+        assertFutureWibScheduleDate(value);
+      } catch (error) {
+        if (!WFA_SCHEDULE_DATE_ERROR_CODES.has(error?.code)) {
+          throw error;
+        }
+
+        throw {
+          message: error.message,
+          validationCode: error.code
+        };
+      }
+      return true;
+    });
 
 const validateTodayLocationsQueryKeys = (_value, { req }) => {
   const unsupportedQueryKey = Object.keys(req.query ?? {}).find((key) => key !== 'limit');
@@ -208,11 +229,30 @@ export const validateLogin = [
 export const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const rawErrors = errors.array();
+    const normalizedErrors = rawErrors.map((error) => {
+      if (!error.msg || typeof error.msg !== 'object') {
+        return error;
+      }
+
+      return {
+        ...error,
+        msg: error.msg.message,
+        code: error.msg.code ?? error.msg.validationCode
+      };
+    });
+    const typedCode =
+      rawErrors[0].msg && typeof rawErrors[0].msg === 'object' ? rawErrors[0].msg.code : null;
+    const message =
+      rawErrors[0].msg && typeof rawErrors[0].msg === 'object'
+        ? rawErrors[0].msg.message
+        : rawErrors[0].msg;
+
     return res.status(400).json({
       success: false,
-      code: 'E_VALIDATION',
-      message: errors.array()[0].msg,
-      errors: errors.array()
+      code: typedCode || 'E_VALIDATION',
+      message,
+      errors: normalizedErrors
     });
   }
   next();
@@ -377,6 +417,71 @@ export const validateCreateUser = [
   body('description').optional().isString().trim().withMessage('Deskripsi harus berupa teks')
 ];
 
+// Sort whitelist for the user directory (INF-250 contract). Raw client column
+// names must never reach an ORDER BY clause.
+export const USER_LIST_SORTABLE_COLUMNS = [
+  'full_name',
+  'email',
+  'nip_nim',
+  'created_at',
+  'updated_at'
+];
+
+// Validation for GET /users directory query (INF-250 matrix, INF-262).
+// Every invalid value is a deterministic 400 E_VALIDATION — including
+// array-shaped parameters that previously crashed into a 500.
+export const validateListUsers = [
+  query('page').optional().isInt({ min: 1 }).withMessage('page harus bilangan bulat >= 1').toInt(),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit harus bilangan bulat 1-100')
+    .toInt(),
+
+  query('search').optional().isString().withMessage('search harus berupa teks').trim(),
+
+  query('role').optional().isInt({ gt: 0 }).withMessage('role harus ID angka positif').toInt(),
+
+  query('program')
+    .optional()
+    .isInt({ gt: 0 })
+    .withMessage('program harus ID angka positif')
+    .toInt(),
+
+  query('division')
+    .optional()
+    .isInt({ gt: 0 })
+    .withMessage('division harus ID angka positif')
+    .toInt(),
+
+  query('position')
+    .optional()
+    .isInt({ gt: 0 })
+    .withMessage('position harus ID angka positif')
+    .toInt(),
+
+  query('location_status')
+    .optional()
+    .isIn(['configured', 'integrity_error'])
+    .withMessage('location_status harus configured atau integrity_error'),
+
+  query('sortBy')
+    .optional()
+    .isString()
+    .withMessage('sortBy harus berupa teks')
+    .isIn(USER_LIST_SORTABLE_COLUMNS)
+    .withMessage(`sortBy harus salah satu dari: ${USER_LIST_SORTABLE_COLUMNS.join(', ')}`),
+
+  query('sortOrder')
+    .optional()
+    .isString()
+    .withMessage('sortOrder harus berupa teks')
+    .customSanitizer((value) => (typeof value === 'string' ? value.toUpperCase() : value))
+    .isIn(['ASC', 'DESC'])
+    .withMessage('sortOrder harus ASC atau DESC')
+];
+
 // Check-in validation rules
 export const checkInValidation = [
   body('category_id')
@@ -423,7 +528,73 @@ export const checkInValidation = [
 
 // Booking validation rules
 export const createBookingValidation = [
-  body('schedule_date').notEmpty().withMessage('Tanggal jadwal wajib diisi'),
+  body('schedule_date')
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date wajib menggunakan format YYYY-MM-DD'
+    })
+    .bail()
+    .isString()
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date wajib menggunakan format YYYY-MM-DD'
+    })
+    .bail()
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date wajib menggunakan format YYYY-MM-DD'
+    })
+    .bail()
+    .custom((value) => {
+      const [year, month, day] = value.split('-').map(Number);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+      );
+    })
+    .withMessage({
+      code: 'INVALID_SCHEDULE_DATE',
+      message: 'schedule_date tidak merepresentasikan tanggal kalender yang valid'
+    }),
+
+  body('request_reason_id')
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'WFA_REQUEST_REASON_REQUIRED',
+      message: 'request_reason_id wajib diisi'
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage({
+      code: 'WFA_REQUEST_REASON_REQUIRED',
+      message: 'request_reason_id wajib berupa integer positif'
+    })
+    .toInt(),
+
+  body('request_other_reason')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('request_other_reason harus berupa string')
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('request_other_reason maksimal 500 karakter'),
+
+  body('location_id')
+    .optional()
+    .custom((value) => {
+      if (typeof value !== 'number' && typeof value !== 'string') {
+        throw new Error('Location ID harus berupa integer positif');
+      }
+      return true;
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage('Location ID harus berupa integer positif')
+    .toInt(),
 
   body('latitude')
     .notEmpty()
@@ -440,12 +611,6 @@ export const createBookingValidation = [
     .withMessage('Longitude tidak valid')
     .custom((value) => parseFloat(value) !== 0)
     .withMessage('Longitude tidak boleh 0'),
-
-  body('radius')
-    .optional()
-    .default(100)
-    .isFloat({ gt: 0 })
-    .withMessage('Radius harus lebih besar dari 0'),
 
   body('description')
     .optional()
@@ -467,7 +632,28 @@ export const updateStatusValidation = [
     .notEmpty()
     .withMessage('Status wajib diisi')
     .isIn(['approved', 'rejected'])
-    .withMessage('Status harus "approved" atau "rejected"')
+    .withMessage('Status harus "approved" atau "rejected"'),
+  body('rejection_reason_id')
+    .if(body('status').equals('rejected'))
+    .exists({ values: 'falsy' })
+    .withMessage({
+      code: 'REJECTION_REASON_REQUIRED',
+      message: 'rejection_reason_id wajib diisi untuk penolakan'
+    })
+    .bail()
+    .isInt({ min: 1 })
+    .withMessage({
+      code: 'REJECTION_REASON_REQUIRED',
+      message: 'rejection_reason_id wajib berupa integer positif'
+    })
+    .toInt(),
+  body('rejection_note')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('rejection_note harus berupa string')
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('rejection_note maksimal 500 karakter')
 ];
 
 export const disciplineFahpValidation = [
@@ -516,10 +702,27 @@ export const wfaFahpValidation = [
     .bail()
     .isFloat({ min: -180, max: 180 })
     .withMessage('lon must be a valid longitude'),
+  strictFutureScheduleDateQuery('schedule_date'),
   query('radius_meters')
     .default(5000)
     .isInt({ min: 100, max: 50000 })
     .withMessage('radius_meters must be an integer between 100 and 50000')
+];
+
+export const wfaRecommendationValidation = [
+  query('lat')
+    .exists()
+    .withMessage('lat is required')
+    .bail()
+    .isFloat({ min: -90, max: 90 })
+    .withMessage('lat must be a valid latitude'),
+  query('lng')
+    .exists()
+    .withMessage('lng is required')
+    .bail()
+    .isFloat({ min: -180, max: 180 })
+    .withMessage('lng must be a valid longitude'),
+  strictFutureScheduleDateQuery('schedule_date')
 ];
 
 export const fuzzyAhpDashboardRecapValidation = [
@@ -530,13 +733,32 @@ export const fuzzyAhpDashboardRecapValidation = [
       throw new Error('type is required');
     }
 
+    if (!['discipline', 'wfa', 'smart_ac'].includes(req.query.type)) {
+      throw new Error('type must be one of discipline, wfa, smart_ac');
+    }
+
+    if (req.query.type === 'wfa') {
+      const unsupportedQueryKey = queryKeys.find((key) => !['type', 'from', 'to'].includes(key));
+      if (unsupportedQueryKey) {
+        throw new Error('only type, from, and to query parameters are allowed for wfa dashboard');
+      }
+
+      const validationMessage = validateHistoricalDateWindowQuery({
+        period: 'custom',
+        from: req.query.from ?? null,
+        to: req.query.to ?? null
+      });
+
+      if (validationMessage) {
+        throw new Error(validationMessage);
+      }
+
+      return true;
+    }
+
     const unsupportedQueryKey = queryKeys.find((key) => key !== 'type');
     if (unsupportedQueryKey) {
       throw new Error('only type query parameter is allowed');
-    }
-
-    if (!['discipline', 'wfa', 'smart_ac'].includes(req.query.type)) {
-      throw new Error('type must be one of discipline, wfa, smart_ac');
     }
 
     return true;

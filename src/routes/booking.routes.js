@@ -14,6 +14,7 @@ import {
   updateStatusValidation,
   validate
 } from '../middlewares/validator.js';
+import { validateBookingManagementListQuery } from '../modules/booking/bookingManagement.validation.js';
 
 const router = express.Router();
 
@@ -33,7 +34,13 @@ router.patch(
 );
 
 // GET /api/bookings - Mendapatkan semua booking (hanya admin dan management)
-router.get('/', roleGuard(['Admin', 'Management']), getAllBookings);
+router.get(
+  '/',
+  roleGuard(['Admin', 'Management']),
+  validateBookingManagementListQuery,
+  validate,
+  getAllBookings
+);
 
 // GET /api/bookings/history - Mendapatkan riwayat booking user dengan filter dan sorting
 router.get('/history', getBookingHistory);

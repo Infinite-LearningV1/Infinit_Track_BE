@@ -74,6 +74,7 @@ const mockLocationFindAll = jest.fn();
 const mockLocationFindByPk = jest.fn();
 const mockLocationEventFindOne = jest.fn();
 const mockLocationEventFindAll = jest.fn();
+const mockBuildWfaDashboardAnalysis = jest.fn();
 
 const mockGetDisciplineAhpWeights = jest.fn(() => ({
   alpha_rate: 0.4,
@@ -90,14 +91,26 @@ const mockCalculateDisciplineIndex = jest.fn(async () => ({
 const mockGetWfaAhpWeights = jest.fn(() => ({
   location_type: 0.5,
   distance_factor: 0.3,
-  amenity_score: 0.2,
+  facility_score: 0.2,
   consistency_ratio: 0.01
 }));
 const mockCalculateWfaScore = jest.fn(async () => ({
   score: 82.3,
   label: 'Tinggi'
 }));
+const mockGetLegacyWfaAmenityWeights = jest.fn(() => ({
+  location_type: 0.5,
+  distance_factor: 0.3,
+  amenity_score: 0.2,
+  consistency_ratio: 0.01
+}));
+const mockCalculateLegacyWfaAmenityScore = jest.fn(async () => ({
+  score: 82.3,
+  label: 'Tinggi'
+}));
 const mockCategorizePlace = jest.fn(() => 'office');
+const mockGetLocationTypeScore = jest.fn(() => 40);
+const mockGetDistanceFactorScore = jest.fn(() => 66.67);
 const mockGetSmartAcAhpWeights = jest.fn(() => ({
   history: 0.4,
   checkin_pattern: 0.3,
@@ -115,13 +128,38 @@ const mockFuzzyAhpDashboardRecapValidation = jest.fn((req, _res, next) => {
     return next();
   }
 
-  if (queryKeys.some((key) => key !== 'type')) {
-    req.validationError = 'only type query parameter is allowed';
+  if (!ALLOWED_TYPES.includes(req.query.type)) {
+    req.validationError = 'type must be one of discipline, wfa, smart_ac';
     return next();
   }
 
-  if (!ALLOWED_TYPES.includes(req.query.type)) {
-    req.validationError = 'type must be one of discipline, wfa, smart_ac';
+  if (req.query.type === 'wfa') {
+    const unsupportedQueryKey = queryKeys.find((key) => !['type', 'from', 'to'].includes(key));
+    if (unsupportedQueryKey) {
+      req.validationError = 'only type, from, and to query parameters are allowed for wfa dashboard';
+      return next();
+    }
+
+    if (!req.query.from || !req.query.to) {
+      req.validationError = 'Parameter from dan to wajib diisi saat period=range atau custom';
+      return next();
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) {
+      req.validationError = 'Parameter from harus menggunakan format YYYY-MM-DD';
+      return next();
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) {
+      req.validationError = 'Parameter to harus menggunakan format YYYY-MM-DD';
+      return next();
+    }
+
+    return next();
+  }
+
+  if (queryKeys.some((key) => key !== 'type')) {
+    req.validationError = 'only type query parameter is allowed';
     return next();
   }
 
@@ -178,9 +216,17 @@ jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
     calculateDisciplineIndex: mockCalculateDisciplineIndex,
     getWfaAhpWeights: mockGetWfaAhpWeights,
     calculateWfaScore: mockCalculateWfaScore,
+    getLegacyWfaAmenityWeights: mockGetLegacyWfaAmenityWeights,
+    calculateLegacyWfaAmenityScore: mockCalculateLegacyWfaAmenityScore,
+    getLocationTypeScore: mockGetLocationTypeScore,
+    getDistanceFactorScore: mockGetDistanceFactorScore,
     categorizePlace: mockCategorizePlace,
     getSmartAcAhpWeights: mockGetSmartAcAhpWeights
   }
+}));
+
+jest.unstable_mockModule('../src/services/wfaDashboardAnalysis.service.js', () => ({
+  buildWfaDashboardAnalysis: mockBuildWfaDashboardAnalysis
 }));
 
 const { default: analysisRoutes } = await import('../src/routes/analysis.routes.js');
@@ -263,7 +309,7 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
     await expectValidationFailure(app, path, 'only type query parameter is allowed');
   });
 
-  it('returns 200 success response for a valid type query', async () => {
+  it('returns 200 success response for a valid discipline type query', async () => {
     const app = createDashboardRecapHarnessApp();
 
     const res = await request(app).get('/api/analysis/fuzzy-ahp/dashboard?type=discipline');
@@ -324,6 +370,23 @@ describe('analysis fuzzy ahp dashboard recap route validation scaffold', () => {
     expect(mockGetFuzzyAhpDashboardRecap).toHaveBeenCalledTimes(1);
   });
 
+  it('allows WFA dashboard explicit from/to and preserves those query values for the handler', async () => {
+    const app = createDashboardRecapHarnessApp();
+
+    const res = await request(app).get(
+      '/api/analysis/fuzzy-ahp/dashboard?type=wfa&from=2026-08-01&to=2026-08-15'
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.type).toBe('wfa');
+    expect(mockGetFuzzyAhpDashboardRecap).toHaveBeenCalledTimes(1);
+    expect(mockGetFuzzyAhpDashboardRecap.mock.calls[0][0].query).toMatchObject({
+      type: 'wfa',
+      from: '2026-08-01',
+      to: '2026-08-15'
+    });
+  });
+
   it('returns 403 for callers outside Admin and Management before validation or handler execution', async () => {
     const app = createDashboardRecapHarnessApp();
 
@@ -371,13 +434,13 @@ describe('fuzzy ahp dashboard recap service behavior', () => {
       label: 'Sangat Tinggi',
       breakdown: {}
     });
-    mockGetWfaAhpWeights.mockReturnValue({
+    mockGetLegacyWfaAmenityWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
       amenity_score: 0.2,
       consistency_ratio: 0.01
     });
-    mockCalculateWfaScore.mockResolvedValue({
+    mockCalculateLegacyWfaAmenityScore.mockResolvedValue({
       score: 82.3,
       label: 'Tinggi'
     });
@@ -410,49 +473,6 @@ describe('fuzzy ahp dashboard recap service behavior', () => {
     expect(payload.criteria_weights).toBeNull();
   });
 
-  it('returns empty wfa recap when there are no monthly location events', async () => {
-    mockLocationFindAll.mockResolvedValue([
-      {
-        location_id: 3,
-        description: 'Office Hub',
-        latitude: '-6.2',
-        longitude: '106.8'
-      }
-    ]);
-
-    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'wfa' });
-
-    expect(payload.status).toBe('empty');
-    expect(payload.needs_data).toBe(true);
-    expect(payload.ranking_preview.items).toEqual([]);
-  });
-
-  it('keeps wfa recap ready when windowed location activity exists', async () => {
-    mockLocationEventFindAll.mockResolvedValue([{ location_id: 3 }]);
-    mockLocationFindAll.mockResolvedValue([
-      {
-        location_id: 3,
-        description: 'Office Hub',
-        latitude: '-6.2',
-        longitude: '106.8'
-      },
-      {
-        location_id: 4,
-        description: 'Unused Hub',
-        latitude: '-6.21',
-        longitude: '106.81'
-      }
-    ]);
-
-    const payload = await buildFuzzyAhpDashboardRecapPayload({ type: 'wfa' });
-
-    expect(payload.status).toBe('ready');
-    expect(payload.needs_data).toBe(false);
-    expect(payload.criteria_weights).toHaveLength(3);
-    expect(payload.ranking_preview.items).toHaveLength(1);
-    expect(payload.ranking_preview.items[0].id).toBe(3);
-  });
-
   it('returns empty smart_ac recap when all users lack monthly attendance evidence', async () => {
     mockUserFindAll.mockResolvedValue([{ id_users: 12, full_name: 'Andi' }]);
 
@@ -461,5 +481,44 @@ describe('fuzzy ahp dashboard recap service behavior', () => {
     expect(payload.status).toBe('empty');
     expect(payload.needs_data).toBe(true);
     expect(payload.ranking_preview.items).toEqual([]);
+  });
+
+  it('dispatches WFA dashboard recap to the date-range WFA analysis service', async () => {
+    mockBuildWfaDashboardAnalysis.mockResolvedValue({
+      type: 'wfa',
+      type_label: 'WFA',
+      status: 'ready',
+      requested_window: { from: '2026-08-01', to: '2026-08-15' },
+      criteria_weights: [],
+      consistency: {
+        CR: 0.0576,
+        threshold: 0.1,
+        is_consistent: true,
+        summary_label: 'Konsistensi dapat diterima'
+      },
+      methodology: { version: 'wfa_fahp_v1', weighting_method: 'row_geometric_mean_fallback' },
+      ranking_preview: { top_n: 5, items: [] },
+      evidence: {
+        approved_booking_count: 1,
+        analyzable_booking_count: 1,
+        excluded_missing_snapshot_count: 0,
+        excluded_incompatible_snapshot_count: 0,
+        unique_location_count: 1,
+        ranked_location_count: 1
+      }
+    });
+
+    const payload = await buildFuzzyAhpDashboardRecapPayload({
+      type: 'wfa',
+      from: '2026-08-01',
+      to: '2026-08-15'
+    });
+
+    expect(mockBuildWfaDashboardAnalysis).toHaveBeenCalledWith({
+      from: '2026-08-01',
+      to: '2026-08-15'
+    });
+    expect(payload.type).toBe('wfa');
+    expect(payload.requested_window).toEqual({ from: '2026-08-01', to: '2026-08-15' });
   });
 });
