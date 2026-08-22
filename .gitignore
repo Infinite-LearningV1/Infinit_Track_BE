@@ -51,6 +51,9 @@ docs/*
 !docs/specs/*.md
 !docs/plans/
 !docs/plans/*.md
+!docs/adr/
+!docs/architecture/
+!docs/superpowers/
 .blackboxrules
 
 # Research attendance generator outputs

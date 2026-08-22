@@ -1,9 +1,12 @@
 import logger from '../utils/logger.js';
 import config from '../config/index.js';
+import { AppError } from '../shared/errors/AppError.js';
+import { toErrorResponse } from '../shared/http/toErrorResponse.js';
 
 const PUBLIC_ERROR_CODES = new Set([
   'E_OPERATIONAL_SETTINGS_INVALID',
-  'E_INVALID_REFERENCE_STATE'
+  'E_INVALID_REFERENCE_STATE',
+  'WFA_CONFIG_UNAVAILABLE'
 ]);
 
 export const errorHandler = (err, req, res, _next) => {
@@ -25,6 +28,20 @@ export const errorHandler = (err, req, res, _next) => {
   }
 
   logger.error(logPayload);
+
+  // Typed application errors (ADR-009, Phase 1). Placed after logging so log
+  // output is unchanged, and ahead of the legacy branches so an AppError never
+  // falls through to them. Everything below this block is untouched legacy
+  // behavior.
+  if (err instanceof AppError) {
+    const { status, body } = toErrorResponse(err, { env: config.env });
+
+    if (config.env === 'development') {
+      body.stack = err.stack;
+    }
+
+    return res.status(status).json(body);
+  }
 
   // Sequelize validation errors
   if (err.name === 'SequelizeValidationError') {

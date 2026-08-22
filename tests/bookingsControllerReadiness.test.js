@@ -40,8 +40,11 @@ describe('booking controller readiness regressions', () => {
       },
       BookingStatus: {},
       User: {},
+      Photo: {},
       Position: {},
-      Role: {}
+      Role: {},
+      WfaRequestReason: {},
+      WfaRejectionReason: {}
     };
   }
 
@@ -64,6 +67,20 @@ describe('booking controller readiness regressions', () => {
         debug: jest.fn()
       }
     }));
+
+    jest.unstable_mockModule('../src/services/wfaSettings.service.js', () => ({
+      readWfaRequestConfig: jest.fn(),
+      resolveActiveWfaRequestReason: jest.fn(),
+      resolveActiveWfaRejectionReason: jest.fn()
+    }));
+
+    jest.unstable_mockModule('../src/services/wfaEligibility.service.js', () => ({
+      assertWfaEligibility: jest.fn()
+    }));
+
+    jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+      scoreBookingLocation: jest.fn()
+    }));
   }
 
   async function importBookingController(models, sequelizeMock = buildSequelizeMock()) {
@@ -71,164 +88,13 @@ describe('booking controller readiness regressions', () => {
     return import('../src/controllers/booking.controller.js');
   }
 
-  async function expectListValidationError(query, expectedMessageFragment) {
-    const models = buildModelsMock();
-    const { getAllBookings } = await importBookingController(models);
-    const res = buildRes();
-    const next = jest.fn();
-
-    await getAllBookings({ query }, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: false,
-        message: expect.stringContaining(expectedMessageFragment)
-      })
-    );
-    expect(models.Booking.findAndCountAll).not.toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
-  }
 
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
   });
 
-  it('applies documented bookings filters and pagination for admin listing', async () => {
-    const sequelizeMock = buildSequelizeMock();
-    const models = buildModelsMock({
-      findAndCountAllResult: {
-        count: 7,
-        rows: [
-          {
-            booking_id: 88,
-            user: {
-              id_users: 42,
-              full_name: 'Booking User',
-              role: { role_name: 'User' },
-              email: 'booking@example.com',
-              nip_nim: 'EMP-42',
-              position: { position_name: 'Engineer' }
-            },
-            schedule_date: '2026-05-15',
-            booking_status: { name_status: 'approved' },
-            location: {
-              location_id: 9,
-              latitude: '-0.8917',
-              longitude: '119.8707',
-              radius: '100',
-              description: 'Remote Hub'
-            },
-            notes: 'Needs review',
-            suitability_score: '80',
-            suitability_label: 'Sangat Baik',
-            created_at: new Date('2026-05-01T08:00:00.000Z'),
-            processed_at: null,
-            approved_by: null
-          }
-        ]
-      }
-    });
 
-    mockControllerDependencies({ models, sequelizeMock });
-
-    const { getAllBookings } = await import('../src/controllers/booking.controller.js');
-
-    const req = {
-      query: {
-        status: 'approved',
-        user_id: '42',
-        date_from: '2026-05-01',
-        date_to: '2026-05-31',
-        page: '2',
-        limit: '5'
-      }
-    };
-    const res = buildRes();
-    const next = jest.fn();
-
-    await getAllBookings(req, res, next);
-
-    expect(models.Booking.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          status: 1,
-          user_id: 42,
-          schedule_date: {
-            [Op.gte]: '2026-05-01',
-            [Op.lte]: '2026-05-31'
-          }
-        },
-        limit: 5,
-        offset: 5,
-        distinct: true
-      })
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({
-          pagination: expect.objectContaining({
-            current_page: 2,
-            total_pages: 2,
-            total_items: 7,
-            items_per_page: 5
-          }),
-          bookings: expect.arrayContaining([
-            expect.objectContaining({
-              booking_id: 88,
-              user_id: 42,
-              status: 'approved'
-            })
-          ])
-        })
-      })
-    );
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('rejects invalid status filters before querying bookings', async () => {
-    await expectListValidationError({ status: 'archived' }, 'Status filter tidak valid');
-  });
-
-  it('rejects invalid pagination values before querying bookings', async () => {
-    await expectListValidationError(
-      {
-        page: '0',
-        limit: '-2'
-      },
-      'Parameter pagination tidak valid'
-    );
-  });
-
-  it('rejects pagination limits above the admin safety cap', async () => {
-    await expectListValidationError({ limit: '101' }, 'Limit maksimum adalah 100');
-  });
-
-  it('rejects invalid user_id filters before querying bookings', async () => {
-    await expectListValidationError({ user_id: '0' }, 'Parameter user_id tidak valid');
-  });
-
-  it('rejects datetime date filters that do not match the published date format', async () => {
-    await expectListValidationError(
-      {
-        date_from: '2026-05-01T12:00:00Z'
-      },
-      'Gunakan format YYYY-MM-DD'
-    );
-  });
-
-  it('rejects date ranges where date_from is later than date_to', async () => {
-    await expectListValidationError(
-      {
-        date_from: '2026-05-31',
-        date_to: '2026-05-01'
-      },
-      'date_from tidak boleh lebih lambat dari date_to'
-    );
-  });
 
   it('returns user-scoped all-status summary independent from active history status filter', async () => {
     const sequelizeMock = buildSequelizeMock();

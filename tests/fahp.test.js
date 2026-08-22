@@ -1,6 +1,12 @@
 import { computeCR, defuzzifyMatrixTFN } from '../src/analytics/fahp.js';
 import { extentWeightsTFN } from '../src/analytics/fahp.extent.js';
-import { TFN, WFA_PAIRWISE_TFN, DISC_PAIRWISE_TFN, SMART_AC_PAIRWISE_TFN } from '../src/analytics/config.fahp.js';
+import {
+  TFN,
+  FACILITY_PAIRWISE_TFN,
+  WFA_PAIRWISE_TFN,
+  DISC_PAIRWISE_TFN,
+  SMART_AC_PAIRWISE_TFN
+} from '../src/analytics/config.fahp.js';
 import { labelEqualInterval } from '../src/analytics/labeling.js';
 
 test("Chang's extent produces normalized weights for a custom TFN matrix", () => {
@@ -19,6 +25,7 @@ test("Chang's extent produces normalized weights for a custom TFN matrix", () =>
 
 test("Chang's extent is the official normalized weighting path for WFA, discipline, and Smart AC", () => {
   const weightSets = [
+    extentWeightsTFN(FACILITY_PAIRWISE_TFN),
     extentWeightsTFN(WFA_PAIRWISE_TFN),
     extentWeightsTFN(DISC_PAIRWISE_TFN),
     extentWeightsTFN(SMART_AC_PAIRWISE_TFN)
@@ -41,12 +48,15 @@ test('CR is small for near-consistent crisp matrix', () => {
 });
 
 test('CR from defuzzified TFN matrices is reasonable', () => {
+  const facilityCrisp = defuzzifyMatrixTFN(FACILITY_PAIRWISE_TFN);
   const wfaCrisp = defuzzifyMatrixTFN(WFA_PAIRWISE_TFN);
   const discCrisp = defuzzifyMatrixTFN(DISC_PAIRWISE_TFN);
   const smartAcCrisp = defuzzifyMatrixTFN(SMART_AC_PAIRWISE_TFN);
+  const { CR: crFacility } = computeCR(facilityCrisp);
   const { CR: crWfa } = computeCR(wfaCrisp);
   const { CR: crDisc } = computeCR(discCrisp);
   const { CR: crSmartAc } = computeCR(smartAcCrisp);
+  expect(crFacility).toBe(0);
   expect(crWfa).toBeLessThan(0.2);
   expect(crDisc).toBeLessThan(0.2);
   expect(crSmartAc).toBeLessThan(0.2);

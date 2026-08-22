@@ -11,7 +11,6 @@ import {
   AttendanceStatus,
   BookingStatus,
   User,
-  Role,
   LocationEvent
 } from '../models/index.js';
 import {
@@ -21,7 +20,6 @@ import {
   getCurrentTimeForDB
 } from '../utils/geofence.js';
 import { formatWorkHour, calculateWorkHour, formatTimeOnly } from '../utils/workHourFormatter.js';
-import { applySearch } from '../utils/searchHelper.js';
 import { getOperationalSettings } from '../utils/settings.js';
 import {
   ATTENDANCE_ALREADY_CHECKED_IN_MESSAGE
@@ -46,6 +44,10 @@ import {
   renderMyAttendanceReportPdf
 } from '../utils/pdfReportRenderer.js';
 import fuzzyEngine from '../utils/fuzzyAhpEngine.js';
+import {
+  getManagementAttendanceDetail,
+  listManagementAttendances
+} from '../modules/attendance/attendanceRead.service.js';
 
 /**
  * Test endpoint to compute checkout prediction using weightedPrediction
@@ -239,6 +241,65 @@ const buildPeriodLabel = (period) => {
     default:
       return period;
   }
+};
+
+const roundPercentage = (count, total) => {
+  if (!total) return 0;
+  return Math.round((count / total) * 100);
+};
+
+const formatWorkHoursLabel = (workHours) => {
+  if (!workHours) return '0h';
+  const totalMinutes = Math.round(workHours * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
+const buildModeDistribution = (summary) => {
+  const total = summary.total_wfo + summary.total_wfa + summary.total_wfh;
+
+  return {
+    total,
+    wfo: {
+      key: 'wfo',
+      label: 'WFO',
+      count: summary.total_wfo,
+      percentage: roundPercentage(summary.total_wfo, total)
+    },
+    wfa: {
+      key: 'wfa',
+      label: 'WFA',
+      count: summary.total_wfa,
+      percentage: roundPercentage(summary.total_wfa, total)
+    },
+    wfh: {
+      key: 'wfh',
+      label: 'WFH',
+      count: summary.total_wfh,
+      percentage: roundPercentage(summary.total_wfh, total)
+    }
+  };
+};
+
+const enrichHistorySummaryForReport = (summary) => {
+  const totalPresent = summary.total_ontime + summary.total_late + summary.total_early;
+  const totalAbsent = summary.total_alpha;
+  const totalCountedDays = totalPresent + totalAbsent;
+  const attendanceRate = totalCountedDays > 0 ? Math.round((totalPresent / totalCountedDays) * 100) : null;
+
+  return {
+    ...summary,
+    total_present: totalPresent,
+    total_absent: totalAbsent,
+    total_counted_days: totalCountedDays,
+    total_working_days: null,
+    attendance_rate: attendanceRate,
+    attendance_rate_label: attendanceRate == null ? 'N/A' : `${attendanceRate}%`,
+    attendance_rate_denominator: 'total_counted_days',
+    total_work_hours_label: formatWorkHoursLabel(summary.total_work_hours),
+    mode_distribution: buildModeDistribution(summary)
+  };
 };
 
 const buildPersonalReportQuery = (query = {}) => {
@@ -490,6 +551,7 @@ export const getAttendanceHistory = async (req, res) => {
     const totalWorkHours = Number.parseFloat(workHourSummary?.[0]?.total_work_hours);
     summary.total_work_hours = Number.isFinite(totalWorkHours) ? Number(totalWorkHours.toFixed(2)) : 0;
 
+    const reportSummary = enrichHistorySummaryForReport(summary);
     const todayDate = getJakartaDateString();
     const transformedData = attendanceData.rows.map((att) => {
       const [dateYear, dateMonth, dateDay] = String(att.attendance_date).split('-').map(Number);
@@ -500,8 +562,11 @@ export const getAttendanceHistory = async (req, res) => {
       const statusContract = deriveStatusContract(att);
       const isAlpha = statusContract.status_key === 'alpha';
       const isActiveSession = Boolean(att.time_in && !att.time_out && att.attendance_date === todayDate);
-      const timeIn = att.time_in ? formatTimeOnly(att.time_in) : null;
-      const timeOut = att.time_out ? formatTimeOnly(att.time_out) : null;
+      const rawTimeIn = att.time_in ? formatTimeOnly(att.time_in) : null;
+      const rawTimeOut = att.time_out ? formatTimeOnly(att.time_out) : null;
+      const rawTimeRange = `${rawTimeIn || '--:--'} - ${rawTimeOut || '--:--'}`;
+      const timeIn = isAlpha ? null : rawTimeIn;
+      const timeOut = isAlpha ? null : rawTimeOut;
 
       const notesStr = att.notes || '';
       const smartMatch = notesStr.match(/\[Smart AC\]\s*pred=([^,]+),\s*used=([^,]+),/);
@@ -541,7 +606,10 @@ export const getAttendanceHistory = async (req, res) => {
         mode_label: modeContract.mode_label,
         time_in: timeIn,
         time_out: timeOut,
-        time_range: `${timeIn || '--:--'} - ${timeOut || '--:--'}`,
+        time_range: isAlpha ? '--:-- - --:--' : rawTimeRange,
+        raw_time_in: rawTimeIn,
+        raw_time_out: rawTimeOut,
+        raw_time_range: rawTimeRange,
         work_hour: isAlpha ? null : formatWorkHour(workHourDisplay),
         work_hour_raw: workHourDisplay,
         status_key: statusContract.status_key,
@@ -567,7 +635,7 @@ export const getAttendanceHistory = async (req, res) => {
           start_date: startDateOnly,
           end_date: endDateOnly
         },
-        summary,
+        summary: reportSummary,
         attendances: transformedData,
         pagination: {
           current_page: pageNum,
@@ -1556,114 +1624,31 @@ export const getGeofenceEvidence = async (req, res, next) => {
 
 export const getAllAttendances = async (req, res, next) => {
   try {
-    // Get query parameters with defaults
-    const { search, page = 1, limit = 10 } = req.query;
-
-    // Validate pagination parameters
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-
-    if (pageNum < 1 || limitNum < 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'Parameter page dan limit harus berupa angka positif'
-      });
-    }
-
-    // Calculate offset for pagination
-    const offset = (pageNum - 1) * limitNum;
-
-    // Build query options
-    const queryOptions = {
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id_users', 'full_name', 'nip_nim', 'email'],
-          include: [
-            {
-              model: Role,
-              as: 'role',
-              attributes: ['role_name']
-            }
-          ]
-        },
-        {
-          model: Location,
-          as: 'location',
-          attributes: ['location_id', 'description', 'latitude', 'longitude'],
-          required: false
-        },
-        {
-          model: AttendanceStatus,
-          as: 'status',
-          attributes: ['attendance_status_name']
-        },
-        {
-          model: AttendanceCategory,
-          as: 'attendance_category',
-          attributes: ['category_name']
-        }
-      ],
-      order: [['id_attendance', 'DESC']],
-      limit: limitNum,
-      offset: offset,
-      distinct: true // Important for correct count with includes
-    };
-
-    // Apply search if provided
-    if (search && search.trim()) {
-      applySearch(queryOptions, search, ['$user.full_name$', '$user.nip_nim$']);
-    }
-
-    // Execute query
-    const { count, rows } = await Attendance.findAndCountAll(queryOptions);
-
-    // Transform data response
-    const transformedData = rows.map((att) => {
-      // Format work hour using utility
-      const formattedWorkHour = formatWorkHour(att.work_hour);
-
-      return {
-        id_attendance: att.id_attendance,
-        id: att.user?.id_users || null,
-        full_name: att.user?.full_name || 'Unknown User',
-        nip_nim: att.user?.nip_nim || null,
-        role_name: att.user?.role?.role_name || null,
-        time_in: formatTimeOnly(att.time_in),
-        time_out: formatTimeOnly(att.time_out),
-        work_hour: formattedWorkHour,
-        attendance_date: att.attendance_date,
-        location: att.location
-          ? {
-              location_id: att.location.location_id,
-              description: att.location.description,
-              latitude: parseFloat(att.location.latitude),
-              longitude: parseFloat(att.location.longitude)
-            }
-          : null,
-        status: att.status?.attendance_status_name || 'Unknown',
-        information: att.attendance_category?.category_name || 'Unknown',
-        notes: att.notes
-      };
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(count / limitNum);
-
-    // Send success response
-    res.status(200).json({
+    const result = await listManagementAttendances(req.query);
+    return res.status(200).json({
       success: true,
       message: 'Data absensi berhasil diambil',
-      data: transformedData,
-      pagination: {
-        current_page: pageNum,
-        total_pages: totalPages,
-        total_records: count,
-        records_per_page: limitNum,
-        has_next_page: pageNum < totalPages,
-        has_prev_page: pageNum > 1
-      }
+      data: result.data,
+      pagination: result.pagination
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAttendanceDetail = async (req, res, next) => {
+  try {
+    const data = await getManagementAttendanceDetail(req.params.id);
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: 'Data absensi tidak ditemukan.'
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'Detail absensi berhasil diambil',
+      data
     });
   } catch (error) {
     next(error);

@@ -23,19 +23,34 @@ export const TFN = {
   EXTREME: [8, 9, 9] // 9: Extreme importance
 };
 
+export const FACILITY_MATRIX_VERSION = 'facility_equal_v1';
+export const WFA_MATRIX_VERSION = 'wfa_fahp_v1';
+
+export const FACILITY_CRITERIA = Object.freeze([
+  'internet_access',
+  'air_conditioning',
+  'toilets',
+  'opening_hours',
+  'wheelchair_accessibility'
+]);
+
+export const FACILITY_PAIRWISE_TFN = FACILITY_CRITERIA.map(() =>
+  FACILITY_CRITERIA.map(() => TFN.EQUAL)
+);
+
 /**
  * WFA (Work From Anywhere) Pairwise Comparison Matrix
- * Criteria: [location_type, distance_factor, amenity_score]
+ * Criteria: [location_type, distance_factor, facility_score]
  *
  * Judgment rationale:
  * - location_type > distance_factor: MODERATE (3) - Type of place matters more than exact distance
- * - location_type > amenity_score: STRONG (5) - Location type is key factor
- * - distance_factor > amenity_score: MODERATE (3) - Distance still matters more than amenities
+ * - location_type > facility_score: STRONG (5) - Location type is key factor
+ * - distance_factor > facility_score: MODERATE (3) - Distance still matters more than facilities
  */
 export const WFA_PAIRWISE_TFN = [
   [TFN.EQUAL, TFN.MODERATE, TFN.STRONG], // location_type (was M, H, VH → EQUAL, MODERATE, STRONG)
   [invTFN(TFN.MODERATE), TFN.EQUAL, TFN.MODERATE], // distance_factor (was 1/H, M, H → 1/MODERATE, EQUAL, MODERATE)
-  [invTFN(TFN.STRONG), invTFN(TFN.MODERATE), TFN.EQUAL] // amenity_score (was 1/VH, 1/H, M → 1/STRONG, 1/MODERATE, EQUAL)
+  [invTFN(TFN.STRONG), invTFN(TFN.MODERATE), TFN.EQUAL] // facility_score (was 1/VH, 1/H, M → 1/STRONG, 1/MODERATE, EQUAL)
 ];
 
 /**
@@ -43,18 +58,21 @@ export const WFA_PAIRWISE_TFN = [
  * Criteria: [alpha_rate, lateness_severity, lateness_frequency, work_focus]
  *
  * Judgment rationale:
- * - alpha_rate > lateness_severity: STRONG (5) - Being absent is worse than being late
- * - alpha_rate > lateness_frequency: STRONG (5) - Absence frequency is critical
- * - alpha_rate > work_focus: MODERATE (3) - Absence matters more than work consistency
- * - lateness_severity > work_focus: EQUAL (1) - Both equally important
- * - lateness_frequency > work_focus: EQUAL (1) - Both equally important
- * - lateness_severity > lateness_frequency: MODERATE (3) - How late matters more than how often
+ * - alpha_rate > lateness_severity: MODERATE (3) - Absence remains the strongest signal, but lateness severity must still influence the score
+ * - alpha_rate > lateness_frequency: WEAK (2) - Absence is worse than repeated lateness, but frequency must not collapse to zero
+ * - alpha_rate > work_focus: WEAK (2) - Absence is worse than work-hour inconsistency, while work focus remains a measurable discipline dimension
+ * - lateness_severity > lateness_frequency: WEAK (2) - How late someone is matters slightly more than how often they are late
+ * - lateness_severity = work_focus: EQUAL (1) - Lateness severity and work-hour consistency both affect discipline quality
+ * - lateness_frequency = work_focus: EQUAL (1) - Repeated lateness and work-hour consistency are both secondary discipline indicators
+ *
+ * Target behavior: alpha_rate remains dominant (~50-70%) while lateness_severity,
+ * lateness_frequency, and work_focus keep non-zero weights under Chang's Extent Analysis.
  */
 export const DISC_PAIRWISE_TFN = [
-  [TFN.EQUAL, TFN.STRONG, TFN.STRONG, TFN.MODERATE], // alpha_rate (was M, VH, VH, H)
-  [invTFN(TFN.STRONG), TFN.EQUAL, TFN.MODERATE, TFN.EQUAL], // lateness_severity (was 1/VH, M, H, M)
-  [invTFN(TFN.STRONG), invTFN(TFN.MODERATE), TFN.EQUAL, TFN.EQUAL], // lateness_frequency (was 1/VH, 1/H, M, M)
-  [invTFN(TFN.MODERATE), invTFN(TFN.EQUAL), invTFN(TFN.EQUAL), TFN.EQUAL] // work_focus (was 1/H, 1/M, 1/M, M)
+  [TFN.EQUAL, TFN.MODERATE, TFN.WEAK, TFN.WEAK],
+  [invTFN(TFN.MODERATE), TFN.EQUAL, TFN.WEAK, TFN.EQUAL],
+  [invTFN(TFN.WEAK), invTFN(TFN.WEAK), TFN.EQUAL, TFN.EQUAL],
+  [invTFN(TFN.WEAK), invTFN(TFN.EQUAL), invTFN(TFN.EQUAL), TFN.EQUAL]
 ];
 
 /**

@@ -2,7 +2,7 @@ import express from 'express';
 import { jest } from '@jest/globals';
 import request from 'supertest';
 
-const mockAxiosGet = jest.fn();
+const mockAnalyze = jest.fn();
 
 const mockVerifyToken = jest.fn((req, res, next) => {
   if (!req.get('authorization')) {
@@ -34,18 +34,8 @@ const mockLocationEvent = {
   findOne: jest.fn()
 };
 
-const mockFuzzyEngine = {
-  getDisciplineAhpWeights: jest.fn(),
-  calculateDisciplineIndex: jest.fn(),
-  getWfaAhpWeights: jest.fn(),
-  calculateWfaScore: jest.fn(),
-  categorizePlace: jest.fn(() => 'other')
-};
-
-jest.unstable_mockModule('axios', () => ({
-  __esModule: true,
-  default: { get: mockAxiosGet },
-  get: mockAxiosGet
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  analyze: mockAnalyze
 }));
 
 jest.unstable_mockModule('../src/middlewares/authJwt.js', () => ({
@@ -62,11 +52,6 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Attendance: mockAttendance,
   Location: mockLocation,
   LocationEvent: mockLocationEvent
-}));
-
-jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
-  __esModule: true,
-  default: mockFuzzyEngine
 }));
 
 const { default: analysisRoutes } = await import('../src/routes/analysis.routes.js');
@@ -89,51 +74,80 @@ const expectValidationFailure = async (path) => {
 };
 
 describe('analysis WFA fuzzy ahp route validation', () => {
-  const originalGeoapifyApiKey = process.env.GEOAPIFY_API_KEY;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.GEOAPIFY_API_KEY = 'test-geoapify-key';
-    mockAxiosGet.mockResolvedValue({ data: { features: [] } });
-    mockFuzzyEngine.getWfaAhpWeights.mockReturnValue({
-      location_type: 0.5,
-      distance_factor: 0.3,
-      amenity_score: 0.2,
-      consistency_ratio: 0.042
+    mockAnalyze.mockResolvedValue({
+      candidates: [],
+      searchCriteria: {},
+      methodology: {}
     });
   });
 
-  afterAll(() => {
-    if (originalGeoapifyApiKey === undefined) {
-      delete process.env.GEOAPIFY_API_KEY;
-    } else {
-      process.env.GEOAPIFY_API_KEY = originalGeoapifyApiKey;
-    }
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('returns 400 when lat is missing', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lon=119.872&radius_meters=100');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lon=119.872&schedule_date=2099-08-03&radius_meters=100'
+    );
   });
 
   it('returns 400 when lon is missing', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&radius_meters=100');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&schedule_date=2099-08-03&radius_meters=100'
+    );
+  });
+
+  it('returns 400 when schedule_date is missing', async () => {
+    const response = await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872'
+    );
+
+    expect(response.body.errors).toEqual([
+      expect.objectContaining({ path: 'schedule_date', msg: 'schedule_date is required' })
+    ]);
+    expect(response.body.errors[0]).not.toHaveProperty('code');
+  });
+
+  it.each([
+    ['2026-02-30', 'INVALID_SCHEDULE_DATE'],
+    ['2026-08-01', 'PAST_DATE_NOT_ALLOWED'],
+    ['2026-08-02', 'SAME_DAY_NOT_ALLOWED']
+  ])('returns %s with error item code %s', async (scheduleDate, code) => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-02T04:00:00.000Z'));
+
+    const response = await expectValidationFailure(
+      `/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=${scheduleDate}`
+    );
+
+    expect(response.body.errors).toEqual([
+      expect.objectContaining({ path: 'schedule_date', code })
+    ]);
+    expect(mockAnalyze).not.toHaveBeenCalled();
   });
 
   it('returns 400 when radius_meters is below minimum', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=99');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=99'
+    );
   });
 
   it('returns 400 when radius_meters is above maximum', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=50001');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=50001'
+    );
   });
 
   it('returns 400 when radius_meters is not an integer', async () => {
-    await expectValidationFailure('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100.5');
+    await expectValidationFailure(
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100.5'
+    );
   });
 
   it('returns 401 when caller is unauthenticated', async () => {
     const res = await request(app).get(
-      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100'
+      '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100'
     );
 
     expect(res.status).toBe(401);
@@ -144,7 +158,9 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
   it('returns 403 for non-admin callers', async () => {
     const res = await request(app)
-      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100')
+      .get(
+        '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100'
+      )
       .set('Authorization', 'Bearer test-token')
       .set('x-test-role', 'User');
 
@@ -156,41 +172,35 @@ describe('analysis WFA fuzzy ahp route validation', () => {
 
   it('returns 200 for Management callers with valid WFA parameters', async () => {
     const res = await request(app)
-      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&radius_meters=100')
+      .get(
+        '/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03&radius_meters=100'
+      )
       .set('Authorization', 'Bearer test-token')
       .set('x-test-role', 'Management');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      type: 'wfa',
-      timezone: 'Asia/Jakarta',
-      data_source: 'geoapify_live',
-      query: {
-        lat: -0.895,
-        lon: 119.872,
-        radius_meters: 100
-      }
+    expect(mockAnalyze).toHaveBeenCalledWith({
+      latitude: -0.895,
+      longitude: 119.872,
+      scheduleDate: '2099-08-03',
+      radiusMeters: 100
     });
   });
 
   it('defaults radius_meters to 5000 when omitted', async () => {
     const res = await request(app)
-      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872')
+      .get('/api/analysis/fuzzy-ahp/wfa?lat=-0.895&lon=119.872&schedule_date=2099-08-03')
       .set('Authorization', 'Bearer test-token')
       .set('x-test-role', 'Management');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject({
-      type: 'wfa',
-      timezone: 'Asia/Jakarta',
-      data_source: 'geoapify_live',
-      query: {
-        lat: -0.895,
-        lon: 119.872,
-        radius_meters: 5000
-      }
+    expect(mockAnalyze).toHaveBeenCalledWith({
+      latitude: -0.895,
+      longitude: 119.872,
+      scheduleDate: '2099-08-03',
+      radiusMeters: 5000
     });
   });
 });

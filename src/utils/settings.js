@@ -7,7 +7,8 @@ export const OPERATIONAL_SETTING_KEYS = {
   autoCheckoutIdleMin: 'attendance.auto_checkout.idle_min',
   autoCheckoutTBufferMin: 'attendance.auto_checkout.tbuffer_min',
   lateCheckoutToleranceMin: 'attendance.auto_checkout.late_tolerance_min',
-  defaultShiftEnd: 'checkout.fallback_time'
+  defaultShiftEnd: 'checkout.fallback_time',
+  wfaRequestRadiusM: 'wfa.request.radius_m'
 };
 
 export const OPERATIONAL_SETTING_DEFAULTS = {
@@ -15,7 +16,8 @@ export const OPERATIONAL_SETTING_DEFAULTS = {
   autoCheckoutIdleMin: 10,
   autoCheckoutTBufferMin: 30,
   lateCheckoutToleranceMin: 15,
-  defaultShiftEnd: '17:00:00'
+  defaultShiftEnd: '17:00:00',
+  wfaRequestRadiusM: 100
 };
 
 export const OPERATIONAL_SETTING_FIELDS = Object.freeze(Object.keys(OPERATIONAL_SETTING_KEYS));
@@ -30,7 +32,8 @@ export const OPERATIONAL_SETTING_INTEGER_FIELDS = Object.freeze([
   'geofenceRadiusDefaultM',
   'autoCheckoutIdleMin',
   'autoCheckoutTBufferMin',
-  'lateCheckoutToleranceMin'
+  'lateCheckoutToleranceMin',
+  'wfaRequestRadiusM'
 ]);
 
 export const OPERATIONAL_SETTING_TIME_FIELDS = Object.freeze(['defaultShiftEnd']);

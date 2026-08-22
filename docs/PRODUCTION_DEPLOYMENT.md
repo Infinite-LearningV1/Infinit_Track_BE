@@ -1,5 +1,7 @@
 # 🚀 Production Deployment Guide
 
+For the canonical Nginx ingress, certificate lifecycle, loopback listener, and external port-3005 verification contract, see [PRODUCTION_NGINX_INGRESS.md](PRODUCTION_NGINX_INGRESS.md). Production deployment must run `nginx -t` before reload and must not rely on Certbot mutating the tracked application vhost.
+
 ## Overview
 
 Panduan deployment backend untuk fase saat ini, dengan source of truth yang selaras ke target runtime aktif.
@@ -94,6 +96,14 @@ They are not part of the supported active backend deploy path and should be trea
 - [ ] required runtime secrets are present on the droplet
 - [ ] image tag to be deployed is explicitly chosen
 - [ ] rollback path is known
+
+## Web-Origin and Runtime Artifact Contract
+
+Each environment has an independent expected Web origin (Web-origin input). The deployment compares that value with the running backend container's `CORS_ORIGIN` before claiming Web FE compatibility.
+
+The workflow synchronizes the tracked runtime artifacts from the release commit: `docker-compose.yml` and `deploy/scripts/verify-droplet-api.sh`. Host-local env/secrets remain untracked and are never copied from Git.
+
+Staging and production are separate workflows triggered from `master`; repository YAML does not enforce staging-before-production ordering. GitHub environment/ruleset protection is external operational evidence and must be inspected separately.
 
 ## Verification Expectations
 

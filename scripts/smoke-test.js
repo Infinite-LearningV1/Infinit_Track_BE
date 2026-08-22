@@ -16,6 +16,7 @@
 import axios from 'axios';
 
 const BASE_URL = process.argv[2] || process.env.BASE_URL;
+const WEB_ORIGIN = process.env.WEB_ORIGIN;
 const TIMEOUT = 10000; // 10 seconds
 const ANONYMOUS_BLOCKED_STATUSES = new Set([401, 403]);
 const EXPECTED_INVALID_LOGIN_STATUSES = new Set([400, 401, 422]);
@@ -35,6 +36,7 @@ console.log(`📍 Base URL: ${BASE_URL}\n`);
 const results = {
   passed: 0,
   failed: 0,
+  skipped: 0,
   tests: []
 };
 
@@ -76,6 +78,16 @@ function logTest(name, passed, details = '') {
   } else {
     results.failed++;
   }
+}
+
+function logSkip(name, details = '') {
+  console.log(`⏭️ ${name}`);
+  if (details) {
+    console.log(`   ${details}`);
+  }
+
+  results.tests.push({ name, passed: null, skipped: true, details });
+  results.skipped++;
 }
 
 /**
@@ -243,6 +255,66 @@ async function testCORS() {
     return false;
   } catch (error) {
     logTest('CORS Headers', false, formatAxiosError(error));
+    return false;
+  }
+}
+
+async function testWebFrontendCorsSession() {
+  const testName = 'Web FE Credentialed CORS / Session Surface';
+  if (!WEB_ORIGIN) {
+    logSkip(testName, 'WEB_ORIGIN not provided; skipping optional Web-origin verification');
+    return true;
+  }
+
+  try {
+    const preflight = await axios.options(`${BASE_URL}/api/auth/login`, {
+      timeout: TIMEOUT,
+      validateStatus: () => true,
+      headers: {
+        Origin: WEB_ORIGIN,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type,X-Client-Type'
+      }
+    });
+
+    const login = await requestWithAnyStatus('post', '/api/auth/login', {
+      headers: {
+        Origin: WEB_ORIGIN,
+        'Content-Type': 'application/json',
+        'X-Client-Type': 'web'
+      },
+      data: { email: 'smoke-web@example.com', password: 'wrongpassword' }
+    });
+
+    const refresh = await requestWithAnyStatus('post', '/api/auth/refresh', {
+      headers: {
+        Origin: WEB_ORIGIN,
+        'Content-Type': 'application/json',
+        'X-Client-Type': 'web'
+      },
+      data: {}
+    });
+
+    const hasCredentialedCors = (response) =>
+      response.headers['access-control-allow-origin'] === WEB_ORIGIN &&
+      response.headers['access-control-allow-credentials'] === 'true';
+
+    const passed =
+      [200, 204].includes(preflight.status) &&
+      EXPECTED_INVALID_LOGIN_STATUSES.has(login.status) &&
+      refresh.status === 401 &&
+      hasCredentialedCors(preflight) &&
+      hasCredentialedCors(login) &&
+      hasCredentialedCors(refresh);
+
+    logTest(
+      testName,
+      passed,
+      `Origin: ${WEB_ORIGIN}, preflight=${preflight.status}, login=${login.status}, refresh=${refresh.status}`
+    );
+    return passed;
+  } catch (error) {
+    logTest(testName, false, formatAxiosError(error));
     return false;
   }
 }
@@ -446,6 +518,7 @@ async function runTests() {
   await testDocs();
   await testRawOpenApiContract();
   await testCORS();
+  await testWebFrontendCorsSession();
   await testSecurityHeaders();
   await testAuthEndpoint();
   await testProtectedRouteInventory();
@@ -459,6 +532,7 @@ async function runTests() {
   console.log('═══════════════════════════════════════\n');
   console.log(`✅ Passed: ${results.passed}`);
   console.log(`❌ Failed: ${results.failed}`);
+  console.log(`⏭️ Skipped: ${results.skipped}`);
   console.log(`📊 Total:  ${results.passed + results.failed}`);
   console.log(
     `📈 Success Rate: ${Math.round((results.passed / (results.passed + results.failed)) * 100)}%`

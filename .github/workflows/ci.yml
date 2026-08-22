@@ -15,3 +15,87 @@ jobs:
           CLOUDINARY_CLOUD_NAME: test_cloud
           CLOUDINARY_API_KEY: test_key
           CLOUDINARY_API_SECRET: test_secret
+
+  # INF-252 Phase 0c / INF-254.
+  #
+  # The integration suite needs a real MySQL schema, and this repository
+  # cannot build one: src/models/migrations/ patches a schema that already
+  # exists rather than creating it (finding F13). The schema therefore has to
+  # arrive as a committed baseline dump.
+  #
+  # Until db/baseline/schema.sql exists, the integration job must not run —
+  # it would fail every build for everyone. This gate decides that in a job
+  # of its own so the MySQL service container is never started while the
+  # dump is absent.
+  baseline-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -f db/baseline/schema.sql ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Integration tests skipped::db/baseline/schema.sql is absent, so there is no schema to test against. See db/baseline/README.md and INF-254. This is expected until the baseline dump is committed."
+          fi
+
+  integration:
+    needs: baseline-gate
+    if: needs.baseline-gate.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: infinite_track_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+
+      # The dump carries table structure plus the sequelizemeta rows. Both
+      # matter: none of the migrations guard against changes that already
+      # exist, so an empty ledger makes the next step re-run all of them and
+      # fail on a duplicate column (finding F48).
+      - name: Apply the baseline schema
+        run: mysql -h 127.0.0.1 -P 3306 -uroot -proot infinite_track_test < db/baseline/schema.sql
+
+      # Migrations then patch that baseline forward, exactly as they do in
+      # every other environment.
+      - name: Run migrations
+        run: npm run migrate
+        env:
+          NODE_ENV: test
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_USER: root
+          DB_PASS: root
+          DB_NAME: infinite_track_test
+          CLOUDINARY_CLOUD_NAME: test_cloud
+          CLOUDINARY_API_KEY: test_key
+          CLOUDINARY_API_SECRET: test_secret
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_PORT: 3306
+          TEST_DB_USER: root
+          TEST_DB_PASS: root
+          TEST_DB_NAME: infinite_track_test
+          CLOUDINARY_CLOUD_NAME: test_cloud
+          CLOUDINARY_API_KEY: test_key
+          CLOUDINARY_API_SECRET: test_secret

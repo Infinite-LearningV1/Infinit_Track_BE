@@ -36,12 +36,19 @@ const mockBooking = {
 const mockSettings = {
   findOne: jest.fn()
 };
+const mockAnalyze = jest.fn();
+const mockRecommendForUser = jest.fn();
+const mockScoreBookingLocation = jest.fn();
 
 const mockFuzzyEngine = {
   getDisciplineAhpWeights: jest.fn(),
   calculateDisciplineIndex: jest.fn(),
   getWfaAhpWeights: jest.fn(),
   calculateWfaScore: jest.fn(),
+  getLegacyWfaAmenityWeights: jest.fn(),
+  calculateLegacyWfaAmenityScore: jest.fn(),
+  getLocationTypeScore: jest.fn(),
+  getDistanceFactorScore: jest.fn(),
   getSmartAcAhpWeights: jest.fn(),
   weightedPrediction: jest.fn(),
   categorizePlace: jest.fn((place) => {
@@ -79,12 +86,20 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   Position: {},
   Photo: {},
   AuthSession: {},
+  WfaRequestReason: {},
+  WfaRejectionReason: {},
   sequelize: {}
 }));
 
 jest.unstable_mockModule('../src/utils/fuzzyAhpEngine.js', () => ({
   __esModule: true,
   default: mockFuzzyEngine
+}));
+
+jest.unstable_mockModule('../src/services/wfaRecommendation.service.js', () => ({
+  analyze: mockAnalyze,
+  recommendForUser: mockRecommendForUser,
+  scoreBookingLocation: mockScoreBookingLocation
 }));
 
 const { getFuzzyAhpAnalysis } = await import('../src/controllers/analysis.controller.js');
@@ -133,13 +148,13 @@ describe('analysis fuzzy ahp contract', () => {
       }
     });
 
-    mockFuzzyEngine.getWfaAhpWeights.mockReturnValue({
+    mockFuzzyEngine.getLegacyWfaAmenityWeights.mockReturnValue({
       location_type: 0.5,
       distance_factor: 0.3,
       amenity_score: 0.2,
       consistency_ratio: 0.025
     });
-    mockFuzzyEngine.calculateWfaScore.mockResolvedValue({
+    mockFuzzyEngine.calculateLegacyWfaAmenityScore.mockResolvedValue({
       score: 76.4,
       label: 'Tinggi'
     });
@@ -304,50 +319,19 @@ describe('analysis fuzzy ahp contract', () => {
     );
   });
 
-  it('returns place-ranked analysis for wfa mode', async () => {
-    mockLocation.findAll.mockResolvedValue([
-      {
-        location_id: 11,
-        description: 'Cafe A',
-        latitude: '-6.200000',
-        longitude: '106.800000'
-      }
-    ]);
+  it('returns the exact move contract for legacy combined wfa analysis', async () => {
+    const response = await request(scopedApp)
+      .get('/api/analysis/fuzzy-ahp?type=wfa&period=monthly')
+      .set('Authorization', 'Bearer test-token')
+      .expect(410);
 
-    const req = {
-      query: { type: 'wfa', period: 'monthly' },
-      user: { id: 12, role_name: 'Admin' }
-    };
-    const res = makeRes();
-    const next = jest.fn();
-
-    await getFuzzyAhpAnalysis(req, res, next);
-
-    expect(next).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({
-          type: 'wfa',
-          entity_kind: 'place',
-          ranking: expect.arrayContaining([
-            expect.objectContaining({
-              rank: 1,
-              id: 11,
-              name: 'Cafe A',
-              score: expect.any(Number),
-              label: expect.any(String),
-              breakdown: expect.objectContaining({
-                location_type: expect.any(String),
-                amenity_score: expect.any(Number),
-                distance: expect.any(Number)
-              })
-            })
-          ])
-        })
-      })
-    );
+    expect(response.body).toEqual({
+      success: false,
+      code: 'WFA_ANALYSIS_MOVED',
+      message: 'Use /api/analysis/fuzzy-ahp/wfa with lat, lon, and schedule_date.'
+    });
+    expect(mockAnalyze).not.toHaveBeenCalled();
+    expect(mockLocation.findAll).not.toHaveBeenCalled();
   });
 
   it('returns user-ranked analysis for smart_ac mode using the scoped transition event as both context and transition evidence', async () => {
@@ -665,50 +649,21 @@ describe('analysis fuzzy ahp contract', () => {
     jest.useRealTimers();
   });
 
-  it('returns a stable empty recap shape for empty monthly recap results', async () => {
+  it('requires an explicit date range for the WFA dashboard recap', async () => {
     const res = await request(scopedApp).get('/api/analysis/fuzzy-ahp/dashboard?type=wfa');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      success: true,
-      data: {
-        type: 'wfa',
-        type_label: 'WFA',
-        generated_at: expect.any(String),
-        timezone: 'Asia/Jakarta',
-        requested_window: {
-          period: 'monthly'
-        },
-        executed_window: {
-          start_at: expect.any(String),
-          end_at: expect.any(String)
-        },
-        status: 'empty',
-        needs_data: true,
-        consistency: expect.objectContaining({
-          CR: expect.any(Number),
-          threshold: 0.1,
-          is_consistent: expect.any(Boolean)
-        }),
-        criteria_weights: [
-          { key: 'location_type', label: 'location_type', display_label: 'Tipe Lokasi', value: expect.any(Number) },
-          { key: 'distance_factor', label: 'distance_factor', display_label: 'Faktor Jarak', value: expect.any(Number) },
-          { key: 'amenity_score', label: 'amenity_score', display_label: 'Skor Fasilitas', value: expect.any(Number) }
-        ],
-        ranking_preview: {
-          top_n: 5,
-          items: []
-        },
-        distribution: {
-          'Sangat Tinggi': 0,
-          Tinggi: 0,
-          Sedang: 0,
-          Rendah: 0,
-          'Sangat Rendah': 0
-        }
-      },
-      message: 'Fuzzy AHP dashboard recap retrieved successfully'
+      success: false,
+      code: 'E_VALIDATION',
+      message: 'Parameter from dan to wajib diisi saat period=range atau custom',
+      errors: [
+        expect.objectContaining({
+          msg: 'Parameter from dan to wajib diisi saat period=range atau custom'
+        })
+      ]
     });
+    expect(mockLocation.findAll).not.toHaveBeenCalled();
   });
 
   it.each([
