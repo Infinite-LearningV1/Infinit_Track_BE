@@ -143,6 +143,7 @@ jobs:
         run: |
           set -euo pipefail
           tar -czf - docker-compose.yml deploy/scripts/verify-droplet-api.sh \
+            deploy/scripts/persist-backend-image-tag.sh \
             | ssh -i "$HOME/.ssh/production.key" -o IdentitiesOnly=yes "$PRODUCTION_SSH_USER@$PRODUCTION_SSH_HOST" "
                 set -euo pipefail
                 mkdir -p '$PRODUCTION_DEPLOY_PATH/deploy/scripts'
@@ -155,8 +156,10 @@ jobs:
             set -euo pipefail
             cd '$PRODUCTION_DEPLOY_PATH'
             echo '${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}' | docker login registry.digitalocean.com -u doctl --password-stdin
+            chmod +x ./deploy/scripts/persist-backend-image-tag.sh
+            ./deploy/scripts/persist-backend-image-tag.sh .env "${GITHUB_SHA}"
+            grep -qx "BACKEND_IMAGE_TAG=${GITHUB_SHA}" .env
             export BACKEND_IMAGE="${DOCKER_IMAGE}"
-            export BACKEND_IMAGE_TAG="${GITHUB_SHA}"
             docker compose pull app
             docker compose up -d --force-recreate app
             docker compose exec -T app npm run migrate
